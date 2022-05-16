@@ -6,8 +6,9 @@ class MyClient(discord.Client):
 
     async def on_message(self, message):
         print('Message from {0.author}: {0.content}'.format(message))
-        if message.content.lower().startswith("hello"):
-            await message.channel.send("Hello ! :3")
+        if message.author != client.user:
+            if message.content.lower().startswith("hello"):
+                await message.channel.send("Hello ! :3")
 
 client = MyClient()
 
