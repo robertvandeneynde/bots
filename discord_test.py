@@ -42,6 +42,22 @@ async def on_message(message):
             await message.channel.send("Hello ! :3")
     await bot.process_commands(message)
 
+@bot.command()
+async def rus(ctf, word):
+    """
+    интересно
+    interesno
+    """
+    def pre(x): return x
+    await ctx.send(pre(word))
+
+@bot.command()
+async def replace(ctx, a, b):
+    last_message_by_me = ...
+    # modify or resend
+    txt = last_message_by_me.replace(a, b)
+    await ctx.send(txt)
+
 from discord_settings_local import TOKEN
 bot.run(TOKEN)
 #client.run(TOKEN)
