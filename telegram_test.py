@@ -35,26 +35,30 @@ class DatetimeText:
     def to_datetime_range(self, name, reference=None):
         from datetime import datetime, timedelta, date, time
         reference = reference or datetime.now()  # Datetime should be Brussels
-        monday = datetime.combine(reference.date(), time(0))
+        today = datetime.combine(reference.date(), time(0))
         name = name.lower()
         if name in ("today", "auj", "aujourdhui", "aujourd'hui"):
-            return monday
+            return today
+        
+        if name in ("week", "semaine"):
+            beg = today
+            end = today + timedelta(days=7)
+            return beg, end
+        
+        monday = today
         while monday.isoweekday() != 1:
             monday -= timedelta(days=1)
-        # TODO : add 2 letters for days
+        
+        # TODO : add few letters for days
         if name in self.days_french:
             i = self.days_french.index(name)
         elif name in self.days_english:
             i = self.days_english.index(name)
-        elif name in ("week", "semaine"):
-            i = 0
         else:
             raise ValueError
+        
         beg = monday + timedelta(days=i)
-        if name in ("week", "semaine"):
-            end = beg + timedelta(days=7)
-        else:
-            end = beg + timedelta(days=1)
+        end = beg + timedelta(days=1)
         return beg, end
         
 import sqlite3
