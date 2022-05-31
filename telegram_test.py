@@ -45,10 +45,6 @@ class DatetimeText:
             end = today + timedelta(days=7)
             return beg, end
         
-        monday = today
-        while monday.isoweekday() != 1:
-            monday -= timedelta(days=1)
-        
         # TODO : add few letters for days
         if name in self.days_french:
             i = self.days_french.index(name)
@@ -57,7 +53,11 @@ class DatetimeText:
         else:
             raise ValueError
         
-        beg = monday + timedelta(days=i)
+        the_day = today + timedelta(days=1)
+        while the_day.weekday() != i:
+            the_day += timedelta(days=1)
+        
+        beg = the_day
         end = beg + timedelta(days=1)
         return beg, end
         
