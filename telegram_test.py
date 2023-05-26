@@ -1,6 +1,6 @@
 import logging
 from telegram import Update
-from telegram.ext import ApplicationBuilder, CallbackContext, CommandHandler, MessageHandler
+from telegram.ext import ApplicationBuilder, CallbackContext, CommandHandler, MessageHandler, ContextTypes
 from telegram.ext import filters
 from telegram_settings_local import TOKEN
 
@@ -9,13 +9,13 @@ logging.basicConfig(
     level=logging.INFO
 )
 
-async def start(update: Update, context: CallbackContext.DEFAULT_TYPE):
+async def start(update: Update, context: CallbackContext):
     await context.bot.send_message(
         chat_id=update.effective_chat.id,
         text="I'm a bot, please talk to me!")
     print("Someone started me!")
 
-async def on_message(update: Update, context: CallbackContext.DEFAULT_TYPE):
+async def on_message(update: Update, context: CallbackContext):
     async def send(m):
         await context.bot.send_message(text=m, chat_id=update.effective_chat.id)
     msg = update.message.text
@@ -26,6 +26,19 @@ async def on_message(update: Update, context: CallbackContext.DEFAULT_TYPE):
 async def caps(update: Update, context: CallbackContext):
     text_caps = str(context.args).upper()
     await context.bot.send_message(chat_id=update.effective_chat.id, text=text_caps)
+
+async def ru(update: Update, context: CallbackContext):
+    async def send(m):
+        await context.bot.send_message(text=m, chat_id=update.effective_chat.id)
+    if not context.args:
+        return await send("Usage: /ru word1 word2 word3...")
+    a = "azertyuiopqsdfghjklmwxcvbn"
+    b = "азертыуиопясдфгхйклмжьцвбн"
+    D = dict(zip(a,b))
+    def to_cyrilic(x):
+        return ''.join(map(lambda x: D.get(x,x), x))
+    for word in context.args:
+        await send(to_cyrilic(word))
 
 class DatetimeText:
     days_english = "monday tuesday wednesday thursday friday saturday sunday".split() 
@@ -62,7 +75,7 @@ class DatetimeText:
         return beg, end
         
 import sqlite3
-async def add_event(update, context):
+async def add_event(update: Update, context: CallbackContext):
     async def send(m):
         await context.bot.send_message(text=m, chat_id=update.effective_chat.id)
     if not context.args:
@@ -82,7 +95,7 @@ async def add_event(update, context):
     
     await send(f"Event {name!r} saved for date {datetime.date()} aka {date!r}")
 
-async def list_events(update, context):
+async def list_events(update: Update, context: CallbackContext):
     async def send(m):
         await context.bot.send_message(text=m, chat_id=update.effective_chat.id)
     if len(context.args) >= 2:
@@ -112,7 +125,16 @@ async def list_events(update, context):
         msg = '\n'.join(f"{DatetimeText.days_english[strptime(date).weekday()]} {strptime(date).date():%d/%m}: {event}"
                         for date, event in cursor.execute(*query))
         await send(msg or "No events for that day !")
-    
+
+def make_help(*commands):
+    async def help(update, context):
+        async def send(m):
+            await context.bot.send_message(text=m, chat_id=update.effective_chat.id)
+        if context.args:
+           raise Exception("No arguments")
+        return await send('\n'.join(map("/{}".format, commands)))
+    return help
+
 if __name__ == '__main__':
     application = ApplicationBuilder().token(TOKEN).build()
     
@@ -125,5 +147,7 @@ if __name__ == '__main__':
     application.add_handler(CommandHandler('caps', caps))
     application.add_handler(CommandHandler('addevent', add_event))
     application.add_handler(CommandHandler('listevents', list_events))
+    application.add_handler(CommandHandler('ru', ru))
+    application.add_handler(CommandHandler('help', make_help('caps', 'addevent', 'listevents', 'ru')))
     
     application.run_polling()
