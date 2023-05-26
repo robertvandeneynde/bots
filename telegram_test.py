@@ -34,9 +34,15 @@ async def ru(update: Update, context: CallbackContext):
         return await send("Usage: /ru word1 word2 word3...")
     a = "azertyuiopqsdfghjklmwxcvbn"
     b = "азертыуиопясдфгхйклмжьцвбн"
-    D = dict(zip(a,b))
-    def to_cyrilic(x):
-        return ''.join(map(lambda x: D.get(x,x), x))
+    c = "sh shch ch ye yu zh ya yo".split()
+    d = "ш  щ    ч  э  ю  ж  я  ё".split()
+    D = dict(zip(a,b)) | dict(zip(c,d))
+    S = sorted(D.items(), reverse=True)
+    import re
+    R = re.compile('|'.join(re.escape(s[0]) for s in S))
+    def to_cyrilic(word):
+        #return ''.join(map(lambda x: D.get(x,x), word))
+        return R.sub(lambda m: (lambda x: D.get(x,x))(m.group(0)), word)
     for word in context.args:
         await send(to_cyrilic(word))
 
