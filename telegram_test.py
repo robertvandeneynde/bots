@@ -43,8 +43,7 @@ async def ru(update: Update, context: CallbackContext):
     def to_cyrilic(word):
         #return ''.join(map(lambda x: D.get(x,x), word))
         return R.sub(lambda m: (lambda x: D.get(x,x))(m.group(0)), word)
-    for word in context.args:
-        await send(to_cyrilic(word))
+    await send(' '.join(to_cyrilic(word) for word in context.args))
 
 class DatetimeText:
     days_english = "monday tuesday wednesday thursday friday saturday sunday".split() 
