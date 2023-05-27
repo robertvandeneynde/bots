@@ -133,6 +133,8 @@ async def list_events(update: Update, context: CallbackContext):
         cursor = conn.cursor()
         query = ("SELECT * FROM Events WHERE ? <= date AND date < ? ORDER BY date", (beg, end))
         
+        from datetime import datetime, timedelta
+
         def strptime(x:str):
             return datetime.strptime(x, "%Y-%m-%d %H:%M:%S")
         def strftime(x:datetime):
