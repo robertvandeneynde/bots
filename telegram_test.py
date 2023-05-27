@@ -45,6 +45,14 @@ async def ru(update: Update, context: CallbackContext):
         return R.sub(lambda m: (lambda x: D.get(x,x))(m.group(0)), word)
     await send(' '.join(to_cyrilic(word) for word in context.args))
 
+async def wikt(update: Update, context: CallbackContext):
+    async def send(m):
+        await context.bot.send_message(text=m, chat_id=update.effective_chat.id)
+    language = (context.args[-1][1:] if context.args[-1].startswith('#') else '')
+    def url(x):
+        return 'https://wiktionary.com/{}'.format(x) + '#' + language
+    return await send('\n\n'.join(url(x) for x in context.args))
+
 class DatetimeText:
     days_english = "monday tuesday wednesday thursday friday saturday sunday".split() 
     days_french = "lundi mardi mercredi jeudi vendredi samedi dimanche".split()
@@ -153,6 +161,7 @@ if __name__ == '__main__':
     application.add_handler(CommandHandler('addevent', add_event))
     application.add_handler(CommandHandler('listevents', list_events))
     application.add_handler(CommandHandler('ru', ru))
+    application.add_handler(CommandHandler('wikt', wikt))
     application.add_handler(CommandHandler('help', make_help('caps', 'addevent', 'listevents', 'ru')))
     
     application.run_polling()
