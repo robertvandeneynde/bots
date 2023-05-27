@@ -153,6 +153,31 @@ async def list_events(update: Update, context: CallbackContext):
                         for date, event in cursor.execute(*query))
         await send(msg or "No events for that day !")
 
+from decimal import Decimal
+ONE_EURO_IN_BRL = Decimal("5.36")
+
+async def eur(update: Update, context: CallbackContext):
+    async def send(m):
+        await context.bot.send_message(text=m, chat_id=update.effective_chat.id)
+    from decimal import Decimal
+    if not context.args:
+        return await send("Usage: /eur value")
+    value, *_ = context.args
+    amount_eur = Decimal(value)
+    amount_brl = amount_eur * ONE_EURO_IN_BRL
+    return await send('\n'.join(["EUR: {:.2f}".format(amount_eur), "BRL: {:.2f}".format(amount_brl)]))
+
+async def brl(update: Update, context: CallbackContext):
+    async def send(m):
+        await context.bot.send_message(text=m, chat_id=update.effective_chat.id)
+    from decimal import Decimal
+    if not context.args:
+        return await send("Usage: /brl value")
+    value, *_ = context.args
+    amount_brl = Decimal(value)
+    amount_eur = amount_brl / ONE_EURO_IN_BRL
+    return await send('\n'.join(["BRL: {:.2f}".format(amount_brl), "EUR: {:.2f}".format(amount_eur)]))
+
 def make_help(*commands):
     async def help(update, context):
         async def send(m):
@@ -182,7 +207,9 @@ if __name__ == '__main__':
     application.add_handler(CommandHandler('listevents', list_events))
     application.add_handler(CommandHandler('ru', ru))
     application.add_handler(CommandHandler('wikt', wikt))
-    application.add_handler(CommandHandler('help', make_help('caps', 'addevent', 'listevents', 'ru', 'wikt')))
+    application.add_handler(CommandHandler('eur', eur))
+    application.add_handler(CommandHandler('brl', brl))
+    application.add_handler(CommandHandler('help', make_help('caps', 'addevent', 'listevents', 'ru', 'wikt', 'eur', 'brl')))
 
     application.add_error_handler(general_error_callback)
     
