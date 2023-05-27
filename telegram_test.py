@@ -9,6 +9,8 @@ logging.basicConfig(
     level=logging.INFO
 )
 
+logging.getLogger('httpx').setLevel(logging.WARN)
+
 async def start(update: Update, context: CallbackContext):
     await context.bot.send_message(
         chat_id=update.effective_chat.id,
