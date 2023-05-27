@@ -49,8 +49,8 @@ async def wikt(update: Update, context: CallbackContext):
     async def send(m):
         await context.bot.send_message(text=m, chat_id=update.effective_chat.id)
     if not context.args:
-        return await send("Usage: /wikt word1 word2 word3... #Language")
-    if context.args[-1].startswith('#'):
+        return await send("Usage: /wikt word1 word2 word3... /Language")
+    if context.args[-1].startswith('/'):
         language = context.args[-1][1:]
         words = context.args[:-1]
     else:
