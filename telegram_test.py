@@ -56,7 +56,7 @@ class DatetimeText:
         today = datetime.combine(reference.date(), time(0))
         name = name.lower()
         if name in ("today", "auj", "aujourdhui", "aujourd'hui"):
-            return today
+            return today, today + timedelta(days=1)
         
         if name in ("week", "semaine"):
             beg = today
