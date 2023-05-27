@@ -50,15 +50,22 @@ async def wikt(update: Update, context: CallbackContext):
         await context.bot.send_message(text=m, chat_id=update.effective_chat.id)
     if not context.args:
         return await send("Usage: /wikt word1 word2 word3... /Language")
+    
+    # See the presence of the /Language arg (last argument)
     if context.args[-1].startswith('/'):
         language = context.args[-1][1:]
         words = context.args[:-1]
     else:
         language = ''
         words = context.args[:]
+    
+    if ':' in language:
+        base_lang, target_lang, *_ = language.split(':')
+    else:
+        base_lang, target_lang = 'en', language
     def url(x):
         x = x.lower()
-        return 'https://wiktionary.com/{}'.format(x) + ('#' + language if language != '' else '')
+        return 'https://wiktionary.com/{}:{}'.format(base_lang, x) + ('#' + target_lang if target_lang != '' else '')
     return await send('\n\n'.join(url(x) for x in words))
 
 class DatetimeText:
