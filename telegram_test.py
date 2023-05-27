@@ -48,10 +48,17 @@ async def ru(update: Update, context: CallbackContext):
 async def wikt(update: Update, context: CallbackContext):
     async def send(m):
         await context.bot.send_message(text=m, chat_id=update.effective_chat.id)
-    language = (context.args[-1][1:] if context.args[-1].startswith('#') else '')
+    if not context.args:
+        return await send("Usage: /wikt word1 word2 word3... #Language")
+    if context.args[-1].startswith('#'):
+        language = context.args[-1][1:]
+        words = context.args[:-1]
+    else:
+        language = ''
+        words = context.args[:]
     def url(x):
-        return 'https://wiktionary.com/{}'.format(x) + '#' + language
-    return await send('\n\n'.join(url(x) for x in context.args))
+        return 'https://wiktionary.com/{}'.format(x) + ('#' + language if language != '' else '')
+    return await send('\n\n'.join(url(x) for x in words))
 
 class DatetimeText:
     days_english = "monday tuesday wednesday thursday friday saturday sunday".split() 
@@ -162,6 +169,6 @@ if __name__ == '__main__':
     application.add_handler(CommandHandler('listevents', list_events))
     application.add_handler(CommandHandler('ru', ru))
     application.add_handler(CommandHandler('wikt', wikt))
-    application.add_handler(CommandHandler('help', make_help('caps', 'addevent', 'listevents', 'ru')))
+    application.add_handler(CommandHandler('help', make_help('caps', 'addevent', 'listevents', 'ru', 'wikt')))
     
     application.run_polling()
