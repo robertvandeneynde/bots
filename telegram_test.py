@@ -57,6 +57,7 @@ async def wikt(update: Update, context: CallbackContext):
         language = ''
         words = context.args[:]
     def url(x):
+        x = x.lower()
         return 'https://wiktionary.com/{}'.format(x) + ('#' + language if language != '' else '')
     return await send('\n\n'.join(url(x) for x in words))
 
