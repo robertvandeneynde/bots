@@ -36,7 +36,7 @@ async def ru(update: Update, context: CallbackContext):
     b = "азертыуиопясдфгхйклмжьцвбн"
     c = "sh shch ch ye yu zh ya yo".split()
     d = "ш  щ    ч  э  ю  ж  я  ё".split()
-    D = dict(zip(a,b)) | dict(zip(c,d))
+    D = dict(zip(a,b)) | dict(zip(c,d)) | dict(zip(a.upper(), b.upper())) | dict(zip((c.upper() for c in c), (d.upper() for d in d)))
     S = sorted(D.items(), reverse=True)
     import re
     R = re.compile('|'.join(re.escape(s[0]) for s in S))
