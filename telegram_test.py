@@ -79,13 +79,16 @@ class DatetimeText:
             end = today + timedelta(days=7)
             return beg, end
         
+        if name in ("tomorrow", "demain"):
+            return today + timedelta(days=1), today + timedelta(days=2)
+        
         # TODO : add few letters for days
         if name in self.days_french:
             i = self.days_french.index(name)
         elif name in self.days_english:
             i = self.days_english.index(name)
         else:
-            raise ValueError
+            raise ValueError(f"Unknown date {name}")
         
         the_day = today + timedelta(days=1)
         while the_day.weekday() != i:
