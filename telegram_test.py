@@ -172,28 +172,6 @@ def make_money_command(name:str, currency_base:str, currency_converted:str, rate
         ]))
     return money
 
-async def eur(update: Update, context: CallbackContext):
-    async def send(m):
-        await context.bot.send_message(text=m, chat_id=update.effective_chat.id)
-    from decimal import Decimal
-    if not context.args:
-        return await send("Usage: /eur value")
-    value, *_ = context.args
-    amount_eur = Decimal(value)
-    amount_brl = amount_eur * ONE_EURO_IN_BRL
-    return await send('\n'.join(["EUR: {:.2f}".format(amount_eur), "BRL: {:.2f}".format(amount_brl)]))
-
-async def brl(update: Update, context: CallbackContext):
-    async def send(m):
-        await context.bot.send_message(text=m, chat_id=update.effective_chat.id)
-    from decimal import Decimal
-    if not context.args:
-        return await send("Usage: /brl value")
-    value, *_ = context.args
-    amount_brl = Decimal(value)
-    amount_eur = amount_brl / ONE_EURO_IN_BRL
-    return await send('\n'.join(["BRL: {:.2f}".format(amount_brl), "EUR: {:.2f}".format(amount_eur)]))
-
 eur = make_money_command("eur", "eur", "brl", ONE_EURO_IN_BRL)
 brl = make_money_command("brl", "brl", "eur", 1 / ONE_EURO_IN_BRL)
 
