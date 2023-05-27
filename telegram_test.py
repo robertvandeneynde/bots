@@ -107,11 +107,7 @@ async def add_event(update: Update, context: CallbackContext):
     date, *name = context.args
     name = " ".join(name)
     
-    try:
-        datetime, datetime_end = DatetimeText.to_datetime_range(date)
-    except Exception as e:
-        logging.error("Error in %s", add_event, exc_info=e)
-        return await send("An error occured in your command")
+    datetime, datetime_end = DatetimeText.to_datetime_range(date)
     
     with sqlite3.connect('db.sqlite') as conn:
         cursor = conn.cursor()
@@ -131,13 +127,7 @@ async def list_events(update: Update, context: CallbackContext):
     else:
         when, = context.args
     
-    try:
-        datetime, datetime_end = DatetimeText.to_datetime_range(when)
-    except Exception as e:
-        logging.error("Error in %s", add_event, exc_info=e)
-        return await send("An error occured in your command")
-    
-    beg, end = datetime, datetime_end
+    beg, end = DatetimeText.to_datetime_range(when)
     
     with sqlite3.connect('db.sqlite') as conn:
         cursor = conn.cursor()
@@ -161,6 +151,12 @@ def make_help(*commands):
         return await send('\n'.join(map("/{}".format, commands)))
     return help
 
+async def general_error_callback(update:Update, context:CallbackContext):
+    async def send(m):
+        await context.bot.send_message(text=m, chat_id=update.effective_chat.id)
+    logging.error("Error", exc_info=context.error)
+    return await send("An error occured in your command")
+
 if __name__ == '__main__':
     application = ApplicationBuilder().token(TOKEN).build()
     
@@ -176,5 +172,7 @@ if __name__ == '__main__':
     application.add_handler(CommandHandler('ru', ru))
     application.add_handler(CommandHandler('wikt', wikt))
     application.add_handler(CommandHandler('help', make_help('caps', 'addevent', 'listevents', 'ru', 'wikt')))
+
+    application.add_error_handler(general_error_callback)
     
     application.run_polling()
