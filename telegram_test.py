@@ -109,7 +109,8 @@ async def add_event(update: Update, context: CallbackContext):
     
     try:
         datetime, datetime_end = DatetimeText.to_datetime_range(date)
-    except:
+    except Exception as e:
+        logging.error("Error in %s", add_event, exc_info=e)
         return await send("An error occured in your command")
     
     with sqlite3.connect('db.sqlite') as conn:
@@ -132,7 +133,8 @@ async def list_events(update: Update, context: CallbackContext):
     
     try:
         datetime, datetime_end = DatetimeText.to_datetime_range(when)
-    except:
+    except Exception as e:
+        logging.error("Error in %s", add_event, exc_info=e)
         return await send("An error occured in your command")
     
     beg, end = datetime, datetime_end
