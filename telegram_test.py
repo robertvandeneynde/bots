@@ -156,6 +156,22 @@ async def list_events(update: Update, context: CallbackContext):
 from decimal import Decimal
 ONE_EURO_IN_BRL = Decimal("5.36")
 
+def make_money_command(name:str, currency_base:str, currency_converted:str, rate:Decimal):
+    async def money(update: Update, context: CallbackContext):
+        async def send(m):
+            await context.bot.send_message(text=m, chat_id=update.effective_chat.id)
+        from decimal import Decimal
+        if not context.args:
+            return await send(f"Usage: /{name} value")
+        value, *_ = context.args
+        amount_base = Decimal(value)
+        amount_converted = amount_base * rate
+        return await send('\n'.join([
+            "{}: {:.2f}".format(currency_base.upper(), amount_base),
+            "{}: {:.2f}".format(currency_converted.upper(), amount_converted),
+        ]))
+    return money
+
 async def eur(update: Update, context: CallbackContext):
     async def send(m):
         await context.bot.send_message(text=m, chat_id=update.effective_chat.id)
@@ -177,6 +193,9 @@ async def brl(update: Update, context: CallbackContext):
     amount_brl = Decimal(value)
     amount_eur = amount_brl / ONE_EURO_IN_BRL
     return await send('\n'.join(["BRL: {:.2f}".format(amount_brl), "EUR: {:.2f}".format(amount_eur)]))
+
+eur = make_money_command("eur", "eur", "brl", ONE_EURO_IN_BRL)
+brl = make_money_command("brl", "brl", "eur", 1 / ONE_EURO_IN_BRL)
 
 def make_help(*commands):
     async def help(update, context):
