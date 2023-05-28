@@ -74,10 +74,16 @@ async def wikt(update: Update, context: CallbackContext):
     if ':' in language:
         base_lang, target_lang, *_ = language.split(':')
     else:
-        base_lang, target_lang = 'en', language
+        base_lang, target_lang = '', language
+    target_lang
     def url(x):
         x = x.lower()
-        return 'https://wiktionary.com/wiki/{}:{}'.format(base_lang, x) + ('#' + target_lang if target_lang != '' else '')
+        return (
+            'https://wiktionary.com/wiki/'
+            + ('{}:'.format(base_lang) if base_lang else '')
+            + x
+            + ('#' + target_lang if target_lang else '')
+        )
     return await send('\n\n'.join(url(x) for x in words))
 
 class DatetimeText:
