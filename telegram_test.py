@@ -219,11 +219,11 @@ async def general_error_callback(update:Update, context:CallbackContext):
 
 DESC_COMMANDS = {
     "help": "Help !",
-    "caps": "Return a list in capital letters",
+    "caps": "Returns the list of parameters in capital letters",
     "addevent": "Add event",
     "listevents": "List events",
     "ru": "Latin alphabet to Cyrillic",
-    "wikt": "Shows every definition of each word",
+    "wikt": "Shows definition of each word",
     'eur': "Convert euros to other currencies",
     'brl': "Convert brazilian reals to other currencies",
 }
