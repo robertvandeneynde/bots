@@ -17,18 +17,18 @@ async def start(update: Update, context: CallbackContext):
         text="I'm a bot, please talk to me!")
     print("Someone started me!")
 
-def strip_botname(message: Message):
+def strip_botname(update: Update, context: CallbackContext):
     # TODO analyse message.entities
-    bot_mention: str = '@' + application.bot.bot.username
-    if message.text.startswith(bot_mention):
+    bot_mention: str = '@' + context.bot.username
+    if update.message.text.startswith(bot_mention):
         return message.text[len(bot_mention):].strip()
-    return message.text.strip()
+    return update.message.text.strip()
 
 async def on_message(update: Update, context: CallbackContext):
     async def send(m):
         await context.bot.send_message(text=m, chat_id=update.effective_chat.id)
     logging.info("@{}: {} (In '{}')".format(update.message.from_user.username, update.message.text, str(update.message.chat.type).upper() if update.message.chat.type == 'private' else update.message.chat.title))
-    msg = strip_botname(update.message)
+    msg = strip_botname(update, context)
     if msg.lower().startswith("hello"):
         await send("Hello ! :3")
 
@@ -202,9 +202,13 @@ def make_help(*commands):
     async def help(update, context):
         async def send(m):
             await context.bot.send_message(text=m, chat_id=update.effective_chat.id)
-        if context.args:
-           raise Exception("No arguments")
-        return await send('\n'.join(map("/{}".format, commands)))
+
+        if '--botfather' in context.args:
+            fmt = '{} - {}'
+        else:
+            fmt = '/{} - {}'
+
+        return await send('\n'.join(fmt.format(command, DESC_COMMANDS.get(command, command)) for command in commands))
     return help
 
 async def general_error_callback(update:Update, context:CallbackContext):
@@ -212,6 +216,10 @@ async def general_error_callback(update:Update, context:CallbackContext):
         await context.bot.send_message(text=m, chat_id=update.effective_chat.id)
     logging.error("Error", exc_info=context.error)
     return await send("An error occured in your command")
+
+DESC_COMMANDS = {
+
+}
 
 if __name__ == '__main__':
     application = ApplicationBuilder().token(TOKEN).build()
