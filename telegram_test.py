@@ -1,7 +1,8 @@
 import logging
-from telegram import Update, Message
+from telegram import Update, Message, Chat
 from telegram.ext import ApplicationBuilder, CallbackContext, CommandHandler, MessageHandler, ContextTypes
 from telegram.ext import filters
+from telegram.constants import ChatType
 from telegram_settings_local import TOKEN
 
 logging.basicConfig(
@@ -29,7 +30,12 @@ async def on_message(update: Update, context: CallbackContext):
         await context.bot.send_message(text=m, chat_id=update.effective_chat.id)
     
     if update.message:
-        logging.info("@{}: {} (In '{}')".format(update.message.from_user.username, update.message.text, str(update.message.chat.type).upper() if update.message.chat.type == 'private' else update.message.chat.title))
+        logging.info("@{username}: {text} (In {group})".format(
+            username=update.message.from_user.username,
+            text=update.message.text,
+            group='private' if update.message.chat.type == ChatType.PRIVATE else
+                   "'{}'".format(update.message.chat.title) if update.message.chat.type in (ChatType.GROUP, ChatType.SUPERGROUP, ChatType.CHANNEL) else
+                   update.message.chat.type))
     else:
         logging.info("{}".format(update))
 
