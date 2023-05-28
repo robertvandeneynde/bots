@@ -203,10 +203,8 @@ def make_help(*commands):
         async def send(m):
             await context.bot.send_message(text=m, chat_id=update.effective_chat.id)
 
-        if '--botfather' in context.args:
-            fmt = '{} - {}'
-        else:
-            fmt = '/{} - {}'
+        fmt = ('{} - {}' if '--botfather' in context.args else
+               '/{} {}')
 
         return await send('\n'.join(fmt.format(command, DESC_COMMANDS.get(command, command)) for command in commands))
     return help
@@ -218,7 +216,14 @@ async def general_error_callback(update:Update, context:CallbackContext):
     return await send("An error occured in your command")
 
 DESC_COMMANDS = {
-
+    "help": "Help !",
+    "caps": "Return a list in capital letters",
+    "addevent": "Add event",
+    "listevents": "List events",
+    "ru": "Latin alphabet to Cyrillic",
+    "wikt": "Shows every definition of each word",
+    'eur': "Convert euros to other currencies",
+    'brl': "Convert brazilian reals to other currencies",
 }
 
 if __name__ == '__main__':
