@@ -47,6 +47,12 @@ async def ru(update: Update, context: CallbackContext):
         return R.sub(lambda m: (lambda x: D.get(x,x))(m.group(0)), word)
     await send(' '.join(to_cyrilic(word) for word in context.args))
 
+def get_or_empty(L: list, i:int) -> str | object:
+    try:
+        return L[i]
+    except IndexError:
+        return ''
+
 async def wikt(update: Update, context: CallbackContext):
     async def send(m):
         await context.bot.send_message(text=m, chat_id=update.effective_chat.id)
@@ -57,12 +63,12 @@ async def wikt(update: Update, context: CallbackContext):
     words = []
     if update.message.reply_to_message:
         words += update.message.reply_to_message.text.split()
-        if context.args[-1].startswith('/'):
+        if get_or_empty(context.args, -1).startswith('/'):
             language = context.args[-1][1:]
         else:
             language = ''
-
-    if context.args[-1].startswith('/'):
+        
+    if get_or_empty(context.args, -1).startswith('/'):
         language = context.args[-1][1:]
         words += context.args[:-1]
     else:
