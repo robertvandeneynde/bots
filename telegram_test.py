@@ -67,12 +67,10 @@ async def ru(update: Update, context: CallbackContext):
        | dict(zip(*map(str.upper, d1)))
        | dict(zip(map(str.upper, d2[0]), map(str.upper, d2[1])))
        | dict(zip(*d3)))
-
-    S = sorted(D.items(), reverse=True)
+    S = sorted(D, key=len, reverse=True)
     import re
-    R = re.compile('|'.join(re.escape(s[0]) for s in S))
+    R = re.compile('|'.join(map(re.escape, S)))
     def to_cyrilic(word):
-        #return ''.join(map(lambda x: D.get(x,x), word))
         return R.sub(lambda m: (lambda x: D.get(x,x))(m.group(0)), word)
     await send(' '.join(to_cyrilic(word) for word in context.args))
 
