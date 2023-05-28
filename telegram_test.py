@@ -56,11 +56,18 @@ async def ru(update: Update, context: CallbackContext):
         await context.bot.send_message(text=m, chat_id=update.effective_chat.id)
     if not context.args:
         return await send("Usage: /ru word1 word2 word3...")
-    a = "azertyuiopqsdfghjklmwxcvbn"
-    b = "азертыуиопясдфгхйклмвхцвбн"
-    c = "sh shch ch ye yu zh ya yo ' ''".split()
-    d = "ш  щ    ч  э  ю  ж  я  ё  ь ъ".split()
-    D = dict(zip(a,b)) | dict(zip(c,d)) | dict(zip(a.upper(), b.upper())) | dict(zip((c.upper() for c in c), (d.upper() for d in d)))
+    d1 = ("azertyuiopqsdfghjklmwxcvbn",
+          "азертыуиопясдфгхйклмвхцвбн")
+    d2 = ("sh shch ch ye yu zh ya yo".split(),
+          "ш  щ    ч  э  ю  ж  я  ё".split())
+    d3 = ("' ''".split(), 
+          'ь ъ'.split())
+    D = (dict(zip(*d1))
+       | dict(zip(*d2))
+       | dict(zip(*map(str.upper, d1)))
+       | dict(zip(map(str.upper, d2[0]), map(str.upper, d2[1])))
+       | dict(zip(*d3)))
+
     S = sorted(D.items(), reverse=True)
     import re
     R = re.compile('|'.join(re.escape(s[0]) for s in S))
