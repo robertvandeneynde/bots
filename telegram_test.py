@@ -245,7 +245,7 @@ COMMAND_DESC = {
     "caps": "Returns the list of parameters in capital letters",
     "addevent": "Add event",
     "listevents": "List events",
-    "ru": "Latin alphabet to Cyrillic",
+    "ru": "Latin alphabet to Cyrillic using Russian convention",
     "wikt": "Shows definition of each word",
     'eur': "Convert euros to other currencies",
     'brl': "Convert brazilian reals to other currencies",
