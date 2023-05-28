@@ -140,7 +140,7 @@ class DatetimeText:
         elif name in self.days_english:
             i = self.days_english.index(name)
         else:
-            raise ValueError(f"Unknown date {name}")
+            raise UserError(f"Unknown date {name}")
         
         the_day = today + timedelta(days=1)
         while the_day.weekday() != i:
@@ -227,11 +227,18 @@ async def help(update, context):
     
     return await send('\n'.join(fmt.format(command, COMMAND_DESC.get(command, command)) for command in COMMAND_LIST))
 
+class UserError(ValueError):
+    pass
+
 async def general_error_callback(update:Update, context:CallbackContext):
     async def send(m):
         await context.bot.send_message(text=m, chat_id=update.effective_chat.id)
-    logging.error("Error", exc_info=context.error)
-    return await send("An error occured in your command")
+    
+    if isinstance(context.error, UserError):
+        return await send("Error: {}".format(context.error))
+    else:
+        logging.error("Error", exc_info=context.error)
+        return await send("An unknown error occured in your command, ask @robertvend to fix it !")
 
 COMMAND_DESC = {
     "help": "Help !",
