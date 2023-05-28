@@ -43,6 +43,9 @@ async def on_message(update: Update, context: CallbackContext):
         msg = strip_botname(update, context)
         if msg.lower().startswith("hello"):
             await send("Hello ! :3")
+    
+    if update.edited_message:
+        pass
 
 async def caps(update: Update, context: CallbackContext):
     text_caps = str(context.args).upper()
