@@ -21,7 +21,7 @@ def strip_botname(update: Update, context: CallbackContext):
     # TODO analyse message.entities
     bot_mention: str = '@' + context.bot.username
     if update.message.text.startswith(bot_mention):
-        return message.text[len(bot_mention):].strip()
+        return update.message.text[len(bot_mention):].strip()
     return update.message.text.strip()
 
 async def on_message(update: Update, context: CallbackContext):
