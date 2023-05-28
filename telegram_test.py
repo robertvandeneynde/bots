@@ -205,8 +205,10 @@ def make_help(*commands):
 
         fmt = ('{} - {}' if '--botfather' in context.args else
                '/{} {}')
+        
+        all_commands = (commands + ('help',) if '--botfather' in context.args else commands)
 
-        return await send('\n'.join(fmt.format(command, DESC_COMMANDS.get(command, command)) for command in commands))
+        return await send('\n'.join(fmt.format(command, DESC_COMMANDS.get(command, command)) for command in all_commands))
     return help
 
 async def general_error_callback(update:Update, context:CallbackContext):
