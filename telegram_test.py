@@ -27,10 +27,16 @@ def strip_botname(update: Update, context: CallbackContext):
 async def on_message(update: Update, context: CallbackContext):
     async def send(m):
         await context.bot.send_message(text=m, chat_id=update.effective_chat.id)
-    logging.info("@{}: {} (In '{}')".format(update.message.from_user.username, update.message.text, str(update.message.chat.type).upper() if update.message.chat.type == 'private' else update.message.chat.title))
-    msg = strip_botname(update, context)
-    if msg.lower().startswith("hello"):
-        await send("Hello ! :3")
+    
+    if update.message:
+        logging.info("@{}: {} (In '{}')".format(update.message.from_user.username, update.message.text, str(update.message.chat.type).upper() if update.message.chat.type == 'private' else update.message.chat.title))
+    else:
+        logging.info("{}".format(update))
+
+    if update.message:
+        msg = strip_botname(update, context)
+        if msg.lower().startswith("hello"):
+            await send("Hello ! :3")
 
 async def caps(update: Update, context: CallbackContext):
     text_caps = str(context.args).upper()
