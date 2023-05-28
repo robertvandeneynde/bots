@@ -1,5 +1,5 @@
 import logging
-from telegram import Update
+from telegram import Update, Message
 from telegram.ext import ApplicationBuilder, CallbackContext, CommandHandler, MessageHandler, ContextTypes
 from telegram.ext import filters
 from telegram_settings_local import TOKEN
@@ -17,11 +17,18 @@ async def start(update: Update, context: CallbackContext):
         text="I'm a bot, please talk to me!")
     print("Someone started me!")
 
+def strip_botname(message: Message):
+    # TODO analyse message.entities
+    bot_mention: str = '@' + application.bot.bot.username
+    if message.text.startswith(bot_mention):
+        return message.text[len(bot_mention):].strip()
+    return message.text.strip()
+
 async def on_message(update: Update, context: CallbackContext):
     async def send(m):
         await context.bot.send_message(text=m, chat_id=update.effective_chat.id)
-    msg = update.message.text
     logging.info("@{}: {} (In '{}')".format(update.message.from_user.username, update.message.text, str(update.message.chat.type).upper() if update.message.chat.type == 'private' else update.message.chat.title))
+    msg = strip_botname(update.message)
     if msg.lower().startswith("hello"):
         await send("Hello ! :3")
 
