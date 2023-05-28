@@ -57,9 +57,9 @@ async def ru(update: Update, context: CallbackContext):
     if not context.args:
         return await send("Usage: /ru word1 word2 word3...")
     a = "azertyuiopqsdfghjklmwxcvbn"
-    b = "азертыуиопясдфгхйклмжьцвбн"
-    c = "sh shch ch ye yu zh ya yo".split()
-    d = "ш  щ    ч  э  ю  ж  я  ё".split()
+    b = "азертыуиопясдфгхйклмвхцвбн"
+    c = "sh shch ch ye yu zh ya yo ' ''".split()
+    d = "ш  щ    ч  э  ю  ж  я  ё  ь ъ".split()
     D = dict(zip(a,b)) | dict(zip(c,d)) | dict(zip(a.upper(), b.upper())) | dict(zip((c.upper() for c in c), (d.upper() for d in d)))
     S = sorted(D.items(), reverse=True)
     import re
