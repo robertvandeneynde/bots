@@ -109,7 +109,7 @@ async def wikt(update: Update, context: CallbackContext):
             'https://wiktionary.com/wiki/'
             + ('{}:'.format(base_lang) if base_lang else '')
             + x
-            + ('#' + target_lang if target_lang else '')
+            + ('#{}'.format(target_lang) if target_lang else '')
         )
     return await send('\n\n'.join(url(x) for x in words))
 
