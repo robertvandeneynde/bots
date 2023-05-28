@@ -198,18 +198,14 @@ def make_money_command(name:str, currency_base:str, currency_converted:str, rate
 eur = make_money_command("eur", "eur", "brl", ONE_EURO_IN_BRL)
 brl = make_money_command("brl", "brl", "eur", 1 / ONE_EURO_IN_BRL)
 
-def make_help(*commands):
-    async def help(update, context):
-        async def send(m):
-            await context.bot.send_message(text=m, chat_id=update.effective_chat.id)
+async def help(update, context):
+    async def send(m):
+        await context.bot.send_message(text=m, chat_id=update.effective_chat.id)
 
-        fmt = ('{} - {}' if '--botfather' in context.args else
-               '/{} {}')
-        
-        all_commands = (commands + ('help',) if '--botfather' in context.args else commands)
-
-        return await send('\n'.join(fmt.format(command, DESC_COMMANDS.get(command, command)) for command in all_commands))
-    return help
+    fmt = ('{} - {}' if '--botfather' in context.args else
+           '/{} {}')
+    
+    return await send('\n'.join(fmt.format(command, COMMAND_DESC.get(command, command)) for command in COMMAND_LIST))
 
 async def general_error_callback(update:Update, context:CallbackContext):
     async def send(m):
@@ -217,7 +213,7 @@ async def general_error_callback(update:Update, context:CallbackContext):
     logging.error("Error", exc_info=context.error)
     return await send("An error occured in your command")
 
-DESC_COMMANDS = {
+COMMAND_DESC = {
     "help": "Help !",
     "caps": "Returns the list of parameters in capital letters",
     "addevent": "Add event",
@@ -227,6 +223,8 @@ DESC_COMMANDS = {
     'eur': "Convert euros to other currencies",
     'brl': "Convert brazilian reals to other currencies",
 }
+
+COMMAND_LIST = ('caps', 'addevent', 'listevents', 'ru', 'wikt', 'eur', 'brl', 'help')
 
 if __name__ == '__main__':
     application = ApplicationBuilder().token(TOKEN).build()
@@ -244,7 +242,7 @@ if __name__ == '__main__':
     application.add_handler(CommandHandler('wikt', wikt))
     application.add_handler(CommandHandler('eur', eur))
     application.add_handler(CommandHandler('brl', brl))
-    application.add_handler(CommandHandler('help', make_help('caps', 'addevent', 'listevents', 'ru', 'wikt', 'eur', 'brl')))
+    application.add_handler(CommandHandler('help', help))
 
     application.add_error_handler(general_error_callback)
     
