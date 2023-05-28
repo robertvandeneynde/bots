@@ -63,10 +63,6 @@ async def wikt(update: Update, context: CallbackContext):
     words = []
     if update.message.reply_to_message:
         words += update.message.reply_to_message.text.split()
-        if get_or_empty(context.args, -1).startswith('/'):
-            language = context.args[-1][1:]
-        else:
-            language = ''
         
     if get_or_empty(context.args, -1).startswith('/'):
         language = context.args[-1][1:]
