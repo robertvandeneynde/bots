@@ -240,6 +240,41 @@ async def general_error_callback(update:Update, context:CallbackContext):
         logging.error("Error", exc_info=context.error)
         return await send("An unknown error occured in your command, ask @robertvend to fix it !")
 
+import unittest
+import unittest.mock
+from unittest import IsolatedAsyncioTestCase
+
+async def test_simple_output(function, input:list[str], output:str):
+    # setup
+    context = unittest.mock.AsyncMock()
+    context.args = input
+    update = unittest.mock.Mock()
+    update.effective_chat = Chat(type=Chat.PRIVATE, id='123')
+    
+    # call function
+    await function(update, context)
+    
+    # asserts
+    context.bot.send_message.assert_called_once_with(text=output, chat_id='123')
+
+class Tests(IsolatedAsyncioTestCase):
+    async def test_ru(self):
+        # one_letter
+        await test_simple_output(ru, ['azerty'], 'азерты')
+        # exception
+        with self.assertRaises(AssertionError):
+            await test_simple_output(ru, 'azerty', 'лалала')
+        # two letters
+        await test_simple_output(ru, ['zhina'], 'жина')
+        # soft sign
+        await test_simple_output(ru, ["hello'"], 'хеллоь')
+        # hard sign
+        await test_simple_output(ru, ["hello''"], 'хеллоъ')
+        # x and w
+        await test_simple_output(ru, ["xw"], 'хв')
+        # multiple words
+        await test_simple_output(ru, ['hello', 'shchashasha'], 'хелло щашаша')
+
 COMMAND_DESC = {
     "help": "Help !",
     "caps": "Returns the list of parameters in capital letters",
