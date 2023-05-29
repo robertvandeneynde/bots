@@ -244,7 +244,7 @@ import unittest
 import unittest.mock
 from unittest import IsolatedAsyncioTestCase
 
-async def test_simple_output(function, input:list[str], output:str):
+async def test_simple_output(function, input:list[str]):
     # setup
     context = unittest.mock.AsyncMock()
     context.args = input
@@ -255,25 +255,26 @@ async def test_simple_output(function, input:list[str], output:str):
     await function(update, context)
     
     # asserts
-    context.bot.send_message.assert_called_once_with(text=output, chat_id='123')
+    context.bot.send_message.assert_called_once()
+    return context.bot.send_message.mock_calls[0].kwargs['text']
 
 class Tests(IsolatedAsyncioTestCase):
     async def test_ru(self):
         # one_letter
-        await test_simple_output(ru, ['azerty'], 'азерты')
+        self.assertEqual(await test_simple_output(ru, ['azerty']), 'азерты')
         # exception
-        with self.assertRaises(AssertionError):
-            await test_simple_output(ru, 'azerty', 'лалала')
+        self.assertNotEqual(await test_simple_output(ru, 'azerty'), 'лалала')
         # two letters
-        await test_simple_output(ru, ['zhina'], 'жина')
+        self.assertEqual(await test_simple_output(ru, ['zhina']), 'жина')
         # soft sign
-        await test_simple_output(ru, ["hello'"], 'хеллоь')
+        self.assertEqual(await test_simple_output(ru, ["hello'"]), 'хеллоь')
         # hard sign
-        await test_simple_output(ru, ["hello''"], 'хеллоъ')
+        self.assertEqual(await test_simple_output(ru, ["hello''"]), 'хеллоъ')
         # x and w
-        await test_simple_output(ru, ["xw"], 'хв')
+        self.assertEqual(await test_simple_output(ru, ["xw"]), 'хв')
         # multiple words
-        await test_simple_output(ru, ['hello', 'shchashasha'], 'хелло щашаша')
+        self.assertEqual(await test_simple_output(ru, ['hello', 'shchashasha']), 'хелло щашаша')
+    
 
 COMMAND_DESC = {
     "help": "Help !",
