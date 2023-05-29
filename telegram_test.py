@@ -261,7 +261,7 @@ async def test_simple_output(function, input:list[str]):
 class Tests(IsolatedAsyncioTestCase):
     async def test_ru(self):
         self.assertEqual(await test_simple_output(ru, ['azerty']), 'азерты', "One letter mapping")
-        self.assertNotEqual(await test_simple_output(ru, 'azerty'), 'лалала', "Wrong output")
+        self.assertNotEqual(await test_simple_output(ru, ['azerty']), 'лалала', "Wrong output")
         self.assertEqual(await test_simple_output(ru, ['zhina']), 'жина', "Two letters mapping")
         self.assertEqual(await test_simple_output(ru, ["hello'"]), 'хеллоь', "Soft sign")
         self.assertEqual(await test_simple_output(ru, ["hello''"]), 'хеллоъ', "Hard sign")
