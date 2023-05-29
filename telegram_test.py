@@ -122,7 +122,7 @@ class DatetimeText:
     @classmethod
     def to_datetime_range(self, name, reference=None):
         from datetime import datetime, timedelta, date, time
-        reference = reference or datetime.now(pytz.timezone("Europe/Brussels")).replace(tzinfo=None)
+        reference = reference or datetime.now().astimezone(pytz.timezone("Europe/Brussels")).replace(tzinfo=None)
         today = datetime.combine(reference.date(), time(0))
         name = name.lower()
         if name in ("today", "auj", "aujourdhui", "aujourd'hui"):
