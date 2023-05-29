@@ -113,7 +113,7 @@ async def wikt(update: Update, context: CallbackContext):
         )
     return await send('\n\n'.join(url(x) for x in words))
 
-import pytz
+import zoneinfo
 
 class DatetimeText:
     days_english = "monday tuesday wednesday thursday friday saturday sunday".split() 
@@ -122,7 +122,7 @@ class DatetimeText:
     @classmethod
     def to_datetime_range(self, name, reference=None):
         from datetime import datetime, timedelta, date, time
-        reference = reference or datetime.now().astimezone(pytz.timezone("Europe/Brussels")).replace(tzinfo=None)
+        reference = reference or datetime.now().astimezone(zoneinfo.ZoneInfo("Europe/Brussels")).replace(tzinfo=None)
         today = datetime.combine(reference.date(), time(0))
         name = name.lower()
         if name in ("today", "auj", "aujourdhui", "aujourd'hui"):
