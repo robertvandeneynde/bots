@@ -47,19 +47,17 @@ def detect_currencies(msg: str):
 async def money_responder(msg:str, send:'async def'):
     for value, currency in detect_currencies(msg):
         currency_base = currency
+        currency_converted = list(filter(lambda x: x != currency, ['eur', 'brl']))[0]
         if currency == 'eur':
             rate = ONE_EURO_IN_BRL
-            currency_converted = 'brl'
-        elif currency_base == 'brl':
+        elif currency == 'brl':
             rate = 1 / ONE_EURO_IN_BRL
-            currency_converted = 'eur'
         else:
-            rate = currency_converted = None
+            raise ValueError("Unknown currency: '{}'".format(currency))
 
-        if rate is not None:
-            amount_base = Decimal(value)
-            amount_converted = amount_base * rate
-            await send(format_currency(currency_base=currency_base, amount_base=amount_base, currency_converted=currency_converted, amount_converted=amount_converted))
+        amount_base = Decimal(value)
+        amount_converted = amount_base * rate
+        await send(format_currency(currency_base=currency_base, amount_base=amount_base, currency_converted=currency_converted, amount_converted=amount_converted))
 
 RESPONDERS = (hello_responder, money_responder)
 
