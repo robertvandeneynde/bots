@@ -158,6 +158,10 @@ async def add_event(update: Update, context: CallbackContext):
         await context.bot.send_message(text=m, chat_id=update.effective_chat.id)
     if not context.args:
         return await send("Usage: /addevent date name")
+    
+    source_user_id = update.message.from_user.id
+    chat_id = update.effective_chat.id
+
     date, *name = context.args
     name = " ".join(name)
     
@@ -165,8 +169,7 @@ async def add_event(update: Update, context: CallbackContext):
     
     with sqlite3.connect('db.sqlite') as conn:
         cursor = conn.cursor()
-        cursor.executescript("CREATE TABLE if not exists Events(date datetime, name text)")
-        cursor.execute("INSERT INTO Events(date,name) VALUES (?,?)", (datetime, name))
+        cursor.execute("INSERT INTO Events(date, name, chat_id, source_user_id) VALUES (?,?,?,?)", (datetime, name, chat_id, source_user_id))
     
     await send(f"Event {name!r} saved for date {datetime.date()} aka {date!r}")
 
@@ -176,6 +179,8 @@ async def list_events(update: Update, context: CallbackContext):
     if len(context.args) >= 2:
         return await send("<when> must be a day of the week or week")
     
+    chat_id = update.effective_chat.id
+
     if not context.args:
         when = "week"
     else:
@@ -185,7 +190,11 @@ async def list_events(update: Update, context: CallbackContext):
     
     with sqlite3.connect('db.sqlite') as conn:
         cursor = conn.cursor()
-        query = ("SELECT * FROM Events WHERE ? <= date AND date < ? ORDER BY date", (beg, end))
+        query = ("""SELECT date, name FROM Events
+                    WHERE ? <= date AND date < ?
+                    AND chat_id = ?
+                    ORDER BY date""",
+                (beg, end, chat_id))
         
         from datetime import datetime, timedelta
 
@@ -197,6 +206,20 @@ async def list_events(update: Update, context: CallbackContext):
         msg = '\n'.join(f"{DatetimeText.days_english[strptime(date).weekday()]} {strptime(date).date():%d/%m}: {event}"
                         for date, event in cursor.execute(*query))
         await send(msg or "No events for that day !")
+
+def migration0():
+    with sqlite3.connect('db.sqlite') as conn:
+        cursor = conn.cursor
+        cursor.execute("CREATE TABLE Events(date datetime, name text)")
+
+def migration1():
+    with sqlite3.connect('db.sqlite') as conn:
+        conn.execute("begin transaction")
+        data = conn.execute("select date, name from Events").fetchall()
+        conn.execute("drop table Events")
+        conn.execute("create table Events(date datetime, name text, chat_id, source_user_id)")
+        conn.executemany("insert into Events(date, name, chat_id, source_user_id) values(?,?,NULL,NULL)", data)
+        conn.execute("end transaction")
 
 from decimal import Decimal
 ONE_EURO_IN_BRL = Decimal("5.36")
