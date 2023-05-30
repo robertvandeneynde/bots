@@ -37,6 +37,32 @@ def strip_botname(update: Update, context: CallbackContext):
         return update.message.text[len(bot_mention):].strip()
     return update.message.text.strip()
 
+async def hello_responder(msg:str, send:'async def'):
+    if msg.lower().startswith("hello"):
+        await send("Hello ! :3")
+
+def detect_currencies(msg: str):
+    return [(value, MONEY_CURRENCIES_ALIAS[currency_raw.lower()]) for value, currency_raw in MONEY_RE.findall(msg)]
+
+async def money_responder(msg:str, send:'async def'):
+    for value, currency in detect_currencies(msg):
+        currency_base = currency
+        if currency == 'eur':
+            rate = ONE_EURO_IN_BRL
+            currency_converted = 'brl'
+        elif currency_base == 'brl':
+            rate = 1 / ONE_EURO_IN_BRL
+            currency_converted = 'eur'
+        else:
+            rate = currency_converted = None
+
+        if rate is not None:
+            amount_base = Decimal(value)
+            amount_converted = amount_base * rate
+            await send(format_currency(currency_base=currency_base, amount_base=amount_base, currency_converted=currency_converted, amount_converted=amount_converted))
+
+RESPONDERS = (hello_responder, money_responder)
+
 async def on_message(update: Update, context: CallbackContext):
     async def send(m):
         await context.bot.send_message(text=m, chat_id=update.effective_chat.id)
@@ -54,29 +80,12 @@ async def on_message(update: Update, context: CallbackContext):
     if update.message:
         msg = strip_botname(update, context)
 
-        # hello
-        if msg.lower().startswith("hello"):
-            await send("Hello ! :3")
-        
-        # money
-        for value, currency_raw in MONEY_RE.findall(msg):
-            currency = MONEY_CURRENCIES_ALIAS[currency_raw]
-            
-            currency_base = currency
-            if currency == 'eur':
-                rate = ONE_EURO_IN_BRL
-                currency_converted = 'brl'
-            elif currency_base == 'brl':
-                rate = 1 / ONE_EURO_IN_BRL
-                currency_converted = 'eur'
-            else:
-                rate = currency_converted = None
+        for responder in RESPONDERS:
+            try:
+                await responder(msg, send)
+            except Exception as e:
+                await log_error(e, send)
 
-            if rate is not None:
-                amount_base = Decimal(value)
-                amount_converted = amount_base * rate
-                await send(format_currency(currency_base=currency_base, amount_base=amount_base, currency_converted=currency_converted, amount_converted=amount_converted))
-    
     if update.edited_message:
         pass
 
@@ -291,19 +300,29 @@ async def help(update, context):
 class UserError(ValueError):
     pass
 
+async def log_error(error, send):
+    if isinstance(error, UserError):
+        return await send("Error: {}".format(error))
+    else:
+        logging.error("Error", exc_info=error)
+        return await send("An unknown error occured in your command, ask @robertvend to fix it !")
+
 async def general_error_callback(update:Update, context:CallbackContext):
     async def send(m):
         await context.bot.send_message(text=m, chat_id=update.effective_chat.id)
     
-    if isinstance(context.error, UserError):
-        return await send("Error: {}".format(context.error))
-    else:
-        logging.error("Error", exc_info=context.error)
-        return await send("An unknown error occured in your command, ask @robertvend to fix it !")
+    return await log_error(context.error, send)
 
 import unittest
 import unittest.mock
-from unittest import IsolatedAsyncioTestCase
+from unittest import IsolatedAsyncioTestCase, TestCase
+
+class SyncTests(TestCase):
+    def test_detect_currencies(self):
+        self.assertIn(('5', 'eur'), detect_currencies("This is 5€"))
+        self.assertIn(('5', 'eur'), detect_currencies("This is 5 eur"))
+        self.assertIn(('5', 'eur'), detect_currencies("This is 5 euros"))
+        self.assertIn(('5', 'eur'), detect_currencies("This is 5 EUR"))
 
 async def test_simple_output(function, input:list[str]):
     # setup
@@ -319,7 +338,28 @@ async def test_simple_output(function, input:list[str]):
     context.bot.send_message.assert_called_once()
     return context.bot.send_message.mock_calls[0].kwargs['text']
 
-class Tests(IsolatedAsyncioTestCase):
+async def test_simple_responder(function, msg:str):
+    # setup 
+    send = unittest.mock.AsyncMock()
+    
+    # call
+    await function(msg, send)
+    
+    # assert
+    send.assert_called_once()
+    return send.mock_calls[0].args[0]
+
+async def test_multiple_responder(function, msg:str):
+    # setup 
+    send = unittest.mock.AsyncMock()
+    
+    # call
+    await function(msg, send)
+    
+    # assert
+    return [send.mock_calls[i].args[0] for i in range(len(send.mock_calls))]
+
+class AsyncTests(IsolatedAsyncioTestCase):
     async def test_ru(self):
         self.assertEqual(await test_simple_output(ru, ['azerty']), 'азерты', "One letter mapping")
         self.assertNotEqual(await test_simple_output(ru, ['azerty']), 'лалала', "Wrong output")
@@ -329,6 +369,18 @@ class Tests(IsolatedAsyncioTestCase):
         self.assertEqual(await test_simple_output(ru, ["xw"]), 'хв', "x and w")
         self.assertEqual(await test_simple_output(ru, ['hello', 'shchashasha']), 'хелло щашаша', "Multiple words")
     
+    async def test_hello_responder(self):
+        self.assertIn("hello", (await test_simple_responder(hello_responder, "Hello")).lower())
+        self.assertIn("hello", (await test_simple_responder(hello_responder, "Hello World !")).lower())
+        self.assertEqual(0, len(await test_multiple_responder(hello_responder, "Tada")))
+    
+    async def test_money_responder(self):
+        results = await test_multiple_responder(money_responder, "This is 5€")
+        self.assertEqual(1, len(results))
+        self.assertIn("EUR: 5", results[0])
+        self.assertIn("BRL: 26", results[0])
+
+
 COMMAND_DESC = {
     "help": "Help !",
     "caps": "Returns the list of parameters in capital letters",
