@@ -18,8 +18,20 @@ async def start(update: Update, context: CallbackContext):
         text="I'm a bot, please talk to me!")
     print("Someone started me!")
 
+import re
+MONEY_CURRENCIES_ALIAS = {
+    "eur": "eur",
+    "euro": "eur",
+    "euros": "eur",
+    "€": "eur",
+    "brl": "brl",
+    "real": "brl",
+    "reais": "brl",
+}
+MONEY_RE = re.compile('(\\d+) ?(' + '|'.join(map(re.escape, MONEY_CURRENCIES_ALIAS)) + ')', re.I)
+
 def strip_botname(update: Update, context: CallbackContext):
-    # TODO analyse message.entities
+    # TODO analyse message.entities with message.parse_entity and message.parse_entities
     bot_mention: str = '@' + context.bot.username
     if update.message.text.startswith(bot_mention):
         return update.message.text[len(bot_mention):].strip()
@@ -41,8 +53,29 @@ async def on_message(update: Update, context: CallbackContext):
 
     if update.message:
         msg = strip_botname(update, context)
+
+        # hello
         if msg.lower().startswith("hello"):
             await send("Hello ! :3")
+        
+        # money
+        for value, currency_raw in MONEY_RE.findall(msg):
+            currency = MONEY_CURRENCIES_ALIAS[currency_raw]
+            
+            currency_base = currency
+            if currency == 'eur':
+                rate = ONE_EURO_IN_BRL
+                currency_converted = 'brl'
+            elif currency_base == 'brl':
+                rate = 1 / ONE_EURO_IN_BRL
+                currency_converted = 'eur'
+            else:
+                rate = currency_converted = None
+
+            if rate is not None:
+                amount_base = Decimal(value)
+                amount_converted = amount_base * rate
+                await send(format_currency(currency_base=currency_base, amount_base=amount_base, currency_converted=currency_converted, amount_converted=amount_converted))
     
     if update.edited_message:
         pass
@@ -209,7 +242,7 @@ async def list_events(update: Update, context: CallbackContext):
 
 def migration0():
     with sqlite3.connect('db.sqlite') as conn:
-        cursor = conn.cursor
+        cursor = conn.cursor()
         cursor.execute("CREATE TABLE Events(date datetime, name text)")
 
 def migration1():
@@ -224,6 +257,12 @@ def migration1():
 from decimal import Decimal
 ONE_EURO_IN_BRL = Decimal("5.36")
 
+def format_currency(*, currency_base:str, amount_base:Decimal, currency_converted:str, amount_converted:Decimal):
+    return '\n'.join([
+        "{}: {:.2f}".format(currency_base.upper(), amount_base),
+        "{}: {:.2f}".format(currency_converted.upper(), amount_converted),
+    ])
+
 def make_money_command(name:str, currency_base:str, currency_converted:str, rate:Decimal):
     async def money(update: Update, context: CallbackContext):
         async def send(m):
@@ -234,10 +273,7 @@ def make_money_command(name:str, currency_base:str, currency_converted:str, rate
         value, *_ = context.args
         amount_base = Decimal(value)
         amount_converted = amount_base * rate
-        return await send('\n'.join([
-            "{}: {:.2f}".format(currency_base.upper(), amount_base),
-            "{}: {:.2f}".format(currency_converted.upper(), amount_converted),
-        ]))
+        return await send(format_currency(currency_base=currency_base, amount_base=amount_base, currency_converted=currency_converted, amount_converted=amount_converted))
     return money
 
 eur = make_money_command("eur", "eur", "brl", ONE_EURO_IN_BRL)
