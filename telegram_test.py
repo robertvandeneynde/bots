@@ -446,6 +446,7 @@ COMMAND_DESC = {
     "wikt": "Shows definition of each word",
     'eur': "Convert euros to other currencies",
     'brl': "Convert brazilian reals to other currencies",
+    "mytimezone": "Set your timezone so that Europe/Brussels is not assumed by events commands"
 }
 
 COMMAND_LIST = ('caps', 'addevent', 'listevents', 'ru', 'wikt', 'eur', 'brl', 'mytimezone', 'help')
