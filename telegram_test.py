@@ -255,7 +255,7 @@ def get_my_timezone(user_id) -> ZoneInfo:
         if len(L) == 0:
             return None
         elif len(L) == 1:
-            return ZoneInfo(L[0])
+            return ZoneInfo(L[0][0])
         else:
             raise ValueError("Unique constraint failed: Multiple timezone for user {}".format(user_id))
 
