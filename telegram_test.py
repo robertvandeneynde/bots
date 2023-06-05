@@ -154,6 +154,7 @@ async def wikt(update: Update, context: CallbackContext):
     return await send('\n\n'.join(url(x) for x in words))
 
 import zoneinfo
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 class DatetimeText:
     days_english = "monday tuesday wednesday thursday friday saturday sunday".split() 
@@ -162,7 +163,7 @@ class DatetimeText:
     @classmethod
     def to_datetime_range(self, name, reference=None):
         from datetime import datetime, timedelta, date, time
-        reference = reference or datetime.now().astimezone(zoneinfo.ZoneInfo("Europe/Brussels")).replace(tzinfo=None)
+        reference = reference or datetime.now().astimezone(ZoneInfo("Europe/Brussels")).replace(tzinfo=None)
         today = datetime.combine(reference.date(), time(0))
         name = name.lower()
         if name in ("today", "auj", "aujourdhui", "aujourd'hui"):
@@ -247,6 +248,53 @@ async def list_events(update: Update, context: CallbackContext):
                         for date, event in cursor.execute(*query))
         await send(msg or "No events for that day !")
 
+def get_my_timezone(user_id) -> ZoneInfo:
+    query = ("""SELECT timezone FROM UserTimezone WHERE user_id=?""", (user_id,))
+    with sqlite3.connect('db.sqlite') as conn:
+        L = conn.execute(*query).fetchall()
+        if len(L) == 0:
+            return None
+        elif len(L) == 1:
+            return ZoneInfo(L[0])
+        else:
+            raise ValueError("Unique constraint failed: Multiple timezone for user {}".format(user_id))
+
+def set_my_timezone(user_id, tz:ZoneInfo):
+    query_read = ("""SELECT timezone FROM UserTimezone WHERE user_id=?""", (user_id,))
+    query_update = ("""UPDATE UserTimezone SET timezone=? WHERE user_id=?""", (str(tz), user_id))
+    query_insert = ("""INSERT INTO UserTimezone(timezone, user_id) VALUES(?, ?)""", (str(tz), user_id))
+    with sqlite3.connect('db.sqlite') as conn:
+        conn.execute("begin transaction")
+        L = conn.execute(*query_read).fetchall()
+        if len(L) == 0:
+            conn.execute(*query_insert)
+        elif len(L) == 1:
+            conn.execute(*query_update)
+        else:
+            raise ValueError("Unique constraint failed: Multiple timezone for user {}".format(user_id))
+        conn.execute("end transaction")
+
+async def mytimezone(update: Update, context: CallbackContext):
+    async def send(m):
+        await context.bot.send_message(text=m, chat_id=update.effective_chat.id)
+
+    if not context.args:
+        # get timezone
+        tz = get_my_timezone(update.message.from_user.id)
+        base_text = ("You don't have any timezone set.\nUse /mytimezone Continent/City to set it" if tz is None else
+                     "Your timezone is: {}".format(tz))
+        return await send(base_text)
+    else:
+        # set timezone
+        tz_name, *_ = context.args
+        try:
+            tz = ZoneInfo(tz_name)
+        except ZoneInfoNotFoundError:
+            raise UserError("This time zone is not known by the system. Correct examples include America/Los_Angeles or Europe/Brussels")
+        set_my_timezone(update.message.from_user.id, tz)
+        return await send("Your timezone is now: {}".format(tz))
+    
+
 def migration0():
     with sqlite3.connect('db.sqlite') as conn:
         cursor = conn.cursor()
@@ -259,6 +307,12 @@ def migration1():
         conn.execute("drop table Events")
         conn.execute("create table Events(date datetime, name text, chat_id, source_user_id)")
         conn.executemany("insert into Events(date, name, chat_id, source_user_id) values(?,?,NULL,NULL)", data)
+        conn.execute("end transaction")
+
+def migration2():
+    with sqlite3.connect('db.sqlite') as conn:
+        conn.execute("begin transaction")
+        conn.execute("create table UserTimezone(user_id, timezone text)")
         conn.execute("end transaction")
 
 from decimal import Decimal
@@ -390,7 +444,7 @@ COMMAND_DESC = {
     'brl': "Convert brazilian reals to other currencies",
 }
 
-COMMAND_LIST = ('caps', 'addevent', 'listevents', 'ru', 'wikt', 'eur', 'brl', 'help')
+COMMAND_LIST = ('caps', 'addevent', 'listevents', 'ru', 'wikt', 'eur', 'brl', 'mytimezone', 'help')
 
 if __name__ == '__main__':
     application = ApplicationBuilder().token(TOKEN).build()
@@ -408,6 +462,7 @@ if __name__ == '__main__':
     application.add_handler(CommandHandler('wikt', wikt))
     application.add_handler(CommandHandler('eur', eur))
     application.add_handler(CommandHandler('brl', brl))
+    application.add_handler(CommandHandler('mytimezone', mytimezone))
     application.add_handler(CommandHandler('help', help))
 
     application.add_error_handler(general_error_callback)
