@@ -161,9 +161,9 @@ class DatetimeText:
     days_french = "lundi mardi mercredi jeudi vendredi samedi dimanche".split()
     
     @classmethod
-    def to_datetime_range(self, name, reference=None):
+    def to_datetime_range(self, name, *, reference=None, tz=None):
         from datetime import datetime, timedelta, date, time
-        reference = reference or datetime.now().astimezone(ZoneInfo("Europe/Brussels")).replace(tzinfo=None)
+        reference = reference or datetime.now().astimezone(ZoneInfo("Europe/Brussels") if tz is None else tz).replace(tzinfo=None)
         today = datetime.combine(reference.date(), time(0))
         name = name.lower()
         if name in ("today", "auj", "aujourdhui", "aujourd'hui"):
@@ -205,8 +205,10 @@ async def add_event(update: Update, context: CallbackContext):
 
     date, *name = context.args
     name = " ".join(name)
+
+    tz = get_my_timezone(update.message.from_user.id)
     
-    datetime, datetime_end = DatetimeText.to_datetime_range(date)
+    datetime, datetime_end = DatetimeText.to_datetime_range(date, tz=tz)
     
     with sqlite3.connect('db.sqlite') as conn:
         cursor = conn.cursor()
@@ -226,8 +228,10 @@ async def list_events(update: Update, context: CallbackContext):
         when = "week"
     else:
         when, = context.args
+
+    tz = get_my_timezone(update.message.from_user.id)
     
-    beg, end = DatetimeText.to_datetime_range(when)
+    beg, end = DatetimeText.to_datetime_range(when, tz=tz)
     
     with sqlite3.connect('db.sqlite') as conn:
         cursor = conn.cursor()
