@@ -106,7 +106,8 @@ async def ru(update: Update, context: CallbackContext):
        | dict(zip(*d2))
        | dict(zip(*map(str.upper, d1)))
        | dict(zip(map(str.upper, d2[0]), map(str.upper, d2[1])))
-       | dict(zip(*d3)))
+       | dict(zip(*d3))
+       | dict(zip(map(str.capitalize, d2[0]), map(str.upper, d2[1]))))
     S = sorted(D, key=len, reverse=True)
     import re
     R = re.compile('|'.join(map(re.escape, S)))
@@ -424,6 +425,7 @@ class AsyncTests(IsolatedAsyncioTestCase):
         self.assertEqual(await test_simple_output(ru, ["hello''"]), 'хеллоъ', "Hard sign")
         self.assertEqual(await test_simple_output(ru, ["xw"]), 'хв', "x and w")
         self.assertEqual(await test_simple_output(ru, ['hello', 'shchashasha']), 'хелло щашаша', "Multiple words")
+        self.assertEqual(await test_simple_output(ru, ['Chto']), 'Что', 'Mix of capital and small letters')
     
     async def test_hello_responder(self):
         self.assertIn("hello", (await test_simple_responder(hello_responder, "Hello")).lower())
