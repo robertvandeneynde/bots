@@ -224,7 +224,7 @@ async def add_event(update: Update, context: CallbackContext):
     tz = get_my_timezone(update.message.from_user.id)
     
     date, date_end = DatetimeText.to_date_range(date_str, tz=tz)
-    datetime = Datetime.combine(date, time or Time(0,0))
+    datetime = Datetime.combine(date, time or Time(0,0)).replace(tzinfo=tz)
 
     datetime_utc = datetime.astimezone(ZoneInfo('UTC'))
 
