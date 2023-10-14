@@ -1,3 +1,4 @@
+from __future__ import annotations
 import logging
 from telegram import Update, Message, Chat
 from telegram.ext import ApplicationBuilder, CallbackContext, CommandHandler, MessageHandler, ContextTypes
@@ -162,10 +163,10 @@ class DatetimeText:
     days_french = "lundi mardi mercredi jeudi vendredi samedi dimanche".split()
     
     @classmethod
-    def to_datetime_range(self, name, *, reference=None, tz=None):
-        from datetime import datetime, timedelta, date, time
+    def to_date_range(self, name, *, reference=None, tz=None) -> date:
+        from datetime import datetime, timedelta, date
         reference = reference or datetime.now().astimezone(ZoneInfo("Europe/Brussels") if tz is None else tz).replace(tzinfo=None)
-        today = datetime.combine(reference.date(), time(0))
+        today = reference.date()
         name = name.lower()
         if name in ("today", "auj", "aujourdhui", "aujourd'hui"):
             return today, today + timedelta(days=1)
@@ -193,29 +194,36 @@ class DatetimeText:
         beg = the_day
         end = beg + timedelta(days=1)
         return beg, end
-        
+
+def parse_event(args) -> (str, time, str):
+    from datetime import date as Date, time as Time
+    
+    date, *name = args
+    return date, Time(0, 0), " ".join(name)
+
 import sqlite3
 async def add_event(update: Update, context: CallbackContext):
     async def send(m):
         await context.bot.send_message(text=m, chat_id=update.effective_chat.id)
     if not context.args:
         return await send("Usage: /addevent date name")
+    from datetime import datetime as Datetime, time as Time, date as Date, timedelta
     
     source_user_id = update.message.from_user.id
     chat_id = update.effective_chat.id
 
-    date, *name = context.args
-    name = " ".join(name)
+    date_str, time, name = parse_event(context.args)
 
     tz = get_my_timezone(update.message.from_user.id)
     
-    datetime, datetime_end = DatetimeText.to_datetime_range(date, tz=tz)
+    date, date_end = DatetimeText.to_date_range(date_str, tz=tz)
+    datetime = Datetime.combine(date, time)
     
     with sqlite3.connect('db.sqlite') as conn:
         cursor = conn.cursor()
         cursor.execute("INSERT INTO Events(date, name, chat_id, source_user_id) VALUES (?,?,?,?)", (datetime, name, chat_id, source_user_id))
     
-    await send(f"Event {name!r} saved for date {datetime.date()} aka {date!r}")
+    await send('\n'.join([f"Event {name!r} saved", f"Date: {datetime.date()} ({date_str})", f"Time: {time:%H:%M}" * bool(time)]))
 
 async def list_events(update: Update, context: CallbackContext):
     async def send(m):
@@ -223,6 +231,8 @@ async def list_events(update: Update, context: CallbackContext):
     if len(context.args) >= 2:
         return await send("<when> must be a day of the week or week")
     
+    from datetime import date as Date, time as Time, datetime as Datetime
+
     chat_id = update.effective_chat.id
 
     if not context.args:
@@ -230,9 +240,12 @@ async def list_events(update: Update, context: CallbackContext):
     else:
         when, = context.args
 
+    time = Time(0, 0)
+
     tz = get_my_timezone(update.message.from_user.id)
     
-    beg, end = DatetimeText.to_datetime_range(when, tz=tz)
+    beg_date, end_date = DatetimeText.to_date_range(when, tz=tz)
+    beg, end = Datetime.combine(beg_date, time), Datetime.combine(end_date, time)
     
     with sqlite3.connect('db.sqlite') as conn:
         cursor = conn.cursor()
