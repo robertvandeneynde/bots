@@ -195,11 +195,18 @@ class DatetimeText:
         end = beg + timedelta(days=1)
         return beg, end
 
-def parse_event(args) -> (str, time, str):
+def parse_event(args) -> (str, time | None, str):
     from datetime import date as Date, time as Time
     
-    date, *name = args
-    return date, Time(0, 0), " ".join(name)
+    date, *rest = args
+    if match := re.compile('(\d{1,2})[:hH](\d{2})?').fullmatch(get_or_empty(rest, 0)):
+        hours, minutes = match.group(1), match.group(2)
+        time = Time(int(hours), int(minutes or '0'))
+        rest = rest[1:]
+    else:
+        time = None
+    name = " ".join(rest)
+    return date, time, name
 
 import sqlite3
 async def add_event(update: Update, context: CallbackContext):
@@ -217,13 +224,17 @@ async def add_event(update: Update, context: CallbackContext):
     tz = get_my_timezone(update.message.from_user.id)
     
     date, date_end = DatetimeText.to_date_range(date_str, tz=tz)
-    datetime = Datetime.combine(date, time)
+    datetime = Datetime.combine(date, time or Time(0,0))
     
     with sqlite3.connect('db.sqlite') as conn:
         cursor = conn.cursor()
         cursor.execute("INSERT INTO Events(date, name, chat_id, source_user_id) VALUES (?,?,?,?)", (datetime, name, chat_id, source_user_id))
     
-    await send('\n'.join([f"Event {name!r} saved", f"Date: {datetime.date()} ({date_str})", f"Time: {time:%H:%M}" * bool(time)]))
+    await send('\n'.join(filter(None, [
+        f"Event {name!r} saved",
+        f"Date: {datetime.date()} ({date_str})",
+        f"Time: {time:%H:%M}" if time else None
+    ])))
 
 async def list_events(update: Update, context: CallbackContext):
     async def send(m):
