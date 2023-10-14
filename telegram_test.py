@@ -230,7 +230,11 @@ async def add_event(update: Update, context: CallbackContext):
 
     with sqlite3.connect('db.sqlite') as conn:
         cursor = conn.cursor()
-        cursor.execute("INSERT INTO Events(date, name, chat_id, source_user_id) VALUES (?,?,?,?)", (datetime_utc, name, chat_id, source_user_id))
+
+        def strftime(x:datetime):
+            return x.strftime("%Y-%m-%d %H:%M:%S")
+
+        cursor.execute("INSERT INTO Events(date, name, chat_id, source_user_id) VALUES (?,?,?,?)", (strftime(datetime_utc), name, chat_id, source_user_id))
     
     await send('\n'.join(filter(None, [
         f"Event {name!r} saved",
@@ -258,8 +262,10 @@ async def list_events(update: Update, context: CallbackContext):
     tz = get_my_timezone(update.message.from_user.id)
     
     beg_date, end_date = DatetimeText.to_date_range(when, tz=tz)
-    beg, end = Datetime.combine(beg_date, time), Datetime.combine(end_date, time)
+    beg_local, end_local = Datetime.combine(beg_date, time), Datetime.combine(end_date, time)
     
+    beg, end = (x.astimezone(ZoneInfo('UTC')) for x in (beg_local, end_local))
+
     with sqlite3.connect('db.sqlite') as conn:
         cursor = conn.cursor()
         query = ("""SELECT date, name FROM Events
@@ -275,8 +281,11 @@ async def list_events(update: Update, context: CallbackContext):
         def strftime(x:datetime):
             return x.strftime("%Y-%m-%d %H:%M:%S")
         
-        msg = '\n'.join(f"{DatetimeText.days_english[strptime(date).weekday()]} {strptime(date).date():%d/%m}: {event}"
-                        for date, event in cursor.execute(*query))
+        msg = '\n'.join(f"{DatetimeText.days_english[date.weekday()]} {date:%d/%m}: {event}" if not has_hour else 
+                        f"{DatetimeText.days_english[date.weekday()]} {date:%d/%m %H:%M}: {event}"
+                        for date_utc, event in cursor.execute(*query)
+                        for date in [strptime(date_utc).replace(tzinfo=ZoneInfo('UTC')).astimezone(tz)]
+                        for has_hour in [True])
         await send(msg or "No events for that day !")
 
 def get_my_timezone(user_id) -> ZoneInfo:
