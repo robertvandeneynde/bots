@@ -225,10 +225,12 @@ async def add_event(update: Update, context: CallbackContext):
     
     date, date_end = DatetimeText.to_date_range(date_str, tz=tz)
     datetime = Datetime.combine(date, time or Time(0,0))
-    
+
+    datetime_utc = datetime.astimezone(ZoneInfo('UTC'))
+
     with sqlite3.connect('db.sqlite') as conn:
         cursor = conn.cursor()
-        cursor.execute("INSERT INTO Events(date, name, chat_id, source_user_id) VALUES (?,?,?,?)", (datetime, name, chat_id, source_user_id))
+        cursor.execute("INSERT INTO Events(date, name, chat_id, source_user_id) VALUES (?,?,?,?)", (datetime_utc, name, chat_id, source_user_id))
     
     await send('\n'.join(filter(None, [
         f"Event {name!r} saved",
