@@ -31,6 +31,13 @@ MONEY_CURRENCIES_ALIAS = {
 }
 MONEY_RE = re.compile('(\\d+) ?(' + '|'.join(map(re.escape, MONEY_CURRENCIES_ALIAS)) + ')', re.I)
 
+def read_wiktionary_languages_json():
+    import json 
+    with open('wiktionary_languages.json', encoding='utf-8') as f:
+        return json.load(f)
+
+WIKTIONARY_LANGUAGES = read_wiktionary_languages_json()
+
 def strip_botname(update: Update, context: CallbackContext):
     # TODO analyse message.entities with message.parse_entity and message.parse_entities
     bot_mention: str = '@' + context.bot.username

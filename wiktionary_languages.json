@@ -1,0 +1,30 @@
+{
+    "en": {
+        "en": "English",
+        "fr": "French",
+        "nl": "Dutch",
+        "uk": "Ukrainian",
+        "ru": "Russian"
+    },
+    "fr": {
+        "fr": "Français",
+        "en": "Anglais",
+        "nl": "Néerlandais",
+        "uk": "Ukrainien",
+        "ru": "Russe"
+    },
+    "nl": {
+        "ru": "Russisch",
+        "uk": "Oekraïens",
+        "en": "Engels",
+        "fr": "Frans",
+        "nl": "Nederlands"
+    },
+    "ru": {
+        "fr": "Французский",
+        "en": "Английский",
+        "nl": "Нидерландский",
+        "ru": "Русский",
+        "uk": "Украинский"
+    }
+}
