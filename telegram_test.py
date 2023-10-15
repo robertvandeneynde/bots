@@ -125,6 +125,9 @@ def get_or_empty(L: list, i:int) -> str | object:
 async def wikt(update: Update, context: CallbackContext):
     async def send(m):
         await context.bot.send_message(text=m, chat_id=update.effective_chat.id)
+    def read_my_settings(key):
+        return read_settings(key, user_id=update.message.from_user.id)
+
     if not context.args:
         if not update.message.reply_to_message:
             return await send("Usage: /wikt word1 word2 word3... /Language")
@@ -136,15 +139,17 @@ async def wikt(update: Update, context: CallbackContext):
     if get_or_empty(context.args, -1).startswith('/'):
         language = context.args[-1][1:]
         words += context.args[:-1]
+        if ':' in language:
+            base_lang, target_lang, *_ = language.split(':')
+        else:
+            base_lang, target_lang = '', language
     else:
-        language = ''
         words += context.args[:]
+        base_lang = read_my_settings('wikt.description')
+        target_lang = read_my_settings('wikt.text')
     
-    if ':' in language:
-        base_lang, target_lang, *_ = language.split(':')
-    else:
-        base_lang, target_lang = '', language
-    target_lang
+    base_lang, target_lang
+
     def url(x):
         x = x.lower()
         return (
@@ -351,7 +356,7 @@ async def mytimezone(update: Update, context: CallbackContext):
 
 ACCEPTED_SETTINGS = ('event.timezone', 'wikt.text', 'wikt.description')
 
-def read_settings(*, user_id, key):
+def read_settings(key, *, user_id):
     with sqlite3.connect('db.sqlite') as conn:
         cursor = conn.cursor()
 
