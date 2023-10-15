@@ -334,6 +334,11 @@ def set_settings(*, user_id, key, value):
             raise ValueError("Unique constraint failed: Multiple settings for user {} and key {!r}".format(user_id, key))
         conn.execute("end transaction")
 
+def delete_settings(*, user_id, key):
+    query_delete = ("""DELETE FROM UserSettings WHERE user_id=? and key=?""", (user_id, key))
+    with sqlite3.connect('db.sqlite') as conn:
+        conn.execute(*query_delete)
+
 async def mytimezone(update: Update, context: CallbackContext):
     async def send(m):
         await context.bot.send_message(text=m, chat_id=update.effective_chat.id)
@@ -385,7 +390,6 @@ async def settings(update: Update, context: CallbackContext):
     if key not in ACCEPTED_SETTINGS:
         return await send(f'Unknown setting: {key!r}')
 
-    import json
     if value is None:
         # read
         value = read_settings(user_id=update.message.from_user.id, key=key)
@@ -396,6 +400,21 @@ async def settings(update: Update, context: CallbackContext):
         # write value
         set_settings(value=value, user_id=update.message.from_user.id, key=key)
         await send(f"Settings for {key!r}: {value}")
+
+async def delsettings(update:Update, context: CallbackContext):
+    async def send(m):
+        await context.bot.send_message(text=m, chat_id=update.effective_chat.id)
+    
+    if len(context.args) != 1:
+        return await send("Usage: /delsettings command.key")
+    
+    key, = context.args
+
+    if key not in ACCEPTED_SETTINGS:
+        return await send(f'Unknown setting: {key!r}')
+    
+    delete_settings(user_id=update.message.from_user.id, key=key)
+    await send(f"Deleted settings for {key!r}")
 
 def migration0():
     with sqlite3.connect('db.sqlite') as conn:
@@ -553,9 +572,10 @@ COMMAND_DESC = {
     'brl': "Convert brazilian reals to other currencies",
     "mytimezone": "Set your timezone so that Europe/Brussels is not assumed by events commands",
     "settings": "Change user settings that are usable for commands",
+    "delsettings": "Delete user settings that are usable for commands",
 }
 
-COMMAND_LIST = ('caps', 'addevent', 'listevents', 'ru', 'wikt', 'eur', 'brl', 'mytimezone', 'settings', 'help')
+COMMAND_LIST = ('caps', 'addevent', 'listevents', 'ru', 'wikt', 'eur', 'brl', 'mytimezone', 'settings', 'delsettings', 'help')
 
 if __name__ == '__main__':
     application = ApplicationBuilder().token(TOKEN).build()
@@ -575,6 +595,7 @@ if __name__ == '__main__':
     application.add_handler(CommandHandler('brl', brl))
     application.add_handler(CommandHandler('mytimezone', mytimezone))
     application.add_handler(CommandHandler('settings', settings))
+    application.add_handler(CommandHandler('delsettings', delsettings))
     application.add_handler(CommandHandler('help', help))
 
     application.add_error_handler(general_error_callback)
