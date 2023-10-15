@@ -153,10 +153,11 @@ async def wikt(update: Update, context: CallbackContext):
     else:
         words += context.args[:]
         base_lang = read_my_settings('wikt.description')
-        target_lang_setting = read_my_settings('wikt.text')
-        target_lang = WIKTIONARY_LANGUAGES.get(base_lang or 'en', {}).get(target_lang_setting, target_lang_setting)
+        target_lang = read_my_settings('wikt.text')
     
     base_lang, target_lang
+
+    target_lang = WIKTIONARY_LANGUAGES.get(base_lang or 'en', {}).get(target_lang, target_lang)
 
     def url(x):
         x = x.lower()
