@@ -199,7 +199,7 @@ def parse_event(args) -> (str, time | None, str):
     from datetime import date as Date, time as Time
     
     date, *rest = args
-    if match := re.compile('(\d{1,2})[:hH](\d{2})?').fullmatch(get_or_empty(rest, 0)):
+    if match := re.compile('(\\d{1,2})[:hH](\\d{2})?').fullmatch(get_or_empty(rest, 0)):
         hours, minutes = match.group(1), match.group(2)
         time = Time(int(hours), int(minutes or '0'))
         rest = rest[1:]
@@ -314,6 +314,21 @@ def set_my_timezone(user_id, tz:ZoneInfo):
             raise ValueError("Unique constraint failed: Multiple timezone for user {}".format(user_id))
         conn.execute("end transaction")
 
+def set_settings(*, user_id, key, value):
+    query_read = ("""SELECT value FROM UserSettings WHERE user_id=? and key=?""", (user_id, key))
+    query_update = ("""UPDATE UserSettings SET value=? WHERE user_id=? and key=?""", (value, user_id, key))
+    query_insert = ("""INSERT INTO UserSettings(user_id, key, value) VALUES(?, ?, ?)""", (user_id, key, value))
+    with sqlite3.connect('db.sqlite') as conn:
+        conn.execute("begin transaction")
+        L = conn.execute(*query_read).fetchall()
+        if len(L) == 0:
+            conn.execute(*query_insert)
+        elif len(L) == 1:
+            conn.execute(*query_update)
+        else:
+            raise ValueError("Unique constraint failed: Multiple settings for user {} and key {!r}".format(user_id, key))
+        conn.execute("end transaction")
+
 async def mytimezone(update: Update, context: CallbackContext):
     async def send(m):
         await context.bot.send_message(text=m, chat_id=update.effective_chat.id)
@@ -333,7 +348,49 @@ async def mytimezone(update: Update, context: CallbackContext):
             raise UserError("This time zone is not known by the system. Correct examples include America/Los_Angeles or Europe/Brussels")
         set_my_timezone(update.message.from_user.id, tz)
         return await send("Your timezone is now: {}".format(tz))
+
+ACCEPTED_SETTINGS = ('event.timezone', 'wikt.text', 'wikt.description')
+
+def read_settings(*, user_id, key):
+    with sqlite3.connect('db.sqlite') as conn:
+        cursor = conn.cursor()
+
+        query = (
+            """SELECT value from UserSettings
+                WHERE user_id=?
+                AND key=?""",
+            (user_id, key)
+        )
+
+        results = cursor.execute(*query).fetchall()
+        return results[0][0] if results else None
+
+async def settings(update: Update, context: CallbackContext):
+    async def send(m):
+        await context.bot.send_message(text=m, chat_id=update.effective_chat.id)
+
+    if len(context.args) not in (1, 2):
+        return await send("Usage: /settings command.key\n/settings command.key value")
+
+    if len(context.args) == 2:
+        key, value = context.args
+    else:
+        key, value = context.args[0], None
+
+    if key not in ACCEPTED_SETTINGS:
+        return await send(f'Unknown setting: {key!r}')
+
+    import json
+    if value is None:
+        # read
+        value = read_settings(user_id=update.message.from_user.id, key=key)
+        await send(f'Settings for {key!r}: {value}' if value is not None else
+                    f'No settings for {key!r}')
     
+    else:
+        # write value
+        set_settings(value=value, user_id=update.message.from_user.id, key=key)
+        await send(f"Settings for {key!r}: {value}")
 
 def migration0():
     with sqlite3.connect('db.sqlite') as conn:
@@ -353,6 +410,12 @@ def migration2():
     with sqlite3.connect('db.sqlite') as conn:
         conn.execute("begin transaction")
         conn.execute("create table UserTimezone(user_id, timezone text)")
+        conn.execute("end transaction")
+
+def migration3():
+    with sqlite3.connect('db.sqlite') as conn:
+        conn.execute("begin transaction")
+        conn.execute("create table UserSettings(user_id, key text, value text)")
         conn.execute("end transaction")
 
 from decimal import Decimal
@@ -483,10 +546,11 @@ COMMAND_DESC = {
     "wikt": "Shows definition of each word",
     'eur': "Convert euros to other currencies",
     'brl': "Convert brazilian reals to other currencies",
-    "mytimezone": "Set your timezone so that Europe/Brussels is not assumed by events commands"
+    "mytimezone": "Set your timezone so that Europe/Brussels is not assumed by events commands",
+    "settings": "Change user settings that are usable for commands",
 }
 
-COMMAND_LIST = ('caps', 'addevent', 'listevents', 'ru', 'wikt', 'eur', 'brl', 'mytimezone', 'help')
+COMMAND_LIST = ('caps', 'addevent', 'listevents', 'ru', 'wikt', 'eur', 'brl', 'mytimezone', 'settings', 'help')
 
 if __name__ == '__main__':
     application = ApplicationBuilder().token(TOKEN).build()
@@ -505,6 +569,7 @@ if __name__ == '__main__':
     application.add_handler(CommandHandler('eur', eur))
     application.add_handler(CommandHandler('brl', brl))
     application.add_handler(CommandHandler('mytimezone', mytimezone))
+    application.add_handler(CommandHandler('settings', settings))
     application.add_handler(CommandHandler('help', help))
 
     application.add_error_handler(general_error_callback)
