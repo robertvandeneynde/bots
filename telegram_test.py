@@ -31,12 +31,13 @@ MONEY_CURRENCIES_ALIAS = {
 }
 MONEY_RE = re.compile('(\\d+) ?(' + '|'.join(map(re.escape, MONEY_CURRENCIES_ALIAS)) + ')', re.I)
 
-def read_wiktionary_languages_json():
+def read_pure_json(filename):
     import json 
-    with open('wiktionary_languages.json', encoding='utf-8') as f:
+    with open(filename, encoding='utf-8') as f:
         return json.load(f)
 
-WIKTIONARY_LANGUAGES = read_wiktionary_languages_json()
+WIKTIONARY_LANGUAGES = read_pure_json('wiktionary_languages.json')
+LAROUSSE_LANGUAGES = read_pure_json('larousse_languages.json')
 
 def strip_botname(update: Update, context: CallbackContext):
     # TODO analyse message.entities with message.parse_entity and message.parse_entities
@@ -137,7 +138,7 @@ async def wikt(update: Update, context: CallbackContext):
 
     if not context.args:
         if not update.message.reply_to_message:
-            return await send("Usage: /wikt word1 word2 word3... /Language")
+            return await send("Usage: /wikt word1 word2 word3...")
     
     words = []
     if update.message.reply_to_message:
@@ -168,6 +169,46 @@ async def wikt(update: Update, context: CallbackContext):
             + ('#{}'.format(target_lang) if target_lang else '')
         )
     return await send('\n\n'.join(url(x) for x in words))
+
+async def larousse(update: Update, context: CallbackContext):
+    async def send(m):
+        await context.bot.send_message(text=m, chat_id=update.effective_chat.id)
+    def read_my_settings(key):
+        return read_settings(key, user_id=update.message.from_user.id)
+
+    if not context.args:
+        if not update.message.reply_to_message:
+            return await send("Usage: /larousse word1 word2 word3...")
+    
+    words = []
+    if update.message.reply_to_message:
+        words += update.message.reply_to_message.text.split()
+
+    if get_or_empty(context.args, -1).startswith('/'):
+        language = context.args[-1][1:]
+        words += context.args[:-1]
+        if ':' in language:
+            base_lang, target_lang, *_ = language.split(':')
+        else:
+            base_lang, target_lang = '', language
+    else:
+        words += context.args[:]
+        base_lang = read_my_settings('larousse.description')
+        target_lang = read_my_settings('larousse.text')
+        
+    base_lang, target_lang
+
+    target_lang = LAROUSSE_LANGUAGES.get('fr', {}).get(target_lang or 'fr', target_lang)
+    base_lang = LAROUSSE_LANGUAGES.get('fr', {}).get(base_lang or 'fr', base_lang)
+
+    def url(x):
+        x = x.lower()
+        return (
+            f'https://larousse.fr/dictionnaires/{target_lang}/{x}' if target_lang == base_lang else 
+            f'https://larousse.fr/dictionnaires/{base_lang}-{target_lang}/{x}'
+        )
+    return await send('\n\n'.join(url(x) for x in words))
+
 
 import zoneinfo
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
@@ -576,7 +617,8 @@ COMMAND_DESC = {
     "addevent": "Add event",
     "listevents": "List events",
     "ru": "Latin alphabet to Cyrillic using Russian convention",
-    "wikt": "Shows definition of each word",
+    "wikt": "Shows definition of each word using wiktionary",
+    "larousse": "Show definition of each word using french dictionary Larousse.fr",
     'eur': "Convert euros to other currencies",
     'brl': "Convert brazilian reals to other currencies",
     "mytimezone": "Set your timezone so that Europe/Brussels is not assumed by events commands",
@@ -584,7 +626,10 @@ COMMAND_DESC = {
     "delsettings": "Delete user settings that are usable for commands",
 }
 
-COMMAND_LIST = ('caps', 'addevent', 'listevents', 'ru', 'wikt', 'eur', 'brl', 'mytimezone', 'settings', 'delsettings', 'help')
+COMMAND_LIST = (
+    'caps', 'addevent', 'listevents', 'ru', 'wikt', 'larousse',
+    'eur', 'brl', 'mytimezone', 'settings', 'delsettings', 'help',
+)
 
 if __name__ == '__main__':
     application = ApplicationBuilder().token(TOKEN).build()
@@ -600,6 +645,7 @@ if __name__ == '__main__':
     application.add_handler(CommandHandler('listevents', list_events))
     application.add_handler(CommandHandler('ru', ru))
     application.add_handler(CommandHandler('wikt', wikt))
+    application.add_handler(CommandHandler('larousse', larousse))
     application.add_handler(CommandHandler('eur', eur))
     application.add_handler(CommandHandler('brl', brl))
     application.add_handler(CommandHandler('mytimezone', mytimezone))
