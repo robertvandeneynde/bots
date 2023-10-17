@@ -211,7 +211,7 @@ async def larousse(update: Update, context: CallbackContext):
         x = x.lower()
         return (
             f'https://larousse.fr/dictionnaires/{target_lang}/{x}' if target_lang == base_lang else 
-            f'https://larousse.fr/dictionnaires/{base_lang}-{target_lang}/{x}'
+            f'https://larousse.fr/dictionnaires/{target_lang}-{base_lang}/{x}'
         )
     return await send('\n\n'.join(url(x) for x in words))
 
