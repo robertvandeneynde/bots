@@ -74,15 +74,15 @@ async def on_message(update: Update, context: CallbackContext):
     async def send(m):
         await context.bot.send_message(text=m, chat_id=update.effective_chat.id)
     
-    if update.message:
-        logging.info("@{username}: {text} (In {group})".format(
-            username=update.message.from_user.username,
-            text=update.message.text,
-            group='private' if update.message.chat.type == ChatType.PRIVATE else
-                   "'{}'".format(update.message.chat.title) if update.message.chat.type in (ChatType.GROUP, ChatType.SUPERGROUP, ChatType.CHANNEL) else
-                   update.message.chat.type))
-    else:
-        logging.info("{}".format(update))
+    # if update.message:
+    #     logging.info("@{username}: {text} (In {group})".format(
+    #         username=update.message.from_user.username,
+    #         text=update.message.text,
+    #         group='private' if update.message.chat.type == ChatType.PRIVATE else
+    #                "'{}'".format(update.message.chat.title) if update.message.chat.type in (ChatType.GROUP, ChatType.SUPERGROUP, ChatType.CHANNEL) else
+    #                update.message.chat.type))
+    # else:
+    #     logging.info("{}".format(update))
 
     if update.message:
         msg = strip_botname(update, context)
