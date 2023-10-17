@@ -153,10 +153,13 @@ async def wikt(update: Update, context: CallbackContext):
             base_lang, target_lang = '', language
     else:
         words += context.args[:]
-        base_lang = read_my_settings('wikt.description')
-        target_lang = read_my_settings('wikt.text')
+        base_lang = None
+        target_lang = None
     
     base_lang, target_lang
+
+    base_lang = base_lang or read_my_settings('wikt.description')
+    target_lang = target_lang or read_my_settings('wikt.text')
 
     target_lang = WIKTIONARY_LANGUAGES.get(base_lang or 'en', {}).get(target_lang, target_lang)
 
@@ -193,10 +196,13 @@ async def larousse(update: Update, context: CallbackContext):
             base_lang, target_lang = '', language
     else:
         words += context.args[:]
-        base_lang = read_my_settings('larousse.description')
-        target_lang = read_my_settings('larousse.text')
-        
+        base_lang = None
+        target_lang = None
+    
     base_lang, target_lang
+        
+    base_lang = base_lang or read_my_settings('larousse.description')
+    target_lang = target_lang or read_my_settings('larousse.text')
 
     target_lang = LAROUSSE_LANGUAGES.get('fr', {}).get(target_lang or 'fr', target_lang)
     base_lang = LAROUSSE_LANGUAGES.get('fr', {}).get(base_lang or 'fr', base_lang)
