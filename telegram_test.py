@@ -378,7 +378,10 @@ def set_my_timezone(user_id, tz:ZoneInfo):
             raise ValueError("Unique constraint failed: Multiple timezone for user {}".format(user_id))
         conn.execute("end transaction")
 
-def set_settings(*, id, key, value, settings_type:'chat' | 'user'):
+def set_settings(*, id, key, value_raw:any, settings_type:'chat' | 'user'):
+    conversion = CONVERSION_SETTINGS[key]['to_db']
+
+    value: any = conversion(value_raw)
     table = SettingsInfo.TABLES[settings_type]
     field_id = SettingsInfo.FIELDS[settings_type]
     query_read = (f"""SELECT value FROM {table} WHERE {field_id}=? and key=?""", (id, key))
@@ -425,11 +428,32 @@ async def mytimezone(update: Update, context: CallbackContext):
 ACCEPTED_SETTINGS_USER = ('event.timezone', 'wikt.text', 'wikt.description')
 ACCEPTED_SETTINGS_CHAT = ('money.currencies',)
 
+def CONVERSION_SETTINGS_BUILDER():
+    import json
+    default_serializer = {
+        'from_db': lambda x:x,
+        'to_db': lambda x:x,
+    }
+    json_serializer = {
+        'from_db': json.loads,
+        'to_db': json.dumps,
+    }
+    mapping = {
+        'money.currencies': json_serializer,
+    }
+    from collections import defaultdict
+    return defaultdict(lambda: default_serializer, mapping)
+
+CONVERSION_SETTINGS = CONVERSION_SETTINGS_BUILDER()
+assert all({'from_db', 'to_db'} <= x.keys() for x in CONVERSION_SETTINGS.values()), f"Missing 'from_db' or 'to_db' in {CONVERSION_SETTINGS=}"
+
 class SettingsInfo:
     TABLES = {'chat': 'ChatSettings', 'user': 'UserSettings'}
     FIELDS = {'chat': 'chat_id', 'user': 'user_id'}
 
 def read_settings(key, *, id, settings_type:'chat' | 'user'):
+    conversion = CONVERSION_SETTINGS[key]['from_db']
+
     with sqlite3.connect('db.sqlite') as conn:
         cursor = conn.cursor()
 
@@ -443,33 +467,41 @@ def read_settings(key, *, id, settings_type:'chat' | 'user'):
         )
 
         results = cursor.execute(*query).fetchall()
-        return results[0][0] if results else None
+        return conversion(results[0][0]) if results else None
 
 async def settings_command(update: Update, context: CallbackContext, *, command_name: str, settings_type:'chat' | 'user', accepted_settings:list[str]):
     async def send(m):
         await context.bot.send_message(text=m, chat_id=update.effective_chat.id)
 
-    if len(context.args) not in (1, 2):
-        return await send(f"Usage:\n/{command_name} command.key\n/{command_name} command.key value")
+    async def print_usage():
+        await send(f"Usage:\n/{command_name} command.key\n/{command_name} command.key value")
 
-    if len(context.args) == 2:
-        key, value = context.args
-    else:
-        key, value = context.args[0], None
+    if len(context.args) == 0:
+        return await print_usage()
+
+    key, *rest = context.args
 
     if key not in accepted_settings:
-        return await send(f'Unknown setting: {key!r}')
+        return await send(f'Unknown settings: {key!r}')
+
+    if key == 'money.currencies':
+        value = list(rest)
+    else:
+        # default, single value no space string
+        if len(rest) not in (0, 1):
+            return await print_usage()
+        value = rest[0] if rest else None
 
     if value is None:
         # read
         value = read_settings(id=update.message.from_user.id, key=key, settings_type=settings_type)
-        await send(f'Settings for {key!r}: {value}' if value is not None else
+        await send(f'Settings: {key} = {value}' if value is not None else
                     f'No settings for {key!r}')
     
     else:
         # write value
-        set_settings(value=value, id=update.message.from_user.id, key=key, settings_type=settings_type)
-        await send(f"Settings for {key!r}: {value}")
+        set_settings(value_raw=value, id=update.message.from_user.id, key=key, settings_type=settings_type)
+        await send(f"Settings: {key} = {value}")
 
 async def delsettings_command(update:Update, context: CallbackContext, *, accepted_settings:list[str], settings_type:'chat' | 'id'):
     async def send(m):
