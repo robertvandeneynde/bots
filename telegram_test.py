@@ -20,6 +20,7 @@ async def start(update: Update, context: CallbackContext):
     print("Someone started me!")
 
 import re
+from functools import partial
 MONEY_CURRENCIES_ALIAS = {
     "eur": "eur",
     "euro": "eur",
@@ -130,11 +131,14 @@ def get_or_empty(L: list, i:int) -> str | object:
     except IndexError:
         return ''
 
+def make_my_settings(update: Update, context: CallbackContext):
+    from functools import partial
+    return partial(read_settings, id=update.message.from_user_id, settings_type='user')
+
 async def wikt(update: Update, context: CallbackContext):
     async def send(m):
         await context.bot.send_message(text=m, chat_id=update.effective_chat.id)
-    def read_my_settings(key):
-        return read_settings(key, user_id=update.message.from_user.id)
+    read_my_settings = make_my_settings(update, context)
 
     if not context.args:
         if not update.message.reply_to_message:
@@ -176,8 +180,7 @@ async def wikt(update: Update, context: CallbackContext):
 async def larousse(update: Update, context: CallbackContext):
     async def send(m):
         await context.bot.send_message(text=m, chat_id=update.effective_chat.id)
-    def read_my_settings(key):
-        return read_settings(key, user_id=update.message.from_user.id)
+    read_my_settings = make_my_settings(update, context)
 
     if not context.args:
         if not update.message.reply_to_message:
@@ -375,10 +378,12 @@ def set_my_timezone(user_id, tz:ZoneInfo):
             raise ValueError("Unique constraint failed: Multiple timezone for user {}".format(user_id))
         conn.execute("end transaction")
 
-def set_settings(*, user_id, key, value):
-    query_read = ("""SELECT value FROM UserSettings WHERE user_id=? and key=?""", (user_id, key))
-    query_update = ("""UPDATE UserSettings SET value=? WHERE user_id=? and key=?""", (value, user_id, key))
-    query_insert = ("""INSERT INTO UserSettings(user_id, key, value) VALUES(?, ?, ?)""", (user_id, key, value))
+def set_settings(*, id, key, value, settings_type:'chat' | 'user'):
+    table = SettingsInfo.TABLES[settings_type]
+    field_id = SettingsInfo.FIELDS[settings_type]
+    query_read = (f"""SELECT value FROM {table} WHERE {field_id}=? and key=?""", (id, key))
+    query_update = (f"""UPDATE {table} SET value=? WHERE {field_id}=? and key=?""", (value, id, key))
+    query_insert = (f"""INSERT INTO {table}({field_id}, key, value) VALUES(?, ?, ?)""", (id, key, value))
     with sqlite3.connect('db.sqlite') as conn:
         conn.execute("begin transaction")
         L = conn.execute(*query_read).fetchall()
@@ -387,11 +392,13 @@ def set_settings(*, user_id, key, value):
         elif len(L) == 1:
             conn.execute(*query_update)
         else:
-            raise ValueError("Unique constraint failed: Multiple settings for user {} and key {!r}".format(user_id, key))
+            raise ValueError("Unique constraint failed: Multiple settings for {} {} and key {!r}".format(settings_type, id, key))
         conn.execute("end transaction")
 
-def delete_settings(*, user_id, key):
-    query_delete = ("""DELETE FROM UserSettings WHERE user_id=? and key=?""", (user_id, key))
+def delete_settings(*, user_id, key, settings_type:'chat' | 'user'):
+    table = SettingsInfo.TABLES[settings_type]
+    field_id = SettingsInfo.FIELDS[settings_type]
+    query_delete = (f"""DELETE FROM {table} WHERE {field_id}=? and key=?""", (user_id, key))
     with sqlite3.connect('db.sqlite') as conn:
         conn.execute(*query_delete)
 
@@ -415,49 +422,56 @@ async def mytimezone(update: Update, context: CallbackContext):
         set_my_timezone(update.message.from_user.id, tz)
         return await send("Your timezone is now: {}".format(tz))
 
-ACCEPTED_SETTINGS = ('event.timezone', 'wikt.text', 'wikt.description')
+ACCEPTED_SETTINGS_USER = ('event.timezone', 'wikt.text', 'wikt.description')
+ACCEPTED_SETTINGS_CHAT = ('money.currencies',)
 
-def read_settings(key, *, user_id):
+class SettingsInfo:
+    TABLES = {'chat': 'ChatSettings', 'user': 'UserSettings'}
+    FIELDS = {'chat': 'chat_id', 'user': 'user_id'}
+
+def read_settings(key, *, id, settings_type:'chat' | 'user'):
     with sqlite3.connect('db.sqlite') as conn:
         cursor = conn.cursor()
 
+        table_name = SettingsInfo.TABLES[settings_type]
+        field_id = SettingsInfo.FIELDS[settings_type]
         query = (
-            """SELECT value from UserSettings
-                WHERE user_id=?
+            f"""SELECT value from {table_name}
+                WHERE {field_id}=?
                 AND key=?""",
-            (user_id, key)
+            (id, key)
         )
 
         results = cursor.execute(*query).fetchall()
         return results[0][0] if results else None
 
-async def settings(update: Update, context: CallbackContext):
+async def settings_command(update: Update, context: CallbackContext, *, command_name: str, settings_type:'chat' | 'user', accepted_settings:list[str]):
     async def send(m):
         await context.bot.send_message(text=m, chat_id=update.effective_chat.id)
 
     if len(context.args) not in (1, 2):
-        return await send("Usage: /settings command.key\n/settings command.key value")
+        return await send(f"Usage:\n/{command_name} command.key\n/{command_name} command.key value")
 
     if len(context.args) == 2:
         key, value = context.args
     else:
         key, value = context.args[0], None
 
-    if key not in ACCEPTED_SETTINGS:
+    if key not in accepted_settings:
         return await send(f'Unknown setting: {key!r}')
 
     if value is None:
         # read
-        value = read_settings(user_id=update.message.from_user.id, key=key)
+        value = read_settings(id=update.message.from_user.id, key=key, settings_type=settings_type)
         await send(f'Settings for {key!r}: {value}' if value is not None else
                     f'No settings for {key!r}')
     
     else:
         # write value
-        set_settings(value=value, user_id=update.message.from_user.id, key=key)
+        set_settings(value=value, id=update.message.from_user.id, key=key, settings_type=settings_type)
         await send(f"Settings for {key!r}: {value}")
 
-async def delsettings(update:Update, context: CallbackContext):
+async def delsettings_command(update:Update, context: CallbackContext, *, accepted_settings:list[str], settings_type:'chat' | 'id'):
     async def send(m):
         await context.bot.send_message(text=m, chat_id=update.effective_chat.id)
     
@@ -466,11 +480,16 @@ async def delsettings(update:Update, context: CallbackContext):
     
     key, = context.args
 
-    if key not in ACCEPTED_SETTINGS:
+    if key not in accepted_settings:
         return await send(f'Unknown setting: {key!r}')
     
-    delete_settings(user_id=update.message.from_user.id, key=key)
+    delete_settings(user_id=update.message.from_user.id, key=key, settings_type=settings_type)
     await send(f"Deleted settings for {key!r}")
+
+settings = partial(settings_command, accepted_settings=ACCEPTED_SETTINGS_USER, settings_type='user', command_name='settings')
+delsettings = partial(delsettings_command, accepted_settings=ACCEPTED_SETTINGS_USER, settings_type='user', command_name='delsettings')
+chatsettings = partial(settings_command, accepted_settings=ACCEPTED_SETTINGS_CHAT, settings_type='chat', command_name='chatsettings')
+delchatsettings = partial(delsettings_command, accepted_settings=ACCEPTED_SETTINGS_CHAT, settings_type='chat', command_name='delchatsettings')
 
 def migration0():
     with sqlite3.connect('db.sqlite') as conn:
@@ -504,15 +523,11 @@ def migration4():
         conn.execute("create table EuroRates(datetime, rates)")
         conn.execute("end transaction")
 
-def read_latest_euro_rates():
-    import sqlite3
+def migration5():
     with sqlite3.connect('db.sqlite') as conn:
-        cursor = conn.cursor()
-        query = ("""SELECT date, name FROM Events
-                    WHERE ? <= date AND date < ?
-                    AND chat_id = ?
-                    ORDER BY date""",
-                (beg, end, chat_id))
+        conn.execute("begin transaction")
+        conn.execute("create table ChatSettings(chat_id, key text, value text)")
+        conn.execute("end transaction")
 
 def get_latest_euro_rates_from_api() -> json:
     import requests
@@ -715,11 +730,18 @@ COMMAND_DESC = {
     "mytimezone": "Set your timezone so that Europe/Brussels is not assumed by events commands",
     "settings": "Change user settings that are usable for commands",
     "delsettings": "Delete user settings that are usable for commands",
+    "chatsettings": "Change chat settings that are usable for commands",
+    "delchatsettings": "Delete chat settings that are usable for commands",
 }
 
 COMMAND_LIST = (
-    'caps', 'addevent', 'listevents', 'ru', 'wikt', 'larousse',
-    'eur', 'brl', 'mytimezone', 'settings', 'delsettings', 'help',
+    'caps',
+    'addevent', 'listevents',
+    'ru',
+    'wikt', 'larousse',
+    'eur', 'brl', 'rub',
+    'mytimezone', 'settings', 'delsettings', 'chatsettings', 'delchatsettings'
+    'help',
 )
 
 if __name__ == '__main__':
@@ -744,6 +766,8 @@ if __name__ == '__main__':
     application.add_handler(CommandHandler('mytimezone', mytimezone))
     application.add_handler(CommandHandler('settings', settings))
     application.add_handler(CommandHandler('delsettings', delsettings))
+    application.add_handler(CommandHandler('chatsettings', chatsettings))
+    application.add_handler(CommandHandler('delchatsettings', delchatsettings))
     application.add_handler(CommandHandler('help', help))
 
     application.add_error_handler(general_error_callback)
