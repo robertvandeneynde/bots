@@ -32,6 +32,9 @@ MONEY_CURRENCIES_ALIAS = {
     "rub": "rub",
     "руб": "rub",
     "₽": "rub",
+    '$': 'usd',
+    'usd': 'usd',
+    'cad': 'cad',
 }
 MONEY_RE = re.compile('(\\d+) ?(' + '|'.join(map(re.escape, MONEY_CURRENCIES_ALIAS)) + ')', re.I)
 
@@ -42,6 +45,7 @@ def read_pure_json(filename):
 
 WIKTIONARY_LANGUAGES = read_pure_json('wiktionary_languages.json')
 LAROUSSE_LANGUAGES = read_pure_json('larousse_languages.json')
+DEFAULT_CURRENCIES = ['eur', 'usd', 'rub', 'brl', 'cad']
 
 def strip_botname(update: Update, context: CallbackContext):
     # TODO analyse message.entities with message.parse_entity and message.parse_entities
@@ -63,7 +67,7 @@ async def money_responder(msg:str, send:'async def', *, update, context):
     if detected_currencies:
         read_chat_settings = make_read_chat_settings(update, context)
 
-        chat_currencies = read_chat_settings('money.currencies') or ['eur', 'usd', 'rub', 'brl', 'cad']
+        chat_currencies = read_chat_settings('money.currencies') or DEFAULT_CURRENCIES
         rates = get_database_euro_rates()
 
         for value, currency in detect_currencies(msg):
@@ -647,7 +651,7 @@ def make_money_command(name:str, currency:str):
             await context.bot.send_message(text=m, chat_id=update.effective_chat.id)
         read_chat_settings = make_read_chat_settings(update, context)
 
-        chat_currencies = read_chat_settings('money.currencies') or ['eur', 'usd', 'rub', 'brl', 'cad']
+        chat_currencies = read_chat_settings('money.currencies') or DEFAULT_CURRENCIES
 
         from decimal import Decimal
         value, *_ = context.args or ['1']
@@ -662,14 +666,34 @@ eur = make_money_command("eur", "eur")
 brl = make_money_command("brl", "brl")
 rub = make_money_command("rub", "rub")
 
-async def test_rub(update, context):
+async def convertmoney(update, context):
     async def send(m):
         await context.bot.send_message(text=m, chat_id=update.effective_chat.id)
-    
-    from decimal import Decimal
-    value = Decimal(context.args[0])
-    rate = Decimal(get_database_euro_rates()['RUB'])
-    await send(str(value * rate))
+    read_chat_settings = make_read_chat_settings(update, context)
+
+    try:
+        if len(context.args) == 2:
+            value, currency = context.args
+            mode = 'to_chat_currencies'
+            direction, currency_converted = None, None
+        elif len(context.args) == 4:
+            value, currency, direction, currency_converted = context.args
+            mode = 'to_one_currency'
+            assert direction == 'to'
+    except:
+        await send("Usage: /convertmoney value currency [to currency]")
+
+    amount_base = Decimal(value)
+    rates = get_database_euro_rates()
+
+    if mode == 'to_chat_currencies':
+        chat_currencies = read_chat_settings('money.currencies') or DEFAULT_CURRENCIES
+        currencies_to_convert = [x for x in chat_currencies if x != currency]
+    elif mode == 'to_one_currency':
+        currencies_to_convert = [currency_converted]
+
+    amounts_converted = [convert_money(amount_base, currency_base=currency, currency_converted=currency_to_convert, rates=rates) for currency_to_convert in currencies_to_convert]
+    await send(format_currency(currency_list=[currency] + currencies_to_convert, amount_list=[amount_base] + amounts_converted))
 
 async def help(update, context):
     async def send(m):
@@ -777,6 +801,8 @@ COMMAND_DESC = {
     "larousse": "Show definition of each word using french dictionary Larousse.fr",
     'eur': "Convert euros to other currencies",
     'brl': "Convert brazilian reals to other currencies",
+    'rub': "Convert russian rubles to other currencies",
+    'convertmoney': 'Convert money to chat currencies or to specific currency',
     "mytimezone": "Set your timezone so that Europe/Brussels is not assumed by events commands",
     "settings": "Change user settings that are usable for commands",
     "delsettings": "Delete user settings that are usable for commands",
@@ -789,7 +815,7 @@ COMMAND_LIST = (
     'addevent', 'listevents',
     'ru',
     'dict', 'wikt', 'larousse',
-    'eur', 'brl', 'rub',
+    'convertmoney', 'eur', 'brl', 'rub',
     'mytimezone', 'settings', 'delsettings', 'chatsettings', 'delchatsettings'
     'help',
 )
@@ -813,7 +839,7 @@ if __name__ == '__main__':
     application.add_handler(CommandHandler('eur', eur))
     application.add_handler(CommandHandler('brl', brl))
     application.add_handler(CommandHandler('rub', rub))
-    application.add_handler(CommandHandler('test_rub', test_rub))
+    application.add_handler(CommandHandler('convertmoney', convertmoney))
     application.add_handler(CommandHandler('mytimezone', mytimezone))
     application.add_handler(CommandHandler('settings', settings))
     application.add_handler(CommandHandler('delsettings', delsettings))
