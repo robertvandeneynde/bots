@@ -569,32 +569,31 @@ def get_database_euro_rates():
 
 
 from decimal import Decimal
-ONE_EURO_IN_BRL = Decimal("5.36")
 
-def format_currency(*, currency_base:str, amount_base:Decimal, currency_converted:str, amount_converted:Decimal):
-    return '\n'.join([
-        "{}: {:.2f}".format(currency_base.upper(), amount_base),
-        "{}: {:.2f}".format(currency_converted.upper(), amount_converted),
-    ])
+def format_currency(*, currency_list:list[str], amount_list:list[Decimal]):
+    return '\n'.join(
+        "{}: {:.2f}".format(currency.upper(), amount)
+        for currency, amount in zip(currency_list, amount_list))
 
-def make_money_command(name:str, currency_base:str, currency_converted:str, rate:Decimal):
+def make_money_command(name:str, currency:str):
     async def money(update: Update, context: CallbackContext):
         async def send(m):
             await context.bot.send_message(text=m, chat_id=update.effective_chat.id)
         from decimal import Decimal
         if not context.args:
             return await send(f"Usage: /{name} value")
+        currencies_to_convert = [x for x in ('eur', 'brl', 'rub') if x != currency]
         value, *_ = context.args
         amount_base = Decimal(value)
-        amount_converted = amount_base * rate
-        return await send(format_currency(currency_base=currency_base, amount_base=amount_base, currency_converted=currency_converted, amount_converted=amount_converted))
+        rates = get_database_euro_rates()
+        command_currency_rate = Decimal(rates[currency.upper()])
+        amount_converted = amount_base / command_currency_rate
+        return await send(format_currency(currency_list=[currency, 'eur'], amount_list=[amount_base, amount_converted]))
     return money
 
-ONE_EURO_IN_RUB = Decimal('101.01')
-
-eur = make_money_command("eur", "eur", "brl", ONE_EURO_IN_BRL)
-brl = make_money_command("brl", "brl", "eur", 1 / ONE_EURO_IN_BRL)
-rub = make_money_command("rub", "rub", "eur", 1 / ONE_EURO_IN_RUB)
+eur = make_money_command("eur", "eur")
+brl = make_money_command("brl", "brl")
+rub = make_money_command("rub", "rub")
 
 async def test_rub(update, context):
     async def send(m):
