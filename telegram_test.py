@@ -681,7 +681,7 @@ async def convertmoney(update, context):
             mode = 'to_one_currency'
             assert direction == 'to'
     except:
-        await send("Usage: /convertmoney value currency [to currency]")
+        return await send("Usage: /convertmoney value currency [to currency]")
 
     amount_base = Decimal(value)
     rates = get_database_euro_rates()
