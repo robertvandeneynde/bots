@@ -515,12 +515,12 @@ async def settings_command(update: Update, context: CallbackContext, *, command_
         set_settings(value_raw=value, id=id, key=key, settings_type=settings_type)
         await send(f"Settings: {key} = {value}")
 
-async def delsettings_command(update:Update, context: CallbackContext, *, accepted_settings:list[str], settings_type:'chat' | 'id'):
+async def delsettings_command(update:Update, context: CallbackContext, *, accepted_settings:list[str], settings_type:'chat' | 'id', command_name:str):
     async def send(m):
         await context.bot.send_message(text=m, chat_id=update.effective_chat.id)
     
     if len(context.args) != 1:
-        return await send("Usage: /delsettings command.key")
+        return await send(f"Usage: /{command_name} command.key")
     
     key, = context.args
 
