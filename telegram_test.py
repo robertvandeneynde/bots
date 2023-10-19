@@ -626,21 +626,32 @@ def CONVERSION_SETTINGS_BUILDER():
         'from_db': json.loads,
         'to_db': json.dumps,
     }
-    mapping = {
+    timezone_serializer = {
+        'from_db': ZoneInfo,
+        'to_db': lambda x:x,
+    }
+    mapping_chat = {
         'money.currencies': json_serializer,
     }
+    mapping_user = {
+        'event.timezone': timezone_serializer,
+    }
     from collections import defaultdict
-    return defaultdict(lambda: default_serializer, mapping)
+    return {
+        'chat': defaultdict(lambda: default_serializer, mapping_chat),
+        'user': defaultdict(lambda: default_serializer, mapping_user)
+    }
 
 CONVERSION_SETTINGS = CONVERSION_SETTINGS_BUILDER()
-assert all({'from_db', 'to_db'} <= x.keys() for x in CONVERSION_SETTINGS.values()), f"Missing 'from_db' or 'to_db' in {CONVERSION_SETTINGS=}"
+assert {'chat', 'user'} <= CONVERSION_SETTINGS.keys(), f'Missing keys in {CONVERSION_SETTINGS}'
+assert all({'from_db', 'to_db'} <= x.keys() for y in CONVERSION_SETTINGS for x in y.values()), f"Missing 'from_db' or 'to_db' in {CONVERSION_SETTINGS=}"
 
 class SettingsInfo:
     TABLES = {'chat': 'ChatSettings', 'user': 'UserSettings'}
     FIELDS = {'chat': 'chat_id', 'user': 'user_id'}
 
 def read_settings(key, *, id, settings_type:'chat' | 'user'):
-    conversion = CONVERSION_SETTINGS[key]['from_db']
+    conversion = CONVERSION_SETTINGS[settings_type][key]['from_db']
 
     with sqlite3.connect('db.sqlite') as conn:
         cursor = conn.cursor()
