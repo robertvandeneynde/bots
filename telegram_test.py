@@ -139,7 +139,65 @@ def make_read_chat_settings(update: Update, context: CallbackContext):
     from functools import partial
     return partial(read_settings, id=update.effective_chat.id, settings_type='chat')
 
+async def dict_command(update: Update, context: CallbackContext, *, engine:'wikt' | 'larousse', command_name:str):
+    async def send(m):
+        await context.bot.send_message(text=m, chat_id=update.effective_chat.id)
+    read_my_settings = make_read_my_settings(update, context)
+
+    if not context.args:
+        if not update.message.reply_to_message:
+            return await send(f"Usage: /{command_name} word1 word2 word3...")
+
+    words = []
+    if update.message.reply_to_message:
+        words += update.message.reply_to_message.text.split()
+
+    if get_or_empty(context.args, -1).startswith('/'):
+        language = context.args[-1][1:]
+        words += context.args[:-1]
+        if ':' in language:
+            base_lang, target_lang, *_ = language.split(':')
+        else:
+            base_lang, target_lang = '', language
+    else:
+        words += context.args[:]
+        base_lang = None
+        target_lang = None
+    
+    base_lang, target_lang
+
+    base_lang = base_lang or read_my_settings(f'{command_name}.description')
+    target_lang = target_lang or read_my_settings(f'{command_name}.text')
+
+    # lang transformation
+    if engine == 'wikt':
+        target_lang = WIKTIONARY_LANGUAGES.get(base_lang or 'en', {}).get(target_lang, target_lang)
+    elif engine == 'larousse':
+        target_lang = LAROUSSE_LANGUAGES.get('fr', {}).get(target_lang or 'fr', target_lang)
+        base_lang = LAROUSSE_LANGUAGES.get('fr', {}).get(base_lang or 'fr', base_lang)
+
+    # url maker
+    if engine == 'wikt':
+      def url(x):
+        x = x.lower()
+        return (
+            'https://wiktionary.com/wiki/'
+            + ('{}:'.format(base_lang) if base_lang else '')
+            + x
+            + ('#{}'.format(target_lang) if target_lang else '')
+        )
+    elif engine == 'larousse':
+      def url(x):
+        x = x.lower()
+        return (
+            f'https://larousse.fr/dictionnaires/{target_lang}/{x}' if target_lang == base_lang else 
+            f'https://larousse.fr/dictionnaires/{target_lang}-{base_lang}/{x}'
+        )
+
+    return await send('\n\n'.join(url(x) for x in words))
+
 async def wikt(update: Update, context: CallbackContext):
+
     async def send(m):
         await context.bot.send_message(text=m, chat_id=update.effective_chat.id)
     read_my_settings = make_read_my_settings(update, context)
