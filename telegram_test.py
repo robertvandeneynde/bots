@@ -680,6 +680,8 @@ async def convertmoney(update, context):
             value, currency, direction, currency_converted = context.args
             mode = 'to_one_currency'
             assert direction == 'to'
+        else:
+            raise Exception
     except:
         return await send("Usage: /convertmoney value currency [to currency]")
 
