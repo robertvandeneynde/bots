@@ -197,89 +197,17 @@ async def dict_command(update: Update, context: CallbackContext, *, engine:'wikt
     return await send('\n\n'.join(url(x) for x in words))
 
 async def wikt(update: Update, context: CallbackContext):
-
-    async def send(m):
-        await context.bot.send_message(text=m, chat_id=update.effective_chat.id)
-    read_my_settings = make_read_my_settings(update, context)
-
-    if not context.args:
-        if not update.message.reply_to_message:
-            return await send("Usage: /wikt word1 word2 word3...")
-    
-    words = []
-    if update.message.reply_to_message:
-        words += update.message.reply_to_message.text.split()
-        
-    if get_or_empty(context.args, -1).startswith('/'):
-        language = context.args[-1][1:]
-        words += context.args[:-1]
-        if ':' in language:
-            base_lang, target_lang, *_ = language.split(':')
-        else:
-            base_lang, target_lang = '', language
-    else:
-        words += context.args[:]
-        base_lang = None
-        target_lang = None
-    
-    base_lang, target_lang
-
-    base_lang = base_lang or read_my_settings('wikt.description')
-    target_lang = target_lang or read_my_settings('wikt.text')
-
-    target_lang = WIKTIONARY_LANGUAGES.get(base_lang or 'en', {}).get(target_lang, target_lang)
-
-    def url(x):
-        x = x.lower()
-        return (
-            'https://wiktionary.com/wiki/'
-            + ('{}:'.format(base_lang) if base_lang else '')
-            + x
-            + ('#{}'.format(target_lang) if target_lang else '')
-        )
-    return await send('\n\n'.join(url(x) for x in words))
+    return await dict_command(update, context, command_name='wikt', engine='wikt')
 
 async def larousse(update: Update, context: CallbackContext):
-    async def send(m):
-        await context.bot.send_message(text=m, chat_id=update.effective_chat.id)
+    return await dict_command(update, context, command_name='larousse', engine='larousse')
+
+async def dict_(update: Update, context: CallbackContext):
     read_my_settings = make_read_my_settings(update, context)
-
-    if not context.args:
-        if not update.message.reply_to_message:
-            return await send("Usage: /larousse word1 word2 word3...")
-    
-    words = []
-    if update.message.reply_to_message:
-        words += update.message.reply_to_message.text.split()
-
-    if get_or_empty(context.args, -1).startswith('/'):
-        language = context.args[-1][1:]
-        words += context.args[:-1]
-        if ':' in language:
-            base_lang, target_lang, *_ = language.split(':')
-        else:
-            base_lang, target_lang = '', language
-    else:
-        words += context.args[:]
-        base_lang = None
-        target_lang = None
-    
-    base_lang, target_lang
-        
-    base_lang = base_lang or read_my_settings('larousse.description')
-    target_lang = target_lang or read_my_settings('larousse.text')
-
-    target_lang = LAROUSSE_LANGUAGES.get('fr', {}).get(target_lang or 'fr', target_lang)
-    base_lang = LAROUSSE_LANGUAGES.get('fr', {}).get(base_lang or 'fr', base_lang)
-
-    def url(x):
-        x = x.lower()
-        return (
-            f'https://larousse.fr/dictionnaires/{target_lang}/{x}' if target_lang == base_lang else 
-            f'https://larousse.fr/dictionnaires/{target_lang}-{base_lang}/{x}'
-        )
-    return await send('\n\n'.join(url(x) for x in words))
-
+    engine = read_my_settings('dict.engine')
+    if not engine:
+        raise UserError('Engine not set for /dict command, use "/settings dict.engine wikt" for example to set wiktionary engine')
+    return await dict_command(update, context, command_name='dict', engine=engine)
 
 import zoneinfo
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
@@ -487,8 +415,19 @@ async def mytimezone(update: Update, context: CallbackContext):
         set_my_timezone(update.message.from_user.id, tz)
         return await send("Your timezone is now: {}".format(tz))
 
-ACCEPTED_SETTINGS_USER = ('event.timezone', 'wikt.text', 'wikt.description')
-ACCEPTED_SETTINGS_CHAT = ('money.currencies',)
+ACCEPTED_SETTINGS_USER = (
+    'event.timezone',
+    'wikt.text',
+    'wikt.description',
+    'larousse.text',
+    'larousse.description',
+    'dict.text',
+    'dict.description',
+    'dict.engine',
+)
+ACCEPTED_SETTINGS_CHAT = (
+    'money.currencies',
+)
 
 def CONVERSION_SETTINGS_BUILDER():
     import json
@@ -828,6 +767,7 @@ COMMAND_DESC = {
     "addevent": "Add event",
     "listevents": "List events",
     "ru": "Latin alphabet to Cyrillic using Russian convention",
+    "dict": "Shows definition of each word using dictionary and settings engine",
     "wikt": "Shows definition of each word using wiktionary",
     "larousse": "Show definition of each word using french dictionary Larousse.fr",
     'eur': "Convert euros to other currencies",
@@ -843,7 +783,7 @@ COMMAND_LIST = (
     'caps',
     'addevent', 'listevents',
     'ru',
-    'wikt', 'larousse',
+    'dict', 'wikt', 'larousse',
     'eur', 'brl', 'rub',
     'mytimezone', 'settings', 'delsettings', 'chatsettings', 'delchatsettings'
     'help',
@@ -862,6 +802,7 @@ if __name__ == '__main__':
     application.add_handler(CommandHandler('addevent', add_event))
     application.add_handler(CommandHandler('listevents', list_events))
     application.add_handler(CommandHandler('ru', ru))
+    application.add_handler(CommandHandler('dict', dict_))
     application.add_handler(CommandHandler('wikt', wikt))
     application.add_handler(CommandHandler('larousse', larousse))
     application.add_handler(CommandHandler('eur', eur))
