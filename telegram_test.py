@@ -131,14 +131,18 @@ def get_or_empty(L: list, i:int) -> str | object:
     except IndexError:
         return ''
 
-def make_my_settings(update: Update, context: CallbackContext):
+def make_read_my_settings(update: Update, context: CallbackContext):
     from functools import partial
-    return partial(read_settings, id=update.message.from_user_id, settings_type='user')
+    return partial(read_settings, id=update.message.from_user.id, settings_type='user')
+
+def make_read_chat_settings(update: Update, context: CallbackContext):
+    from functools import partial
+    return partial(read_settings, id=update.effective_chat.id, settings_type='chat')
 
 async def wikt(update: Update, context: CallbackContext):
     async def send(m):
         await context.bot.send_message(text=m, chat_id=update.effective_chat.id)
-    read_my_settings = make_my_settings(update, context)
+    read_my_settings = make_read_my_settings(update, context)
 
     if not context.args:
         if not update.message.reply_to_message:
@@ -180,7 +184,7 @@ async def wikt(update: Update, context: CallbackContext):
 async def larousse(update: Update, context: CallbackContext):
     async def send(m):
         await context.bot.send_message(text=m, chat_id=update.effective_chat.id)
-    read_my_settings = make_my_settings(update, context)
+    read_my_settings = make_read_my_settings(update, context)
 
     if not context.args:
         if not update.message.reply_to_message:
@@ -492,15 +496,22 @@ async def settings_command(update: Update, context: CallbackContext, *, command_
             return await print_usage()
         value = rest[0] if rest else None
 
+    if settings_type == 'user':
+        id = update.message.from_user.id
+    elif settings_type == 'chat':
+        id = update.effective_chat.id
+    else:
+        raise ValueError(f'Invalid settings_type: {settings_type}')
+
     if value is None:
         # read
-        value = read_settings(id=update.message.from_user.id, key=key, settings_type=settings_type)
+        value = read_settings(id=id, key=key, settings_type=settings_type)
         await send(f'Settings: {key} = {value}' if value is not None else
                     f'No settings for {key!r}')
     
     else:
         # write value
-        set_settings(value_raw=value, id=update.message.from_user.id, key=key, settings_type=settings_type)
+        set_settings(value_raw=value, id=id, key=key, settings_type=settings_type)
         await send(f"Settings: {key} = {value}")
 
 async def delsettings_command(update:Update, context: CallbackContext, *, accepted_settings:list[str], settings_type:'chat' | 'id'):
@@ -633,11 +644,15 @@ def make_money_command(name:str, currency:str):
     async def money(update: Update, context: CallbackContext):
         async def send(m):
             await context.bot.send_message(text=m, chat_id=update.effective_chat.id)
+        read_chat_settings = make_read_chat_settings(update, context)
+
+        chat_currencies = read_chat_settings('money.currencies') or ['eur', 'usd', 'rub', 'brl', 'cad']
+
         from decimal import Decimal
         value, *_ = context.args or ['1']
         amount_base = Decimal(value)
         rates = get_database_euro_rates()
-        currencies_to_convert = [x for x in ('eur', 'brl', 'rub') if x != currency]
+        currencies_to_convert = [x for x in chat_currencies if x != currency]
         amounts_converted = [convert_money(amount_base, currency_base=currency, currency_converted=currency_to_convert, rates=rates) for currency_to_convert in currencies_to_convert]
         return await send(format_currency(currency_list=[currency] + currencies_to_convert, amount_list=[amount_base] + amounts_converted))
     return money
