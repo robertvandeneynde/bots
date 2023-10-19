@@ -498,6 +498,76 @@ def migration3():
         conn.execute("create table UserSettings(user_id, key text, value text)")
         conn.execute("end transaction")
 
+def migration4():
+    with sqlite3.connect('db.sqlite') as conn:
+        conn.execute("begin transaction")
+        conn.execute("create table EuroRates(datetime, rates)")
+        conn.execute("end transaction")
+
+def read_latest_euro_rates():
+    import sqlite3
+    with sqlite3.connect('db.sqlite') as conn:
+        cursor = conn.cursor()
+        query = ("""SELECT date, name FROM Events
+                    WHERE ? <= date AND date < ?
+                    AND chat_id = ?
+                    ORDER BY date""",
+                (beg, end, chat_id))
+
+def get_latest_euro_rates_from_api():
+    import requests
+    from telegram_settings_local import FIXER_TOKEN
+    response = requests.get(f'http://data.fixer.io/api/latest?access_key={FIXER_TOKEN}&base=EUR').json()
+    assert response['success']
+    assert response['base'] == 'EUR'
+    # response['date']
+    return response['rates']
+
+class DatetimeDbSerializer:
+    @staticmethod
+    def strptime(x:str):
+        from datetime import datetime
+        return datetime.strptime(x, "%Y-%m-%d %H:%M:%S")
+
+    @staticmethod
+    def strftime(x:datetime):
+        return x.strftime("%Y-%m-%d %H:%M:%S")
+
+    def to_db(self, x: Datetime):
+        return self.strftime(x)
+
+    def from_db(self, x: any):
+        return self.strptime(x)
+
+class JsonDbSerializer:
+    def to_db(self, x: json):
+        import json
+        return json.dumps(x)
+
+    def from_db(self, x: any):
+        import json
+        return json.loads(x)
+
+def get_database_euro_rates():
+    query_get_last_date = ('''select MAX(datetime), rates from EuroRates''', ())
+
+    from datetime import datetime as Datetime, timedelta as Timedelta
+
+    with sqlite3.connect('db.sqlite') as conn:
+        latest_date_string, rates_string = conn.execute(*query_get_last_date).fetchone() or (None, None)
+        latest_date: Datetime = latest_date_string and DatetimeDbSerializer().from_db(latest_date_string)
+        rates: json = rates_string and JsonDbSerializer().from_db(rates_string)
+    
+    now = Datetime.utcnow()
+    if latest_date is None or now - latest_date > Timedelta(days=1):
+        rates = get_latest_euro_rates_from_api()
+        with sqlite3.connect('db.sqlite') as conn:
+            conn.execute('''INSERT INTO EuroRates(datetime, rates) VALUES(?, ?)''', (DatetimeDbSerializer().to_db(now), JsonDbSerializer.to_db(rates)))
+        return rates
+    else:
+        return rates
+
+
 from decimal import Decimal
 ONE_EURO_IN_BRL = Decimal("5.36")
 
@@ -520,8 +590,20 @@ def make_money_command(name:str, currency_base:str, currency_converted:str, rate
         return await send(format_currency(currency_base=currency_base, amount_base=amount_base, currency_converted=currency_converted, amount_converted=amount_converted))
     return money
 
+ONE_EURO_IN_RUB = Decimal('101.01')
+
 eur = make_money_command("eur", "eur", "brl", ONE_EURO_IN_BRL)
 brl = make_money_command("brl", "brl", "eur", 1 / ONE_EURO_IN_BRL)
+rub = make_money_command("rub", "rub", "eur", 1 / ONE_EURO_IN_RUB)
+
+async def test_rub(update, context):
+    async def send(m):
+        await context.bot.send_message(text=m, chat_id=update.effective_chat.id)
+    
+    from decimal import Decimal
+    value = Decimal(context.args[0])
+    rate = Decimal(get_database_euro_rates()['RUB'])
+    await send(str(value * rate))
 
 async def help(update, context):
     async def send(m):
@@ -654,6 +736,8 @@ if __name__ == '__main__':
     application.add_handler(CommandHandler('larousse', larousse))
     application.add_handler(CommandHandler('eur', eur))
     application.add_handler(CommandHandler('brl', brl))
+    application.add_handler(CommandHandler('rub', rub))
+    application.add_handler(CommandHandler('test_rub', test_rub))
     application.add_handler(CommandHandler('mytimezone', mytimezone))
     application.add_handler(CommandHandler('settings', settings))
     application.add_handler(CommandHandler('delsettings', delsettings))
