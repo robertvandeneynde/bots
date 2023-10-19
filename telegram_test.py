@@ -582,13 +582,16 @@ def make_money_command(name:str, currency:str):
         from decimal import Decimal
         if not context.args:
             return await send(f"Usage: /{name} value")
-        currencies_to_convert = [x for x in ('eur', 'brl', 'rub') if x != currency]
         value, *_ = context.args
         amount_base = Decimal(value)
         rates = get_database_euro_rates()
-        command_currency_rate = Decimal(rates[currency.upper()])
-        amount_converted = amount_base / command_currency_rate
-        return await send(format_currency(currency_list=[currency, 'eur'], amount_list=[amount_base, amount_converted]))
+        if currency == 'eur':
+            currencies_to_convert = [x for x in ('eur', 'brl', 'rub') if x != currency]
+            amounts_converted = [amount_base * rate for rate in [Decimal(rates[currency_to_convert.upper()]) for currency_to_convert in currencies_to_convert]]
+        else:
+            currencies_to_convert = ['eur']
+            amounts_converted = [amount_base / Decimal(rates[currency.upper()])]
+        return await send(format_currency(currency_list=[currency] + currencies_to_convert, amount_list=[amount_base] + amounts_converted))
     return money
 
 eur = make_money_command("eur", "eur")
