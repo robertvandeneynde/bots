@@ -514,7 +514,7 @@ def read_latest_euro_rates():
                     ORDER BY date""",
                 (beg, end, chat_id))
 
-def get_latest_euro_rates_from_api():
+def get_latest_euro_rates_from_api() -> json:
     import requests
     from telegram_settings_local import FIXER_TOKEN
     response = requests.get(f'http://data.fixer.io/api/latest?access_key={FIXER_TOKEN}&base=EUR').json()
@@ -548,7 +548,7 @@ class JsonDbSerializer:
         import json
         return json.loads(x)
 
-def get_database_euro_rates():
+def get_database_euro_rates() -> Rates:
     query_get_last_date = ('''select MAX(datetime), rates from EuroRates''', ())
 
     from datetime import datetime as Datetime, timedelta as Timedelta
@@ -575,22 +575,23 @@ def format_currency(*, currency_list:list[str], amount_list:list[Decimal]):
         "{}: {:.2f}".format(currency.upper(), amount)
         for currency, amount in zip(currency_list, amount_list))
 
+def convert_money(amount: Decimal, currency_base:str, currency_converted:str, rates:Rates):
+    if currency_base == 'eur':
+        return amount * Decimal(rates[currency_converted.upper()])
+    if currency_converted == 'eur':
+        return amount / Decimal(rates[currency_base.upper()])
+    return convert_money(convert_money(amount, currency_base, 'eur', rates=rates), 'eur', currency_converted, rates=rates)
+
 def make_money_command(name:str, currency:str):
     async def money(update: Update, context: CallbackContext):
         async def send(m):
             await context.bot.send_message(text=m, chat_id=update.effective_chat.id)
         from decimal import Decimal
-        if not context.args:
-            return await send(f"Usage: /{name} value")
-        value, *_ = context.args
+        value, *_ = context.args or ['1']
         amount_base = Decimal(value)
         rates = get_database_euro_rates()
-        if currency == 'eur':
-            currencies_to_convert = [x for x in ('eur', 'brl', 'rub') if x != currency]
-            amounts_converted = [amount_base * rate for rate in [Decimal(rates[currency_to_convert.upper()]) for currency_to_convert in currencies_to_convert]]
-        else:
-            currencies_to_convert = ['eur']
-            amounts_converted = [amount_base / Decimal(rates[currency.upper()])]
+        currencies_to_convert = [x for x in ('eur', 'brl', 'rub') if x != currency]
+        amounts_converted = [convert_money(amount_base, currency_base=currency, currency_converted=currency_to_convert, rates=rates) for currency_to_convert in currencies_to_convert]
         return await send(format_currency(currency_list=[currency] + currencies_to_convert, amount_list=[amount_base] + amounts_converted))
     return money
 
