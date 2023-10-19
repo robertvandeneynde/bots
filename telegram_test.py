@@ -529,7 +529,7 @@ async def list_events(update: Update, context: CallbackContext):
                         for has_hour in [True])
         await send(msg or "No events for that day !")
 
-def get_my_timezone(user_id) -> ZoneInfo:
+def get_my_timezone_from_timezone_table(user_id) -> ZoneInfo:
     query = ("""SELECT timezone FROM UserTimezone WHERE user_id=?""", (user_id,))
     with sqlite3.connect('db.sqlite') as conn:
         L = conn.execute(*query).fetchall()
@@ -539,6 +539,10 @@ def get_my_timezone(user_id) -> ZoneInfo:
             return ZoneInfo(L[0][0])
         else:
             raise ValueError("Unique constraint failed: Multiple timezone for user {}".format(user_id))
+
+def get_my_timezone(user_id) -> ZoneInfo:
+    return (read_settings('event.timezone', id=user_id, settings_type='user')
+            or get_my_timezone_from_timezone_table(user_id))
 
 def set_my_timezone(user_id, tz:ZoneInfo):
     query_read = ("""SELECT timezone FROM UserTimezone WHERE user_id=?""", (user_id,))
@@ -556,7 +560,7 @@ def set_my_timezone(user_id, tz:ZoneInfo):
         conn.execute("end transaction")
 
 def set_settings(*, id, key, value_raw:any, settings_type:'chat' | 'user'):
-    conversion = CONVERSION_SETTINGS[key]['to_db']
+    conversion = CONVERSION_SETTINGS[settings_type][key]['to_db']
 
     value: any = conversion(value_raw)
     table = SettingsInfo.TABLES[settings_type]
@@ -588,7 +592,7 @@ async def mytimezone(update: Update, context: CallbackContext):
 
     if not context.args:
         # get timezone
-        tz = get_my_timezone(update.message.from_user.id)
+        tz = get_my_timezone_from_timezone_table(update.message.from_user.id)
         base_text = ("You don't have any timezone set.\nUse /mytimezone Continent/City to set it" if tz is None else
                      "Your timezone is: {}".format(tz))
         return await send(base_text)
@@ -644,7 +648,7 @@ def CONVERSION_SETTINGS_BUILDER():
 
 CONVERSION_SETTINGS = CONVERSION_SETTINGS_BUILDER()
 assert {'chat', 'user'} <= CONVERSION_SETTINGS.keys(), f'Missing keys in {CONVERSION_SETTINGS}'
-assert all({'from_db', 'to_db'} <= x.keys() for y in CONVERSION_SETTINGS for x in y.values()), f"Missing 'from_db' or 'to_db' in {CONVERSION_SETTINGS=}"
+assert all({'from_db', 'to_db'} <= x.keys() for y in CONVERSION_SETTINGS.values() for x in y.values()), f"Missing 'from_db' or 'to_db' in {CONVERSION_SETTINGS=}"
 
 class SettingsInfo:
     TABLES = {'chat': 'ChatSettings', 'user': 'UserSettings'}
