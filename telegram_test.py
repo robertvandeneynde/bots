@@ -625,7 +625,7 @@ def get_database_euro_rates() -> Rates:
     if latest_date is None or now - latest_date > Timedelta(days=1):
         rates = get_latest_euro_rates_from_api()
         with sqlite3.connect('db.sqlite') as conn:
-            conn.execute('''INSERT INTO EuroRates(datetime, rates) VALUES(?, ?)''', (DatetimeDbSerializer().to_db(now), JsonDbSerializer.to_db(rates)))
+            conn.execute('''INSERT INTO EuroRates(datetime, rates) VALUES(?, ?)''', (DatetimeDbSerializer().to_db(now), JsonDbSerializer().to_db(rates)))
         return rates
     else:
         return rates
