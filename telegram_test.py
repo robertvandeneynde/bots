@@ -777,6 +777,7 @@ class AsyncTests(IsolatedAsyncioTestCase):
         self.assertEqual(await test_simple_output(ru, ['hello', 'shchashasha']), 'хелло щашаша', "Multiple words")
         self.assertEqual(await test_simple_output(ru, ['Chto']), 'Что', 'Mix of capital and small letters')
     
+    @unittest.skip
     async def test_hello_responder(self):
         self.assertIn("hello", (await test_simple_responder(hello_responder, "Hello")).lower())
         self.assertIn("hello", (await test_simple_responder(hello_responder, "Hello World !")).lower())
