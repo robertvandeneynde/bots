@@ -246,9 +246,17 @@ async def flashcard(update, context):
     except UsageError:
         return await send("Usage:\n/flashcard word translation\n/flashcard words+ / translation+")
     
+    save_flashcard(sentence, translation, user_id=update.message.from_user.id)
+
     await send(f"New flashcard:\n{sentence!r}\n-> {translation!r}")
 
+def save_flashcard(sentence, translation, *, user_id):
+    query = ('insert into Flashcard(sentence, translation, user_id) values (?,?,?)', (sentence, translation, user_id))
+    simple_sql(query)
 
+def simple_sql(query):
+    with sqlite3.connect("db.sqlite") as conn:
+        return conn.execute(*query).fetchall()
 
 async def practiceflashcard(update, context):
     async def send(m):
@@ -614,6 +622,12 @@ def migration5():
     with sqlite3.connect('db.sqlite') as conn:
         conn.execute("begin transaction")
         conn.execute("create table ChatSettings(chat_id, key text, value text)")
+        conn.execute("end transaction")
+
+def migration6():
+    with sqlite3.connect('db.sqlite') as conn:
+        conn.execute("begin transaction")
+        conn.execute("create table Flashcard(user_id, sentence, translation)")
         conn.execute("end transaction")
 
 def get_latest_euro_rates_from_api() -> json:
