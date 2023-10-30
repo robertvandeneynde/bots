@@ -217,6 +217,45 @@ async def dict_(update: Update, context: CallbackContext):
         raise UserError('Engine not set for /dict command, use "/settings dict.engine wikt" for example to set wiktionary engine')
     return await dict_command(update, context, command_name='dict', engine=engine)
 
+class UsageError(Exception):
+    pass
+
+async def flashcard(update, context):
+    async def send(m):
+        await context.bot.send_message(text=m, chat_id=update.effective_chat.id)
+    
+    try:
+      if update.message.reply_to_message:
+        sentence = update.message.reply_to_message.text
+        translation = ' '.join(context.args)
+      else:
+        def find_sentence_translation(args):
+            if "/" in args:
+                separator_position = args.index("/")
+                sentence, translation = args[:separator_position], args[separator_position+1:]
+                sentence, translation = map(' '.join, (sentence, translation))
+            elif len(args) == 2:
+                sentence, translation = args
+            elif len(args) == 1:
+                sentence, translation = args[0], ''
+            else:
+                raise UsageError
+            return sentence, translation
+        
+        sentence, translation = find_sentence_translation(context.args)
+    except UsageError:
+        return await send("Usage:\n/flashcard word translation\n/flashcard words+ / translation+")
+    
+    await send(f"New flashcard:\n{sentence!r}\n-> {translation!r}")
+
+
+
+async def practiceflashcard(update, context):
+    async def send(m):
+        await context.bot.send_message(text=m, chat_id=update.effective_chat.id)
+
+
+
 import zoneinfo
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
@@ -848,6 +887,8 @@ if __name__ == '__main__':
     application.add_handler(CommandHandler('delsettings', delsettings))
     application.add_handler(CommandHandler('chatsettings', chatsettings))
     application.add_handler(CommandHandler('delchatsettings', delchatsettings))
+    application.add_handler(CommandHandler('flashcard', flashcard))
+    application.add_handler(CommandHandler('practiceflashcard', practiceflashcard))
     application.add_handler(CommandHandler('help', help))
 
     application.add_error_handler(general_error_callback)
