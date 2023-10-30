@@ -255,6 +255,8 @@ def save_flashcard(sentence, translation, *, user_id):
     simple_sql(query)
 
 def simple_sql(query):
+    assert isinstance(query, (tuple, list))
+    assert isinstance(query[1], (tuple, list))
     with sqlite3.connect("db.sqlite") as conn:
         return conn.execute(*query).fetchall()
 
@@ -262,7 +264,45 @@ async def practiceflashcard(update, context):
     async def send(m):
         await context.bot.send_message(text=m, chat_id=update.effective_chat.id)
 
+    try:
+        n = None
+    except UsageError:
+        return await send("Usage:\n/practiceflashcard [n] [days]")
+    
+    query = ('select sentence, translation from flashcard where user_id=?', (update.message.from_user.id,))
+    lines = simple_sql(query)
+    
+    import random
+    sample = random.sample(lines, n if n is not None else len(lines))
+    sentences = (x[0] for x in sample)
+    
+    await send(map("- {}".format, sentences))
 
+async def exportflashcard(update, context):
+    query = ('select sentence, translation from flashcard where user_id=?', (update.message.from_user.id,))
+    lines = simple_sql(query)
+
+    def export_tsv_utf8():
+        import io
+        file_content_io = io.StringIO()
+        import csv
+        csv.writer(file_content_io, dialect='excel-tab').writerows(lines)
+        return file_content_io.getvalue().encode('utf-8')
+
+    def export_xlsx():
+        import openpyxl
+        wb = openpyxl.Workbook()
+        for line in lines:
+            wb.active.append(line)
+        import io
+        bytes_io = io.BytesIO()
+        wb.save(bytes_io)
+        return bytes_io.getvalue()
+    
+    #file_content, extension = export_tsv_utf8(), 'tsv'
+    file_content, extension = export_xlsx(), 'xlsx'
+
+    await context.bot.send_document(update.effective_chat.id, file_content, filename="flashcards." + extension)
 
 import zoneinfo
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
@@ -902,6 +942,7 @@ if __name__ == '__main__':
     application.add_handler(CommandHandler('chatsettings', chatsettings))
     application.add_handler(CommandHandler('delchatsettings', delchatsettings))
     application.add_handler(CommandHandler('flashcard', flashcard))
+    application.add_handler(CommandHandler('exportflashcard', exportflashcard))
     application.add_handler(CommandHandler('practiceflashcard', practiceflashcard))
     application.add_handler(CommandHandler('help', help))
 
