@@ -276,7 +276,21 @@ async def practiceflashcards(update, context):
     sample = random.sample(lines, n if n is not None else len(lines))
     sentences = (x[0] for x in sample)
     
-    await send(map("- {}".format, sentences))
+    await send('\n'.join(map("- {}".format, sentences)))
+
+    context.user_data['sample'] = sample
+
+    return 0
+
+from telegram.ext import ConversationHandler
+async def guessing_word(update, context):
+    sample = context.user_data['sample']
+    async def send(m):
+        await context.bot.send_message(text=m, chat_id=update.effective_chat.id)
+    answers = [x[1] for x in sample]
+    await send('\n'.join(map("- {}".format, answers)))
+    context.user_data.clear()
+    return ConversationHandler.END
 
 async def exportflashcards(update, context):
     query = ('select sentence, translation from flashcard where user_id=?', (update.message.from_user.id,))
@@ -948,7 +962,13 @@ if __name__ == '__main__':
     application.add_handler(CommandHandler('delchatsettings', delchatsettings))
     application.add_handler(CommandHandler('flashcard', flashcard))
     application.add_handler(CommandHandler('exportflashcards', exportflashcards))
-    application.add_handler(CommandHandler('practiceflashcards', practiceflashcards))
+    application.add_handler(ConversationHandler(
+        entry_points=[CommandHandler('practiceflashcards', practiceflashcards)],
+        states={
+            0: [MessageHandler(filters.TEXT, guessing_word)],
+        },
+        fallbacks=[]
+    ))
     application.add_handler(CommandHandler('help', help))
 
     application.add_error_handler(general_error_callback)
