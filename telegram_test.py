@@ -920,7 +920,7 @@ COMMAND_DESC = {
     "delchatsettings": "Delete chat settings that are usable for commands",
     "flashcard": "Add a new flashcard to help memorize words more easily",
     "exportflashcards": "Export your flashcards in excel format",
-    # "praticeflashcards": "Practice your flashcards to train your memory",
+    "praticeflashcards": "Practice your flashcards to train your memory",
 }
 
 COMMAND_LIST = (
@@ -930,8 +930,7 @@ COMMAND_LIST = (
     'dict', 'wikt', 'larousse',
     'convertmoney', 'eur', 'brl', 'rub',
     'mytimezone', 'settings', 'delsettings', 'chatsettings', 'delchatsettings',
-    'flashcard', 'exportflashcards',
-    # 'practiceflashcards',
+    'flashcard', 'exportflashcards', 'practiceflashcards',
     'help',
 )
 
