@@ -260,14 +260,14 @@ def simple_sql(query):
     with sqlite3.connect("db.sqlite") as conn:
         return conn.execute(*query).fetchall()
 
-async def practiceflashcard(update, context):
+async def practiceflashcards(update, context):
     async def send(m):
         await context.bot.send_message(text=m, chat_id=update.effective_chat.id)
 
     try:
         n = None
     except UsageError:
-        return await send("Usage:\n/practiceflashcard [n] [days]")
+        return await send("Usage:\n/practiceflashcards [n] [days]")
     
     query = ('select sentence, translation from flashcard where user_id=?', (update.message.from_user.id,))
     lines = simple_sql(query)
@@ -278,7 +278,7 @@ async def practiceflashcard(update, context):
     
     await send(map("- {}".format, sentences))
 
-async def exportflashcard(update, context):
+async def exportflashcards(update, context):
     query = ('select sentence, translation from flashcard where user_id=?', (update.message.from_user.id,))
     lines = simple_sql(query)
 
@@ -904,6 +904,9 @@ COMMAND_DESC = {
     "delsettings": "Delete user settings that are usable for commands",
     "chatsettings": "Change chat settings that are usable for commands",
     "delchatsettings": "Delete chat settings that are usable for commands",
+    "flashcard": "Add a new flashcard to help memorize words more easily",
+    "exportflashcards": "Export your flashcards in excel format",
+    # "praticeflashcards": "Practice your flashcards to train your memory",
 }
 
 COMMAND_LIST = (
@@ -912,7 +915,9 @@ COMMAND_LIST = (
     'ru',
     'dict', 'wikt', 'larousse',
     'convertmoney', 'eur', 'brl', 'rub',
-    'mytimezone', 'settings', 'delsettings', 'chatsettings', 'delchatsettings'
+    'mytimezone', 'settings', 'delsettings', 'chatsettings', 'delchatsettings',
+    'flashcard', 'exportflashcards',
+    # 'practiceflashcards',
     'help',
 )
 
@@ -942,8 +947,8 @@ if __name__ == '__main__':
     application.add_handler(CommandHandler('chatsettings', chatsettings))
     application.add_handler(CommandHandler('delchatsettings', delchatsettings))
     application.add_handler(CommandHandler('flashcard', flashcard))
-    application.add_handler(CommandHandler('exportflashcard', exportflashcard))
-    application.add_handler(CommandHandler('practiceflashcard', practiceflashcard))
+    application.add_handler(CommandHandler('exportflashcards', exportflashcards))
+    application.add_handler(CommandHandler('practiceflashcards', practiceflashcards))
     application.add_handler(CommandHandler('help', help))
 
     application.add_error_handler(general_error_callback)
