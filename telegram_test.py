@@ -156,21 +156,52 @@ async def dict_command(update: Update, context: CallbackContext, *, engine:'wikt
         if not update.message.reply_to_message:
             return await send(f"Usage: /{command_name} word1 word2 word3...")
 
-    words = []
+    is_reply = False
     if update.message.reply_to_message:
-        words += update.message.reply_to_message.text.split()
+        is_reply = True
+        reply_message_words = update.message.reply_to_message.text.split()
+        
+        def any_number(items):
+            import re
+            number = re.compile('-?\\d+')
+            return any(map(number.fullmatch, items))
+
+        def substitute_numbers(items):
+            import re
+            number = re.compile('-?\\d+')
+            for item in items:
+                if number.fullmatch(item):
+                    i = int(item) 
+                    if i == 0:
+                        yield item
+                    else:
+                        idx = i if i < 0 else i-1
+                        try:
+                            yield reply_message_words[idx]
+                        except IndexError:
+                            yield item
+                else:
+                    yield item
 
     if get_or_empty(context.args, -1).startswith('/'):
         language = context.args[-1][1:]
-        words += context.args[:-1]
+        parameter_words = context.args[:-1]
         if ':' in language:
             base_lang, target_lang, *_ = language.split(':')
         else:
             base_lang, target_lang = '', language
     else:
-        words += context.args[:]
+        parameter_words = context.args[:]
         base_lang = None
         target_lang = None
+    
+    if is_reply:
+        if any_number(parameter_words):
+            words = list(substitute_numbers(parameter_words))
+        else:
+            words = reply_message_words + parameter_words
+    else:
+        words = parameter_words
     
     base_lang, target_lang
 
