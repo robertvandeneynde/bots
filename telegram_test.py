@@ -968,7 +968,7 @@ if __name__ == '__main__':
             0: [MessageHandler(filters.TEXT, guessing_word)],
         },
         fallbacks=[]
-    ))
+    ), group=1)
     application.add_handler(CommandHandler('help', help))
 
     application.add_error_handler(general_error_callback)
