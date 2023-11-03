@@ -297,6 +297,10 @@ async def practiceflashcards(update, context):
 
     try:
         n = None
+        if 'reversed' in context.args:
+            direction = 'reversed'
+        else:
+            direction = 'normal'
     except UsageError:
         return await send("Usage:\n/practiceflashcards [n] [days]")
     
@@ -305,20 +309,22 @@ async def practiceflashcards(update, context):
     
     import random
     sample = random.sample(lines, n if n is not None else len(lines))
-    sentences = (x[0] for x in sample)
+    sentences = [x[0] if direction == 'normal' else x[1] for x in sample]
     
     await send('\n'.join(map("- {}".format, sentences)))
 
     context.user_data['sample'] = sample
+    context.user_data['direction'] = direction
 
     return 0
 
 from telegram.ext import ConversationHandler
 async def guessing_word(update, context):
     sample = context.user_data['sample']
+    direction = context.user_data['direction']
     async def send(m):
         await context.bot.send_message(text=m, chat_id=update.effective_chat.id)
-    answers = [x[1] for x in sample]
+    answers = [x[1] if direction == 'normal' else x[0] for x in sample]
     await send('\n'.join(map("- {}".format, answers)))
     context.user_data.clear()
     return ConversationHandler.END
