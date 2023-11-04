@@ -315,7 +315,8 @@ async def practiceflashcards(update, context):
     except UsageError:
         return await send("Usage:\n/practiceflashcards [n] [days]")
     
-    query = ('select sentence, translation from flashcard where user_id=?', (update.message.from_user.id,))
+    user_id = update.effective_user.id
+    query = ('select sentence, translation from flashcard where user_id=? and page_name=?', (user_id, get_current_flashcard_page(user_id)))
     lines = simple_sql(query)
     
     import random
