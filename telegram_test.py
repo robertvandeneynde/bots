@@ -1006,6 +1006,7 @@ COMMAND_DESC = {
     "flashcard": "Add a new flashcard to help memorize words more easily",
     "exportflashcards": "Export your flashcards in excel format",
     "praticeflashcards": "Practice your flashcards to train your memory",
+    "switchpageflashcard": "Switch to a page to group your flashcards",
 }
 
 COMMAND_LIST = (
@@ -1015,7 +1016,7 @@ COMMAND_LIST = (
     'dict', 'wikt', 'larousse',
     'convertmoney', 'eur', 'brl', 'rub',
     'mytimezone', 'settings', 'delsettings', 'chatsettings', 'delchatsettings',
-    'flashcard', 'exportflashcards', 'practiceflashcards',
+    'flashcard', 'exportflashcards', 'practiceflashcards', 'switchpageflashcard',
     'help',
 )
 
