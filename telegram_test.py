@@ -277,12 +277,23 @@ async def flashcard(update, context):
     except UsageError:
         return await send("Usage:\n/flashcard word translation\n/flashcard words+ / translation+")
     
-    save_flashcard(sentence, translation, user_id=update.message.from_user.id)
+    user_id = update.effective_user.id
+    page_name = get_current_flashcard_page(user_id)
+    save_flashcard(sentence, translation, user_id=user_id, page_name=page_name)
 
     await send(f"New flashcard:\n{sentence!r}\n-> {translation!r}")
 
-def save_flashcard(sentence, translation, *, user_id):
-    query = ('insert into Flashcard(sentence, translation, user_id) values (?,?,?)', (sentence, translation, user_id))
+def get_current_flashcard_page(user_id):
+    with sqlite3.connect("db.sqlite") as conn:
+        conn.execute("begin transaction")
+        current_page_name, = conn.execute("select name from flashcardpage where user_id=? and current=1", (user_id,)).fetchone() or (None,)
+        if current_page_name is None:
+            current_page_name = '1'
+        conn.execute("end transaction")
+    return current_page_name
+
+def save_flashcard(sentence, translation, *, user_id, page_name):
+    query = ('insert into Flashcard(sentence, translation, user_id, page_name) values (?,?,?,?)', (sentence, translation, user_id, page_name))
     simple_sql(query)
 
 def simple_sql(query):
