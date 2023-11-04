@@ -329,6 +329,35 @@ async def guessing_word(update, context):
     context.user_data.clear()
     return ConversationHandler.END
 
+def make_send(update, context):
+    async def send(m):
+        await context.bot.send_message(text=m, chat_id=update.effective_chat.id)
+    return send
+
+async def switchpageflashcard(update, context):
+    send = make_send(update, context)
+    try:
+        page_name, = context.args
+    except UsageError:
+        return await send("Usage")
+
+    user_id = update.effective_user.id
+
+    with sqlite3.connect('db.sqlite') as conn:
+        conn.execute("begin transaction")
+        # 1. Remove current page, if any
+        conn.execute("update flashcardpage set current=0 where user_id=?", (user_id,))
+        
+        # 2. Create or Update target page as current
+        db_page_name, = conn.execute("select name from flashcardpage where name=? and user_id=?", (page_name, user_id)).fetchone() or (None,)
+        if db_page_name is None:
+            conn.execute("insert into flashcardpage(user_id, name, current) values (?,?,1)", (user_id, page_name))
+        else:
+            conn.execute("update flashcardpage set current=1 where user_id=? and name=?", (user_id, page_name))
+        conn.execute("end transaction")
+
+    await send(f"Your current flashcard page is now {page_name!r}")
+
 async def exportflashcards(update, context):
     query = ('select sentence, translation from flashcard where user_id=?', (update.message.from_user.id,))
     lines = simple_sql(query)
@@ -721,6 +750,13 @@ def migration6():
         conn.execute("create table Flashcard(user_id, sentence, translation)")
         conn.execute("end transaction")
 
+def migration7():
+    with sqlite3.connect('db.sqlite') as conn:
+        conn.execute("begin transaction")
+        conn.execute("create table FlashcardPage(user_id, name, current)")
+        conn.execute("alter table Flashcard add page_name default '1'")
+        conn.execute("end transaction")
+
 def get_latest_euro_rates_from_api() -> json:
     import requests
     from telegram_settings_local import FIXER_TOKEN
@@ -997,6 +1033,7 @@ if __name__ == '__main__':
     application.add_handler(CommandHandler('chatsettings', chatsettings))
     application.add_handler(CommandHandler('delchatsettings', delchatsettings))
     application.add_handler(CommandHandler('flashcard', flashcard))
+    application.add_handler(CommandHandler('switchpageflashcard', switchpageflashcard))
     application.add_handler(CommandHandler('exportflashcards', exportflashcards))
     application.add_handler(ConversationHandler(
         entry_points=[CommandHandler('practiceflashcards', practiceflashcards)],
