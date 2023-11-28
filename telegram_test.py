@@ -26,6 +26,9 @@ MONEY_CURRENCIES_ALIAS = {
     "euro": "eur",
     "euros": "eur",
     "€": "eur",
+    "₺": "try",
+    "try": "try",
+    "lira": "try",
     "brl": "brl",
     "real": "brl",
     "reais": "brl",
@@ -108,6 +111,11 @@ async def on_message(update: Update, context: CallbackContext):
 async def caps(update: Update, context: CallbackContext):
     text_caps = str(context.args).upper()
     await context.bot.send_message(chat_id=update.effective_chat.id, text=text_caps)
+
+async def uniline(update, context):
+    S = map(unilinetext, context.args)
+    send = make_send(update, context)
+    await send('\n\n'.join(S))
 
 async def ru(update: Update, context: CallbackContext):
     async def send(m):
@@ -1071,6 +1079,7 @@ if __name__ == '__main__':
         fallbacks=[]
     ), group=1)
     application.add_handler(CommandHandler('help', help))
+    application.add_handler(CommandHandler('uniline', uniline))
 
     application.add_error_handler(general_error_callback)
     
