@@ -413,14 +413,21 @@ class DatetimeText:
     days_french = "lundi mardi mercredi jeudi vendredi samedi dimanche".split()
     
     @classmethod
+    def to_datetime_range(self, name, *, time=None, reference=None, tz=None):
+        from datetime import datetime as Datetime, time as Time
+        date, date_end = r = self.to_date_range(name, reference=reference, tz=tz)
+        datetime = Datetime.combine(date, time or Time(0,0)).replace(tzinfo=tz)
+        return datetime, date_end
+
+    @classmethod
     def to_date_range(self, name, *, reference=None, tz=None) -> date:
-        from datetime import datetime, timedelta, date
+        from datetime import datetime, timedelta, date, date as Date
         reference = reference or datetime.now().astimezone(ZoneInfo("Europe/Brussels") if tz is None else tz).replace(tzinfo=None)
         today = reference.date()
         name = name.lower()
         
         if match := re.match("(\d{4})-(\d{2})-(\d{2})", name):
-            day = datetime(*map(int, match.groups()))
+            day = date(*map(int, match.groups()))
             return day, day + timedelta(days=1)
         
         if name in ("today", "auj", "aujourdhui", "aujourd'hui"):
@@ -578,7 +585,7 @@ async def timedifference(update, context, command):
              context.args[di])
     dtunits = conversions[units]
     eventkey, = context.args
-    event: datetime = fetch_event(eventkey) or DatetimeText.to_date_range(eventkey)[0]
+    event: datetime = fetch_event(eventkey) or DatetimeText.to_datetime_range(eventkey)[0]
     delta = event - datetime.now()
     if command == 'timesince':
         delta = -delta
