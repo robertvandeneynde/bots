@@ -418,6 +418,11 @@ class DatetimeText:
         reference = reference or datetime.now().astimezone(ZoneInfo("Europe/Brussels") if tz is None else tz).replace(tzinfo=None)
         today = reference.date()
         name = name.lower()
+        
+        if match := re.match("(\d{4})-(\d{2})-(\d{2})", name):
+            day = datetime(*map(int, match.groups()))
+            return day, day + timedelta(days=1)
+        
         if name in ("today", "auj", "aujourdhui", "aujourd'hui"):
             return today, today + timedelta(days=1)
         
@@ -429,7 +434,6 @@ class DatetimeText:
         if name in ("tomorrow", "demain"):
             return today + timedelta(days=1), today + timedelta(days=2)
         
-        # TODO : add few letters for days
         if name in self.days_french:
             i = self.days_french.index(name)
         elif name in self.days_english:
