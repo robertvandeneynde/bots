@@ -28,6 +28,7 @@ MONEY_CURRENCIES_ALIAS = {
     "€": "eur",
     "₺": "try",
     "try": "try",
+    "tl": "try",
     "lira": "try",
     "brl": "brl",
     "real": "brl",
