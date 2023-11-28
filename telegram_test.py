@@ -542,6 +542,59 @@ async def list_events(update: Update, context: CallbackContext):
                         for has_hour in [True])
         await send(msg or "No events for that day !")
 
+def n_to_1_dict(x:dict|Iterable):
+    gen = x.items() if isinstance(x, dict) else x
+    
+    def is_cool_iterable(it):
+        import collections.abc
+        return (isinstance(it, collections.abc.Sequence) 
+          and not isinstance(it, str))
+
+    d = {}
+    for key, value in gen:
+        if is_cool_iterable(key):
+            for v in key:
+                d[v] = value
+        else:
+            d[key] = value
+    return d
+
+def fetch_event(key):
+    return None
+
+async def timedifference(update, context, command):
+    from datetime import timedelta, datetime
+    send = make_send(update, context)
+    conversions = n_to_1_dict({
+        ('minutes', 'min', 'minute'): timedelta(minutes=1), 
+        ('days', 'day'): timedelta(days=1),
+        ('h', 'hours', 'hour'): timedelta(hours=1),
+        ('s', 'seconds', 'second'): timedelta(seconds=1),
+        ('weeks', 'week'): timedelta(weeks=1),
+    })
+    is_timedelta = re.compile('|'.join(map(re.escape, conversions)))
+    di = next((i for i, x in enumerate(context.args) if is_timedelta.fullmatch(x)), None)
+    units = ('days' if di is None else
+             context.args[di])
+    dtunits = conversions[units]
+    eventkey, = context.args
+    event: datetime = fetch_event(eventkey) or DatetimeText.to_date_range(eventkey)[0]
+    delta = event - datetime.now()
+    if command == 'timesince':
+        delta = -delta
+    await send('{:.2f} {}'.format(delta / dtunits, units))
+
+async def timeuntil(update, context):
+    return await timedifference(update, context, command='timeuntil')
+
+async def timesince(update, context):
+    return await timedifference(update, context, command='timesince')
+
+async def deletevent(update, context):
+    send = make_send(update, context)
+    key, = context.args
+    await send("Not implemented yet!")
+
 def get_my_timezone_from_timezone_table(user_id) -> ZoneInfo:
     query = ("""SELECT timezone FROM UserTimezone WHERE user_id=?""", (user_id,))
     with sqlite3.connect('db.sqlite') as conn:
@@ -1085,6 +1138,8 @@ if __name__ == '__main__':
     ), group=1)
     application.add_handler(CommandHandler('help', help))
     application.add_handler(CommandHandler('uniline', uniline))
+    application.add_handler(CommandHandler('timeuntil', timeuntil))
+    application.add_handler(CommandHandler('timesince', timesince))
 
     application.add_error_handler(general_error_callback)
     
