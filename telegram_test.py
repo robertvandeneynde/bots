@@ -113,10 +113,24 @@ async def caps(update: Update, context: CallbackContext):
     text_caps = str(context.args).upper()
     await context.bot.send_message(chat_id=update.effective_chat.id, text=text_caps)
 
+def unilinetext(x):
+    import unicodedata
+    return "U+{} {} {}".format(str(ord(x)).zfill(4), x, unicodedata.name(x, '?'))
+
 async def uniline(update, context):
-    S = map(unilinetext, context.args)
     send = make_send(update, context)
-    await send('\n\n'.join(S))
+    for arg in context.args:
+        S = map(unilinetext, arg)
+        send = make_send(update, context)
+        await send('\n\n'.join(S))
+
+async def nuniline(update, context):
+    send = make_send(update, context)
+    nonascii = lambda x: ord(x) > 0x7F
+    for arg in context.args:
+        S = map(unilinetext, filter(nonascii, arg))
+        send = make_send(update, context)
+        await send('\n\n'.join(S) or '[]')
 
 async def ru(update: Update, context: CallbackContext):
     async def send(m):
@@ -1145,6 +1159,7 @@ if __name__ == '__main__':
     ), group=1)
     application.add_handler(CommandHandler('help', help))
     application.add_handler(CommandHandler('uniline', uniline))
+    application.add_handler(CommandHandler('nuniline', nuniline))
     application.add_handler(CommandHandler('timeuntil', timeuntil))
     application.add_handler(CommandHandler('timesince', timesince))
 
