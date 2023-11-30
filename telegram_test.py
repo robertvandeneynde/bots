@@ -779,7 +779,7 @@ async def settings_command(update: Update, context: CallbackContext, *, command_
     key, *rest = context.args
 
     if key not in accepted_settings:
-        return await send(f'Unknown settings: {key!r}\nType /listallsettings for complete list of settings (hidden command)')
+        return await send(f'Unknown settings: {key!r}\n\nType /listallsettings for complete list of settings (hidden command)')
 
     if key == 'money.currencies':
         value = list(rest)
