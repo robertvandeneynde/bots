@@ -759,6 +759,13 @@ def read_settings(key, *, id, settings_type:'chat' | 'user'):
         results = cursor.execute(*query).fetchall()
         return conversion(results[0][0]) if results else None
 
+async def listallsettings(update: Update, context: CallbackContext):
+    send = make_send(update, context)
+    await send('\n'.join("- {} ({})".format(
+            setting,
+            '|'.join(['user'] * (setting in ACCEPTED_SETTINGS_USER) + ['chat'] * (setting in ACCEPTED_SETTINGS_CHAT)))
+        for setting in sorted(ACCEPTED_SETTINGS_USER + ACCEPTED_SETTINGS_CHAT)))
+
 async def settings_command(update: Update, context: CallbackContext, *, command_name: str, settings_type:'chat' | 'user', accepted_settings:list[str]):
     async def send(m):
         await context.bot.send_message(text=m, chat_id=update.effective_chat.id)
@@ -772,7 +779,7 @@ async def settings_command(update: Update, context: CallbackContext, *, command_
     key, *rest = context.args
 
     if key not in accepted_settings:
-        return await send(f'Unknown settings: {key!r}')
+        return await send(f'Unknown settings: {key!r}\nType /listallsettings for complete list of settings (hidden command)')
 
     if key == 'money.currencies':
         value = list(rest)
@@ -1157,6 +1164,7 @@ if __name__ == '__main__':
     application.add_handler(CommandHandler('rub', rub))
     application.add_handler(CommandHandler('convertmoney', convertmoney))
     application.add_handler(CommandHandler('mytimezone', mytimezone))
+    application.add_handler(CommandHandler('listallsettings', listallsettings))
     application.add_handler(CommandHandler('settings', settings))
     application.add_handler(CommandHandler('delsettings', delsettings))
     application.add_handler(CommandHandler('chatsettings', chatsettings))
