@@ -878,12 +878,6 @@ def migration7():
         conn.execute("alter table Flashcard add page_name default '1'")
         conn.execute("end transaction")
 
-def migration8():
-    with sqlite3.connect('db.sqlite') as conn:
-        conn.execute('begin transaction')
-        conn.execute('alter table Events add column user_id')
-        conn.execute('end transaction')
-
 def get_latest_euro_rates_from_api() -> json:
     import requests
     from telegram_settings_local import FIXER_TOKEN
