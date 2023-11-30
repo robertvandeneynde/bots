@@ -1028,7 +1028,8 @@ async def log_error(error, send):
 
 async def general_error_callback(update:Update, context:CallbackContext):
     async def send(m):
-        await context.bot.send_message(text=m, chat_id=update.effective_chat.id)
+        if update and update.effective_chat:
+            await context.bot.send_message(text=m, chat_id=update.effective_chat.id)
     
     return await log_error(context.error, send)
 
