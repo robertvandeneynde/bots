@@ -1118,6 +1118,10 @@ COMMAND_DESC = {
     "exportflashcards": "Export your flashcards in excel format",
     "praticeflashcards": "Practice your flashcards to train your memory",
     "switchpageflashcard": "Switch to a page to group your flashcards",
+    "uniline": "Describe in Unicode each character or symbol or emoji",
+    "nuniline": "Describe in Unicode each non ascii character or symbol or emoji",
+    "timeuntil": "Tell the time until an event",
+    "timesince": "Tell the elapsed time since an event",
 }
 
 COMMAND_LIST = (
@@ -1129,6 +1133,7 @@ COMMAND_LIST = (
     'mytimezone', 'settings', 'delsettings', 'chatsettings', 'delchatsettings',
     'flashcard', 'exportflashcards', 'practiceflashcards', 'switchpageflashcard',
     'help',
+    'uniline', 'nuniline',
 )
 
 if __name__ == '__main__':
