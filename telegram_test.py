@@ -71,7 +71,7 @@ async def hello_responder(msg:str, send:'async def', *, update, context):
         if msg.lower().startswith("hello"):
             await send("Hello my loukoum !")
         if all(word in msg.lower() for word in ('bebeğimin', 'botu')):
-            await send("İyi günler Loukoum ! 🍬")
+            await send("İyi günler Loukoum ! Çok tatlısın 🍬")
     elif user.id == FRIENDS_USER.get(FriendsUser.FLOCON):
         if msg.lower().startswith("hello"):
             await send("Bonjour flocon ! J'espère que ta journée sera artistique !")
