@@ -75,6 +75,9 @@ async def hello_responder(msg:str, send:'async def', *, update, context):
     elif user.id == FRIENDS_USER.get(FriendsUser.FLOCON):
         if msg.lower().startswith("hello"):
             await send("Bonjour flocon ! J'espère que ta journée sera artistique !")
+    elif user.id == FRIENDS_USER.get(FriendsUser.JOKÈRE):
+        if msg.lower().startswith("hello"):
+            await send("Ʒokère ! Nous nous retrouvons ! Pas de spam en public !")
     else:
         if msg.lower().startswith("hello"):
             await send("Hello ! :3")
