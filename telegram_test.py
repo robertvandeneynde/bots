@@ -67,8 +67,10 @@ def strip_botname(update: Update, context: CallbackContext):
 
 async def hello_responder(msg:str, send:'async def', *, update, context):
     if update.effective_user.id == FRIENDS_USER.get(FriendsUser.LOUKOUM):
+        if msg.lower().startswith("hello"):
+            await send("Hello my loukoum !")
         if all(word in msg.lower() for word in ('bebeğimin', 'botu')):
-            return await send("İyi günler Loukoum ! 🍬")
+            await send("İyi günler Loukoum ! 🍬")
     else:
         if msg.lower().startswith("hello"):
             await send("Hello ! :3")
