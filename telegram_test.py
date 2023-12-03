@@ -5,6 +5,13 @@ from telegram.ext import ApplicationBuilder, CallbackContext, CommandHandler, Me
 from telegram.ext import filters
 from telegram.constants import ChatType
 from telegram_settings_local import TOKEN
+from telegram_settings_local import FRIENDS_USER
+
+import enum
+class FriendsUser(enum.StrEnum):
+    FLOCON = 'flocon'
+    LOUKOUM = 'loukoum'
+    JOKÈRE = 'jokère'
 
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
@@ -59,8 +66,13 @@ def strip_botname(update: Update, context: CallbackContext):
     return update.message.text.strip()
 
 async def hello_responder(msg:str, send:'async def', *, update, context):
-    if msg.lower().startswith("hello"):
-        await send("Hello ! :3")
+    print(FRIENDS_USER)
+    if update.effective_user.id == FRIENDS_USER.get(FriendsUser.LOUKOUM):
+        if all(word for word in ('bebeğimin', 'botu')):
+            return await send("İyi günler Loukoum ! 🍬")
+    else:
+        if msg.lower().startswith("hello"):
+            await send("Hello ! :3")
 
 def detect_currencies(msg: str):
     return [(value, MONEY_CURRENCIES_ALIAS[currency_raw.lower()]) for value, currency_raw in MONEY_RE.findall(msg)]
