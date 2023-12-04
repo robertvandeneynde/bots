@@ -1203,3 +1203,25 @@ if __name__ == '__main__':
     application.add_error_handler(general_error_callback)
     
     application.run_polling()
+
+def sommeil(s):
+    if m := re.match("/sommeil(.*)", s):
+        s = m.group(1)
+    args = s.split()
+    a,tiret,b = args
+    assert tiret == '-'
+    a = map(int, a.split(":"))
+    b = map(int, b.split(":"))
+    ax,ay = a
+    bx,by = b
+    from datetime import time
+    at = time(hour=ax, minute=ay)
+    bt = time(hour=bx, minute=by)
+    now = datetime.now().astimezone()
+    adt = datetime.combine(now, at)
+    bdt = datetime.combine(now, bt)
+    if not adt < bdt:
+        adt -= timedelta(days=1)
+    assert adt < bdt
+    return bdt - adt
+    
