@@ -190,7 +190,7 @@ def make_read_chat_settings(update: Update, context: CallbackContext):
     from functools import partial
     return partial(read_settings, id=update.effective_chat.id, settings_type='chat')
 
-async def dict_command(update: Update, context: CallbackContext, *, engine:'wikt' | 'larousse', command_name:str):
+async def dict_command(update: Update, context: CallbackContext, *, engine:'wikt' | 'larousse' | 'glosbe', command_name:str):
     async def send(m):
         await context.bot.send_message(text=m, chat_id=update.effective_chat.id)
     read_my_settings = make_read_my_settings(update, context)
@@ -257,6 +257,8 @@ async def dict_command(update: Update, context: CallbackContext, *, engine:'wikt
     elif engine == 'larousse':
         target_lang = LAROUSSE_LANGUAGES.get('fr', {}).get(target_lang or 'fr', target_lang)
         base_lang = LAROUSSE_LANGUAGES.get('fr', {}).get(base_lang or 'fr', base_lang)
+    elif engine == 'glosbe':
+        pass
 
     # url maker
     if engine == 'wikt':
@@ -275,6 +277,10 @@ async def dict_command(update: Update, context: CallbackContext, *, engine:'wikt
             f'https://larousse.fr/dictionnaires/{target_lang}/{x}' if target_lang == base_lang else 
             f'https://larousse.fr/dictionnaires/{target_lang}-{base_lang}/{x}'
         )
+    elif engine == 'glosbe':
+      def url(x):
+        x = x.lower()
+        return f'https://glosbe.com/{target_lang}/{base_lang}/{x}'
 
     return await send('\n\n'.join(url(x) for x in words))
 
