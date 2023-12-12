@@ -537,6 +537,32 @@ async def add_event(update: Update, context: CallbackContext):
         f"Time: {time:%H:%M}" if time else None
     ])))
 
+def sommeil(s, *, command) -> (datetime, datetime):
+    if m := re.match("/%s (.*)" % command, s):
+        s = m.group(1)
+    args = s.split()
+    a,tiret,b = args
+    assert tiret == '-'
+    a = map(int, a.split(":"))
+    b = map(int, b.split(":"))
+    ax,ay = a
+    bx,by = b
+    from datetime import time
+    at = time(hour=ax, minute=ay)
+    bt = time(hour=bx, minute=by)
+    now = datetime.now().astimezone()
+    adt = datetime.combine(now, at)
+    bdt = datetime.combine(now, bt)
+    if not adt < bdt:
+        adt -= timedelta(days=1)
+    assert adt < bdt
+    return adt, bdt
+
+async def sleep_(update, context):
+    send = make_send(update, context)
+    from_dt, to_dt = sommeil(update.effective_message.text, command='sleep')
+    await send(str(to_dt - from_dt))
+    
 async def list_events(update: Update, context: CallbackContext):
     async def send(m):
         await context.bot.send_message(text=m, chat_id=update.effective_chat.id)
@@ -1144,6 +1170,7 @@ COMMAND_DESC = {
     "nuniline": "Describe in Unicode each non ascii character or symbol or emoji",
     "timeuntil": "Tell the time until an event",
     "timesince": "Tell the elapsed time since an event",
+    "sleep": "Record personal sleep cycle and make graphs", 
 }
 
 COMMAND_LIST = (
@@ -1156,6 +1183,7 @@ COMMAND_LIST = (
     'flashcard', 'exportflashcards', 'practiceflashcards', 'switchpageflashcard',
     'help',
     'uniline', 'nuniline',
+    #'sleep',
 )
 
 if __name__ == '__main__':
@@ -1199,29 +1227,9 @@ if __name__ == '__main__':
     application.add_handler(CommandHandler('nuniline', nuniline))
     application.add_handler(CommandHandler('timeuntil', timeuntil))
     application.add_handler(CommandHandler('timesince', timesince))
+    #application.add_handler(CommandHandler('sleep', sleep_))
 
     application.add_error_handler(general_error_callback)
     
     application.run_polling()
 
-def sommeil(s):
-    if m := re.match("/sommeil(.*)", s):
-        s = m.group(1)
-    args = s.split()
-    a,tiret,b = args
-    assert tiret == '-'
-    a = map(int, a.split(":"))
-    b = map(int, b.split(":"))
-    ax,ay = a
-    bx,by = b
-    from datetime import time
-    at = time(hour=ax, minute=ay)
-    bt = time(hour=bx, minute=by)
-    now = datetime.now().astimezone()
-    adt = datetime.combine(now, at)
-    bdt = datetime.combine(now, bt)
-    if not adt < bdt:
-        adt -= timedelta(days=1)
-    assert adt < bdt
-    return bdt - adt
-    
