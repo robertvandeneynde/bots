@@ -135,7 +135,7 @@ async def caps(update: Update, context: CallbackContext):
 
 def unilinetext(x):
     import unicodedata
-    return "U+{} {} {}".format(str(ord(x)).zfill(4), x, unicodedata.name(x, '?'))
+    return "U+{} {} {}".format(hex(ord(x))[2:].upper().zfill(4), x, unicodedata.name(x, '?'))
 
 async def uniline(update, context):
     send = make_send(update, context)
