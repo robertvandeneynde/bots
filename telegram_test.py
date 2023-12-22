@@ -139,16 +139,18 @@ def unilinetext(x):
 
 async def uniline(update, context):
     send = make_send(update, context)
-    for arg in context.args:
+    reply = update.message.reply_to_message
+    for arg in ([reply.text] if reply else []) + list(context.args):
         S = map(unilinetext, arg)
-        await send('\n\n'.join(S))
+        await send('\n'.join(S) or '[]')
 
 async def nuniline(update, context):
     send = make_send(update, context)
     nonascii = lambda x: ord(x) > 0x7F
-    for arg in context.args:
+    reply = update.message.reply_to_message
+    for arg in ([reply.text] if reply else []) + list(context.args):
         S = map(unilinetext, filter(nonascii, arg))
-        await send('\n\n'.join(S) or '[]')
+        await send('\n'.join(S) or '[]')
 
 async def ru(update: Update, context: CallbackContext):
     async def send(m):
