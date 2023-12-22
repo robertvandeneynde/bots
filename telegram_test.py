@@ -140,6 +140,8 @@ def unilinetext(x):
 async def uniline(update, context):
     send = make_send(update, context)
     reply = update.message.reply_to_message
+    if not reply and not context.args:
+        return await send("Usage: /uniline word1 word2\nCan also be used on a reply message")
     for arg in ([reply.text] if reply else []) + list(context.args):
         S = map(unilinetext, arg)
         await send('\n'.join(S) or '[]')
@@ -148,6 +150,8 @@ async def nuniline(update, context):
     send = make_send(update, context)
     nonascii = lambda x: ord(x) > 0x7F
     reply = update.message.reply_to_message
+    if not reply and not context.args:
+        return await send("Usage: /nuniline word1 word2\nCan also be used on a reply message")
     for arg in ([reply.text] if reply else []) + list(context.args):
         S = map(unilinetext, filter(nonascii, arg))
         await send('\n'.join(S) or '[]')
