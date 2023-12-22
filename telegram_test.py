@@ -201,7 +201,7 @@ async def dict_command(update: Update, context: CallbackContext, *, engine:'wikt
 
     if not context.args:
         if not update.message.reply_to_message:
-            return await send(f"Usage: /{command_name} word1 word2 word3...")
+            return await send(f"Usage: /{command_name} word1 word2 word3...\nCan also be used on a reply message")
 
     is_reply = False
     if update.message.reply_to_message:
@@ -328,7 +328,7 @@ async def flashcard(update, context):
         
         sentence, translation = find_sentence_translation(context.args)
     except UsageError:
-        return await send("Usage:\n/flashcard word translation\n/flashcard words+ / translation+")
+        return await send("Usage:\n/flashcard word translation\n/flashcard words+ / translation+\nCan also be used on a reply message to replace the words")
     
     user_id = update.effective_user.id
     page_name = get_current_flashcard_page(user_id)
@@ -403,8 +403,8 @@ async def switchpageflashcard(update, context):
     send = make_send(update, context)
     try:
         page_name, = context.args
-    except UsageError:
-        return await send("Usage")
+    except:
+        return await send("Usage: /switchpageflashcard page_name")
 
     user_id = update.effective_user.id
 
