@@ -141,7 +141,6 @@ async def uniline(update, context):
     send = make_send(update, context)
     for arg in context.args:
         S = map(unilinetext, arg)
-        send = make_send(update, context)
         await send('\n\n'.join(S))
 
 async def nuniline(update, context):
@@ -149,7 +148,6 @@ async def nuniline(update, context):
     nonascii = lambda x: ord(x) > 0x7F
     for arg in context.args:
         S = map(unilinetext, filter(nonascii, arg))
-        send = make_send(update, context)
         await send('\n\n'.join(S) or '[]')
 
 async def ru(update: Update, context: CallbackContext):
