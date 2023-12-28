@@ -1110,6 +1110,7 @@ async def convertmoney(update, context):
 
 async def sharemoney(update, context):
     send = make_send(update, context)
+    Args = GetOrEmpty(context.args)
     on_off, = context.args
     try:
         if on_off == 'on':
@@ -1120,6 +1121,34 @@ async def sharemoney(update, context):
             raise UsageError
     except UsageError:
         return await send('Usage: /sharemoney on|off')
+
+async def listdebts(update, context):
+    send = make_send(update, context)
+    chat_id = update.effective_chat.id
+    lines = simple_sql('select debitor_id, creditor_id, chat_id, amount, currency from NamedChatDept where chat_id=?', chat_id)
+    debts_sum = {}
+    
+    for debt in map(NamedChatDebt(*x) for x in lines):
+        if debt.currency:
+            return await send("I cannot deal with debt with currencies atm...")
+        
+        if (debt.debitor_id, debt.creditor_id) in debts_sum or (debt.creditor_id, debt.debitor_id) in debts_sum:
+            key = ((debt.debitor_id, debt.creditor_id) if (debt.debitor_id, debt.creditor_id) in debts_sum else
+                   ((debt.creditor_id, debt.debitor_id) in debts_sum))
+            
+            sign = (+1 if (debt.debitor_id, debt.creditor_id) in debts_sum else
+                    -1)
+            
+            debts_sum[key] += sign * Decimal(debt.amount)
+        else:
+            debts_sum[debt.debitor_id, debt.creditor_id] = Decimal(debt.amount)
+    
+    return await send('\n'.join(
+        ("{0} owes {1} {2}" if amount > 0 else
+         "{1} owes {0} {2}" if amount < 0 else
+         "{0} and {1} are even").format(debitor, creditor, amount)
+        for (debitor, creditor), amount in debts_sum.items()))
+    
 
 async def help(update, context):
     async def send(m):
@@ -1245,7 +1274,8 @@ COMMAND_DESC = {
     "timeuntil": "Tell the time until an event",
     "timesince": "Tell the elapsed time since an event",
     "sleep": "Record personal sleep cycle and make graphs", 
-    "sharemoney": "Manage money between users (shared bank account)",
+    "sharemoney": "Manage money between users (shared bank account, add a debt)",
+    "listdebts": "List debts between users (sharemoney)",
 }
 
 COMMAND_LIST = (
@@ -1259,7 +1289,7 @@ COMMAND_LIST = (
     'help',
     'uniline', 'nuniline',
     #'sleep',
-    'sharemoney',
+    'sharemoney', 'listdebts',
 )
 
 if __name__ == '__main__':
