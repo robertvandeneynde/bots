@@ -137,6 +137,9 @@ async def sharemoney_responder(msg:str, send:'async def', *, update, context):
         simple_sql(
             'insert into NamedChatDept(debitor_id, creditor_id, chat_id, amount, currency) values (?,?,?,?,?)',
             (debt.debitor_id, debt.creditor_id, debt.chat_id, debt.amount, debt.currency))
+        
+        return await send('Debt "{d.debitor} owes {d.creditor} {d.amount}" created' if not debt.currency else
+                          'Debt "{d.debitor} owes {d.creditor} {d.amount} {d.amount}" created')
 
 RESPONDERS = (hello_responder, money_responder, sharemoney_responder)
 
