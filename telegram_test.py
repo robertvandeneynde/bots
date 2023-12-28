@@ -101,7 +101,44 @@ async def money_responder(msg:str, send:'async def', *, update, context):
                 amounts_converted = [convert_money(amount_base, currency_base=currency, currency_converted=currency_to_convert, rates=rates) for currency_to_convert in currencies_to_convert]
                 await send(format_currency(currency_list=[currency] + currencies_to_convert, amount_list=[amount_base] + amounts_converted))
 
-RESPONDERS = (hello_responder, money_responder)
+import abc
+class GetOrEmpty(abc.Sequence):
+    def __init__(self, proxy):
+        self.proxy = proxy
+
+    def __getitem__(self, i):
+        return get_or_empty(self.proxy, i)
+
+    def __len__(self):
+        return self.proxy.__len__()
+
+NamedChatDebt = namedtuple('NamedChatDebt', 'chat_id, debitor_id, creditor_id, amount, currency')
+
+async def sharemoney_responder(msg:str, send:'async def', *, update, context):
+    chat_id = update.effective_chat.id
+    read_chat_settings = make_read_chat_settings(update, context)
+
+    if read_chat_settings('sharemoney.active').lower() != 'on':
+        return
+    
+    name = re.compile("\p{L}\w*")
+    amount = re.compile("\\d+")
+    Args = GetOrEmpty(context.args)
+    if name.fullmatch(Args[0]) and 'owes' == Args[1] and name.fullmatch(Args[2]) and amount.fullmatch(Args[3]) and len(Args) == 4:
+        first_name, _, second_name, amount_str = Args
+        
+        debt = NamedChatDebt(
+            debitor_id=first_name,
+            creditor_id=second_name,
+            chat_id=chat_id,
+            amount=int(amount_str),
+            currency=None)
+        
+        simple_sql(
+            'insert into NamedChatDept(debitor_id, creditor_id, chat_id, amount, currency) values (?,?,?,?,?)',
+            (debt.debitor_id, debt.creditor_id, debt.chat_id, debt.amount, debt.currency))
+
+RESPONDERS = (hello_responder, money_responder, sharemoney_responder)
 
 async def on_message(update: Update, context: CallbackContext):
     async def send(m):
@@ -500,9 +537,12 @@ class DatetimeText:
         end = beg + timedelta(days=1)
         return beg, end
 
+from collections import namedtuple
+ParsedEvent = namedtuple('ParsedEvent', 'date time name')
+
 def parse_event(args) -> (str, time | None, str):
-    from datetime import date as Date, time as Time
-    
+    from datetime import date as Date, time as Time, timedelta as Timedelta
+
     date, *rest = args
     if match := re.compile('(\\d{1,2})[:hH](\\d{2})?').fullmatch(get_or_empty(rest, 0)):
         hours, minutes = match.group(1), match.group(2)
@@ -511,12 +551,12 @@ def parse_event(args) -> (str, time | None, str):
     else:
         time = None
     name = " ".join(rest)
-    return date, time, name
+
+    return ParsedEvent(date, time, name)
 
 import sqlite3
 async def add_event(update: Update, context: CallbackContext):
-    async def send(m):
-        await context.bot.send_message(text=m, chat_id=update.effective_chat.id)
+    send = make_send(update, context)
     if not context.args:
         return await send("Usage: /addevent date name")
     from datetime import datetime as Datetime, time as Time, date as Date, timedelta
@@ -761,6 +801,7 @@ ACCEPTED_SETTINGS_USER = (
 )
 ACCEPTED_SETTINGS_CHAT = (
     'money.currencies',
+    'sharemoney.active',
 )
 
 def CONVERSION_SETTINGS_BUILDER():
@@ -934,6 +975,13 @@ def migration7():
         conn.execute("alter table Flashcard add page_name default '1'")
         conn.execute("end transaction")
 
+def migration8():
+    with sqlite3.connect('db.sqite') as conn:
+        conn.execute('begin transaction')
+        conn.execute("create table NamedChatDebt(chat_id, debitor_id, creditor_id, amount, currency)") # debitor owes creditor
+        conn.execute('end transaction')
+
+
 def get_latest_euro_rates_from_api() -> json:
     import requests
     from telegram_settings_local import FIXER_TOKEN
@@ -1056,6 +1104,19 @@ async def convertmoney(update, context):
     except KeyError as e:
         raise UserError(f"Unknown currency: {e}")
     await send(format_currency(currency_list=[currency] + currencies_to_convert, amount_list=[amount_base] + amounts_converted))
+
+async def sharemoney(update, context):
+    send = make_send(update, context)
+    on_off, = context.args
+    try:
+        if on_off == 'on':
+            return await send("Run: /chatsettings sharemoney.active on")
+        elif on_off == 'off':
+            return await send("Run: /delchatsettings sharemoney.active")
+        else:
+            raise UsageError
+    except UsageError:
+        return await send('Usage: /sharemoney on|off')
 
 async def help(update, context):
     async def send(m):
@@ -1181,6 +1242,7 @@ COMMAND_DESC = {
     "timeuntil": "Tell the time until an event",
     "timesince": "Tell the elapsed time since an event",
     "sleep": "Record personal sleep cycle and make graphs", 
+    "sharemoney": "Manage money between users (shared bank account)",
 }
 
 COMMAND_LIST = (
@@ -1194,6 +1256,7 @@ COMMAND_LIST = (
     'help',
     'uniline', 'nuniline',
     #'sleep',
+    'sharemoney',
 )
 
 if __name__ == '__main__':
@@ -1225,6 +1288,7 @@ if __name__ == '__main__':
     application.add_handler(CommandHandler('flashcard', flashcard))
     application.add_handler(CommandHandler('switchpageflashcard', switchpageflashcard))
     application.add_handler(CommandHandler('exportflashcards', exportflashcards))
+    application.add_handler(CommandHandler('sharemoney', sharemoney))
     application.add_handler(ConversationHandler(
         entry_points=[CommandHandler('practiceflashcards', practiceflashcards)],
         states={
