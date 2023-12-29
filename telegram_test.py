@@ -764,10 +764,10 @@ def set_settings(*, id, key, value_raw:any, settings_type:'chat' | 'user'):
             raise ValueError("Unique constraint failed: Multiple settings for {} {} and key {!r}".format(settings_type, id, key))
         conn.execute("end transaction")
 
-def delete_settings(*, user_id, key, settings_type:'chat' | 'user'):
+def delete_settings(*, id, key, settings_type:'chat' | 'user'):
     table = SettingsInfo.TABLES[settings_type]
     field_id = SettingsInfo.FIELDS[settings_type]
-    query_delete = (f"""DELETE FROM {table} WHERE {field_id}=? and key=?""", (user_id, key))
+    query_delete = (f"""DELETE FROM {table} WHERE {field_id}=? and key=?""", (id, key))
     with sqlite3.connect('db.sqlite') as conn:
         conn.execute(*query_delete)
 
@@ -917,8 +917,15 @@ async def delsettings_command(update:Update, context: CallbackContext, *, accept
 
     if key not in accepted_settings:
         return await send(f'Unknown setting: {key!r}')
-    
-    delete_settings(user_id=update.message.from_user.id, key=key, settings_type=settings_type)
+
+    if settings_type == 'user':
+        id = update.message.from_user.id
+    elif settings_type == 'chat':
+        id = update.effective_chat.id
+    else:
+        raise ValueError(f'Invalid settings_type: {settings_type}')
+     
+    delete_settings(id=id, key=key, settings_type=settings_type)
     await send(f"Deleted settings for {key!r}")
 
 settings = partial(settings_command, accepted_settings=ACCEPTED_SETTINGS_USER, settings_type='user', command_name='settings')
