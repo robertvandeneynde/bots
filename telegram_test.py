@@ -141,8 +141,8 @@ async def sharemoney_responder(msg:str, send:'async def', *, update, context):
             'insert into NamedChatDebt(debitor_id, creditor_id, chat_id, amount, currency) values (?,?,?,?,?)',
             (debt.debitor_id, debt.creditor_id, debt.chat_id, debt.amount, debt.currency)))
         
-        return await send('Debt "{d.debitor} owes {d.creditor} {d.amount}" created' if not debt.currency else
-                          'Debt "{d.debitor} owes {d.creditor} {d.amount} {d.amount}" created')
+        return await send('Debt "{d.debitor_id} owes {d.creditor_id} {d.amount}" created'.format(d=debt) if not debt.currency else
+                          'Debt "{d.debitor_id} owes {d.creditor_id} {d.amount} {d.amount}" created'.format(d=debt))
 
 RESPONDERS = (hello_responder, money_responder, sharemoney_responder)
 
