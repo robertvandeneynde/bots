@@ -1147,9 +1147,9 @@ async def listdebts(update, context):
             debts_sum[debt.debitor_id, debt.creditor_id] = Decimal(debt.amount)
     
     return await send('\n'.join(
-        ("{0} owes {1} {2}" if amount > 0 else
-         "{1} owes {0} {2}" if amount < 0 else
-         "{0} and {1} are even").format(debitor, creditor, amount)
+        "{} owes {} {}".format(debitor, creditor, amount) if amount > 0 else
+        "{} owes {} {}".format(creditor, debitor, -amount) if amount < 0 else
+        "{} and {} are even".format(debitor, creditor)
         for (debitor, creditor), amount in debts_sum.items()))
     
 
