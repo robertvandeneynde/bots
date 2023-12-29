@@ -101,8 +101,8 @@ async def money_responder(msg:str, send:'async def', *, update, context):
                 amounts_converted = [convert_money(amount_base, currency_base=currency, currency_converted=currency_to_convert, rates=rates) for currency_to_convert in currencies_to_convert]
                 await send(format_currency(currency_list=[currency] + currencies_to_convert, amount_list=[amount_base] + amounts_converted))
 
-import abc
-class GetOrEmpty(abc.Sequence):
+import collections.abc
+class GetOrEmpty(collections.abc.Sequence):
     def __init__(self, proxy):
         self.proxy = proxy
 
@@ -112,20 +112,23 @@ class GetOrEmpty(abc.Sequence):
     def __len__(self):
         return self.proxy.__len__()
 
+from collections import namedtuple
 NamedChatDebt = namedtuple('NamedChatDebt', 'chat_id, debitor_id, creditor_id, amount, currency')
 
 async def sharemoney_responder(msg:str, send:'async def', *, update, context):
     chat_id = update.effective_chat.id
     read_chat_settings = make_read_chat_settings(update, context)
 
-    if read_chat_settings('sharemoney.active').lower() != 'on':
+    setting = read_chat_settings('sharemoney.active')
+    if not(setting and setting == 'on'):
         return
     
-    name = re.compile("\p{L}\w*")
+    import regex
+    name = regex.compile(r"\p{L}\w*")
     amount = re.compile("\\d+")
-    Args = GetOrEmpty(context.args)
+    Args = GetOrEmpty(msg.split())
     if name.fullmatch(Args[0]) and 'owes' == Args[1] and name.fullmatch(Args[2]) and amount.fullmatch(Args[3]) and len(Args) == 4:
-        first_name, _, second_name, amount_str = Args
+        first_name, _, second_name, amount_str = Args.proxy
         
         debt = NamedChatDebt(
             debitor_id=first_name,
@@ -134,9 +137,9 @@ async def sharemoney_responder(msg:str, send:'async def', *, update, context):
             amount=int(amount_str),
             currency=None)
         
-        simple_sql(
-            'insert into NamedChatDept(debitor_id, creditor_id, chat_id, amount, currency) values (?,?,?,?,?)',
-            (debt.debitor_id, debt.creditor_id, debt.chat_id, debt.amount, debt.currency))
+        simple_sql((
+            'insert into NamedChatDebt(debitor_id, creditor_id, chat_id, amount, currency) values (?,?,?,?,?)',
+            (debt.debitor_id, debt.creditor_id, debt.chat_id, debt.amount, debt.currency)))
         
         return await send('Debt "{d.debitor} owes {d.creditor} {d.amount}" created' if not debt.currency else
                           'Debt "{d.debitor} owes {d.creditor} {d.amount} {d.amount}" created')
@@ -979,7 +982,7 @@ def migration7():
         conn.execute("end transaction")
 
 def migration8():
-    with sqlite3.connect('db.sqite') as conn:
+    with sqlite3.connect('db.sqlite') as conn:
         conn.execute('begin transaction')
         conn.execute("create table NamedChatDebt(chat_id, debitor_id, creditor_id, amount, currency)") # debitor owes creditor
         conn.execute('end transaction')
@@ -1125,16 +1128,16 @@ async def sharemoney(update, context):
 async def listdebts(update, context):
     send = make_send(update, context)
     chat_id = update.effective_chat.id
-    lines = simple_sql('select debitor_id, creditor_id, chat_id, amount, currency from NamedChatDept where chat_id=?', chat_id)
+    lines = simple_sql(('select chat_id, debitor_id, creditor_id, amount, currency from NamedChatDebt where chat_id=?', (chat_id,)))
     debts_sum = {}
     
-    for debt in map(NamedChatDebt(*x) for x in lines):
+    for debt in (NamedChatDebt(*x) for x in lines):
         if debt.currency:
             return await send("I cannot deal with debt with currencies atm...")
         
         if (debt.debitor_id, debt.creditor_id) in debts_sum or (debt.creditor_id, debt.debitor_id) in debts_sum:
             key = ((debt.debitor_id, debt.creditor_id) if (debt.debitor_id, debt.creditor_id) in debts_sum else
-                   ((debt.creditor_id, debt.debitor_id) in debts_sum))
+                   (debt.creditor_id, debt.debitor_id))
             
             sign = (+1 if (debt.debitor_id, debt.creditor_id) in debts_sum else
                     -1)
@@ -1335,6 +1338,7 @@ if __name__ == '__main__':
     application.add_handler(CommandHandler('timeuntil', timeuntil))
     application.add_handler(CommandHandler('timesince', timesince))
     #application.add_handler(CommandHandler('sleep', sleep_))
+    application.add_handler(CommandHandler('listdebts', listdebts))
 
     application.add_error_handler(general_error_callback)
     
