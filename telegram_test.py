@@ -101,16 +101,12 @@ async def money_responder(msg:str, send:'async def', *, update, context):
                 amounts_converted = [convert_money(amount_base, currency_base=currency, currency_converted=currency_to_convert, rates=rates) for currency_to_convert in currencies_to_convert]
                 await send(format_currency(currency_list=[currency] + currencies_to_convert, amount_list=[amount_base] + amounts_converted))
 
-import collections.abc
-class GetOrEmpty(collections.abc.Sequence):
-    def __init__(self, proxy):
-        self.proxy = proxy
-
+class GetOrEmpty(list):
     def __getitem__(self, i):
-        return get_or_empty(self.proxy, i)
-
-    def __len__(self):
-        return self.proxy.__len__()
+        try:
+            return super().__getitem__(i)
+        except IndexError:
+            return ''
 
 from collections import namedtuple
 NamedChatDebt = namedtuple('NamedChatDebt', 'chat_id, debitor_id, creditor_id, amount, currency')
@@ -128,7 +124,7 @@ async def sharemoney_responder(msg:str, send:'async def', *, update, context):
     amount = re.compile("\\d+")
     Args = GetOrEmpty(msg.split())
     if name.fullmatch(Args[0]) and 'owes' == Args[1] and name.fullmatch(Args[2]) and amount.fullmatch(Args[3]) and len(Args) == 4:
-        first_name, _, second_name, amount_str = Args.proxy
+        first_name, _, second_name, amount_str = Args
         
         debt = NamedChatDebt(
             debitor_id=first_name,
