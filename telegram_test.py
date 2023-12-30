@@ -394,6 +394,13 @@ def simple_sql(query):
     with sqlite3.connect("db.sqlite") as conn:
         return conn.execute(*query).fetchall()
 
+def simple_sql_dict(query):
+    assert isinstance(query, (tuple, list))
+    assert isinstance(query[1], (tuple, list))
+    with sqlite3.connect("db.sqlite") as conn:
+        conn.row_factory = sqlite3.Row
+        return conn.execute(*query).fetchall()
+
 async def practiceflashcards(update, context):
     async def send(m):
         await context.bot.send_message(text=m, chat_id=update.effective_chat.id)
@@ -1131,10 +1138,10 @@ async def sharemoney(update, context):
 async def listdebts(update, context):
     send = make_send(update, context)
     chat_id = update.effective_chat.id
-    lines = simple_sql(('select chat_id, debitor_id, creditor_id, amount, currency from NamedChatDebt where chat_id=?', (chat_id,)))
+    lines = simple_sql_dict(('select chat_id, debitor_id, creditor_id, amount, currency from NamedChatDebt where chat_id=?', (chat_id,)))
     debts_sum = {}
     
-    for debt in (NamedChatDebt(*x) for x in lines):
+    for debt in (NamedChatDebt(**x) for x in lines):
         if debt.currency:
             return await send("I cannot deal with debt with currencies atm...")
         
