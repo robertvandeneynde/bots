@@ -119,18 +119,72 @@ async def sharemoney_responder(msg:str, send:'async def', *, update, context):
     if not(setting and setting == 'on'):
         return
     
+    def Amount():
+        from pyparsing import Word, nums, infix_notation, opAssoc, one_of
+
+        class EvalConstant:
+            def __init__(self, tokens):
+                self.value = tokens[0]
+
+            def eval(self):
+                return int(self.value)
+            
+        class EvalOne:
+            SIGNS = {"+": 1, "-": -1}
+            def __init__(self, tokens) -> None:
+                self.sign, self.value = tokens[0]
+
+            def eval(self):
+                return self.SIGNS[self.sign] * self.value.eval()
+        
+        def operator_operands(tokenlist):
+            """ generator to extract operators and operands in pairs """
+            it = iter(tokenlist)
+            while True:
+                try:
+                    yield (next(it), next(it))
+                except StopIteration:
+                    break
+
+        class EvalTwo:
+            OPS = {
+                '+': lambda x,y: x+y,
+                '-': lambda x,y: x-y,
+                '*': lambda x,y: x*y,
+                '/': lambda x,y: x/y,
+            }
+            def __init__(self, tokens):
+                self.value = tokens[0]
+            
+            def eval(self):
+                acc = self.value[0].eval()
+                for op, val in operator_operands(self.value[1:]):
+                    acc = self.OPS[op](acc, val.eval())
+                return acc
+
+
+        arithmetics = infix_notation(
+            Word(nums).set_parse_action(EvalConstant),
+            [
+                (one_of("+ -"), 1, opAssoc.RIGHT, EvalOne),
+                (one_of("* /"), 2, opAssoc.LEFT, EvalTwo),
+                (one_of("+ -"), 2, opAssoc.LEFT, EvalTwo),
+            ]
+        )
+        return arithmetics
+
     import regex
     name = regex.compile(r"\p{L}\w*")
-    amount = re.compile("\\d+")
+    amount = Amount()
     Args = GetOrEmpty(msg.split())
-    if name.fullmatch(Args[0]) and 'owes' == Args[1] and name.fullmatch(Args[2]) and amount.fullmatch(Args[3]) and len(Args) == 4:
+    if name.fullmatch(Args[0]) and 'owes' == Args[1] and name.fullmatch(Args[2]) and amount.matches(Args[3]) and len(Args) == 4:
         first_name, _, second_name, amount_str = Args
         
         debt = NamedChatDebt(
             debitor_id=first_name,
             creditor_id=second_name,
             chat_id=chat_id,
-            amount=int(amount_str),
+            amount=amount.parse_string(amount_str, parse_all=True)[0].eval(),
             currency=None)
         
         simple_sql((
