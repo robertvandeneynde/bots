@@ -1160,7 +1160,7 @@ async def listdebts(update, context):
         "{} owes {} {}".format(debitor, creditor, amount) if amount > 0 else
         "{} owes {} {}".format(creditor, debitor, -amount) if amount < 0 else
         "{} and {} are even".format(debitor, creditor)
-        for (debitor, creditor), amount in debts_sum.items()))
+        for (debitor, creditor), amount in debts_sum.items()) or 'No debts in this chat !')
     
 
 async def help(update, context):
