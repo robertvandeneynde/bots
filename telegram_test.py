@@ -651,13 +651,13 @@ async def add_event(update: Update, context: CallbackContext):
         f"Date: {datetime.date()} ({date_str})",
         (f"Time: {time:%H:%M} ({tz})" if chat_timezones and set(chat_timezones) != {tz} else
          f"Time: {time:%H:%M}") if time else None
-    ] + [
+    ] + ([
         f"Time: {datetime_tz:%H:%M} ({timezone})" if datetime_tz.date() == datetime.date() else
-        f"Time: {datetime_tz:%H:%M} {datetime_tz.date()} ({timezone})"
+        f"Time: {datetime_tz:%H:%M} on {datetime_tz.date()} ({timezone})"
         for timezone in chat_timezones or []
         if timezone != tz
         for datetime_tz in [datetime.astimezone(timezone)]
-    ] if time else [])))
+    ] if time else []))))
 
 def sommeil(s, *, command) -> (datetime, datetime):
     if m := re.match("/%s (.*)" % command, s):
