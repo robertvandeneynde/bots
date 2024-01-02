@@ -724,11 +724,15 @@ async def list_events(update: Update, context: CallbackContext):
         def strftime(x:datetime):
             return x.strftime("%Y-%m-%d %H:%M:%S")
         
+        read_chat_settings = make_read_chat_settings(update, context)
+        chat_timezones = read_chat_settings("event.timezone")
         msg = '\n'.join(f"{DatetimeText.days_english[date.weekday()]} {date:%d/%m}: {event}" if not has_hour else 
                         f"{DatetimeText.days_english[date.weekday()]} {date:%d/%m %H:%M}: {event}"
                         for date_utc, event in cursor.execute(*query)
                         for date in [strptime(date_utc).replace(tzinfo=ZoneInfo('UTC')).astimezone(tz)]
                         for has_hour in [True])
+        if msg and chat_timezones and set(chat_timezones) != {tz}:
+            msg += '\n\n' + f"Timezone: {tz}"
         await send(msg or "No events for that day !")
 
 def n_to_1_dict(x:dict|Iterable):
