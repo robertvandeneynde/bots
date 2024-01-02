@@ -629,7 +629,7 @@ async def add_event(update: Update, context: CallbackContext):
 
     date_str, time, name = parse_event(context.args)
 
-    tz = get_my_timezone(update.message.from_user.id)
+    tz = get_my_timezone(update.message.from_user.id) or ZoneInfo("Europe/Brussels")
     
     date, date_end = DatetimeText.to_date_range(date_str, tz=tz)
     datetime = Datetime.combine(date, time or Time(0,0)).replace(tzinfo=tz)
@@ -650,7 +650,8 @@ async def add_event(update: Update, context: CallbackContext):
         f"Date: {datetime.date()} ({date_str})",
         f"Time: {time:%H:%M}" if time else None
     ] + [
-        f"Datetime: {datetime_tz} ({timezone})" 
+        f"Time: {datetime_tz:%H:%M} ({timezone})" if datetime_tz.date() == datetime.date() else
+        f"Datetime: {datetime_tz.date()} {datetime_tz:%H:%M} ({timezone})"
         for timezone in read_chat_settings("event.timezones") or []
         for datetime_tz in [datetime.astimezone(timezone)]
     ])))
@@ -698,7 +699,7 @@ async def list_events(update: Update, context: CallbackContext):
 
     time = Time(0, 0)
 
-    tz = get_my_timezone(update.message.from_user.id)
+    tz = get_my_timezone(update.message.from_user.id) or ZoneInfo("Europe/Brussels")
     
     beg_date, end_date = DatetimeText.to_date_range(when, tz=tz)
     beg_local, end_local = Datetime.combine(beg_date, time), Datetime.combine(end_date, time)
