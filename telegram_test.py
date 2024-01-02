@@ -645,16 +645,19 @@ async def add_event(update: Update, context: CallbackContext):
         cursor.execute("INSERT INTO Events(date, name, chat_id, source_user_id) VALUES (?,?,?,?)", (strftime(datetime_utc), name, chat_id, source_user_id))
     
     read_chat_settings = make_read_chat_settings(update, context)
+    chat_timezones = read_chat_settings("event.timezones")
     await send('\n'.join(filter(None, [
         f"Event {name!r} saved",
         f"Date: {datetime.date()} ({date_str})",
-        f"Time: {time:%H:%M}" if time else None
+        (f"Time: {time:%H:%M} ({tz})" if chat_timezones and set(chat_timezones) != {tz} else
+         f"Time: {time:%H:%M}") if time else None
     ] + [
         f"Time: {datetime_tz:%H:%M} ({timezone})" if datetime_tz.date() == datetime.date() else
-        f"Datetime: {datetime_tz.date()} {datetime_tz:%H:%M} ({timezone})"
-        for timezone in read_chat_settings("event.timezones") or []
+        f"Time: {datetime_tz:%H:%M} {datetime_tz.date()} ({timezone})"
+        for timezone in chat_timezones or []
+        if timezone != tz
         for datetime_tz in [datetime.astimezone(timezone)]
-    ])))
+    ] if time else [])))
 
 def sommeil(s, *, command) -> (datetime, datetime):
     if m := re.match("/%s (.*)" % command, s):
