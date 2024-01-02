@@ -865,6 +865,7 @@ ACCEPTED_SETTINGS_USER = (
 ACCEPTED_SETTINGS_CHAT = (
     'money.currencies',
     'sharemoney.active',
+    'event.timezones',
 )
 
 def CONVERSION_SETTINGS_BUILDER():
@@ -881,8 +882,13 @@ def CONVERSION_SETTINGS_BUILDER():
         'from_db': ZoneInfo,
         'to_db': lambda x:x,
     }
+    list_of_timezone_serializer = {
+        'from_db': lambda s: list(map(ZoneInfo, json.loads(s))),
+        'to_db': lambda L: json.dumps(map(str, L))
+    }
     mapping_chat = {
         'money.currencies': json_serializer,
+        'event.timezones': list_of_timezone_serializer,
     }
     mapping_user = {
         'event.timezone': timezone_serializer,
@@ -941,7 +947,7 @@ async def settings_command(update: Update, context: CallbackContext, *, command_
     if key not in accepted_settings:
         return await send(f'Unknown settings: {key!r}\n\nType /listallsettings for complete list of settings (hidden command)')
 
-    if key == 'money.currencies':
+    if key in ('money.currencies', 'event.timezones'):
         value = list(rest)
     else:
         # default, single value no space string
