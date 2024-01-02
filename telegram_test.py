@@ -644,10 +644,15 @@ async def add_event(update: Update, context: CallbackContext):
 
         cursor.execute("INSERT INTO Events(date, name, chat_id, source_user_id) VALUES (?,?,?,?)", (strftime(datetime_utc), name, chat_id, source_user_id))
     
+    read_chat_settings = make_read_chat_settings(update, context)
     await send('\n'.join(filter(None, [
         f"Event {name!r} saved",
         f"Date: {datetime.date()} ({date_str})",
         f"Time: {time:%H:%M}" if time else None
+    ] + [
+        f"Datetime: {datetime_tz} ({timezone})" 
+        for timezone in read_chat_settings("event.timezones") or []
+        for datetime_tz in [datetime.astimezone(timezone)]
     ])))
 
 def sommeil(s, *, command) -> (datetime, datetime):
@@ -884,7 +889,7 @@ def CONVERSION_SETTINGS_BUILDER():
     }
     list_of_timezone_serializer = {
         'from_db': lambda s: list(map(ZoneInfo, json.loads(s))),
-        'to_db': lambda L: json.dumps(map(str, L))
+        'to_db': lambda L: json.dumps(list(map(str, L)))
     }
     mapping_chat = {
         'money.currencies': json_serializer,
