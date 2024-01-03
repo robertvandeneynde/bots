@@ -1375,6 +1375,7 @@ COMMAND_DESC = {
     "caps": "Returns the list of parameters in capital letters",
     "addevent": "Add event",
     "listevents": "List events",
+    "delevent": "Delete event",
     "ru": "Latin alphabet to Cyrillic using Russian convention",
     "dict": "Shows definition of each word using dictionary and settings engine",
     "wikt": "Shows definition of each word using wiktionary",
@@ -1403,7 +1404,7 @@ COMMAND_DESC = {
 
 COMMAND_LIST = (
     'caps',
-    'addevent', 'listevents',
+    'addevent', 'listevents', 'delevent',
     'ru',
     'dict', 'wikt', 'larousse',
     'convertmoney', 'eur', 'brl', 'rub',
