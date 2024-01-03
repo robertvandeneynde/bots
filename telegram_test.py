@@ -725,7 +725,7 @@ async def list_events(update: Update, context: CallbackContext):
             return x.strftime("%Y-%m-%d %H:%M:%S")
         
         read_chat_settings = make_read_chat_settings(update, context)
-        chat_timezones = read_chat_settings("event.timezone")
+        chat_timezones = read_chat_settings("event.timezones")
         msg = '\n'.join(f"{DatetimeText.days_english[date.weekday()]} {date:%d/%m}: {event}" if not has_hour else 
                         f"{DatetimeText.days_english[date.weekday()]} {date:%d/%m %H:%M}: {event}"
                         for date_utc, event in cursor.execute(*query)
@@ -899,8 +899,12 @@ def CONVERSION_SETTINGS_BUILDER():
         'from_db': lambda s: list(map(ZoneInfo, json.loads(s))),
         'to_db': lambda L: json.dumps(list(map(str, L)))
     }
+    list_of_currencies_serializer = {
+        'from_db': lambda s: list(map(str.upper, json.loads(s))),
+        'to_db': lambda L: json.dumps(list(map(str.upper, L)))
+    }
     mapping_chat = {
-        'money.currencies': json_serializer,
+        'money.currencies': list_of_currencies_serializer,
         'event.timezones': list_of_timezone_serializer,
     }
     mapping_user = {
@@ -1133,11 +1137,12 @@ def format_currency(*, currency_list:list[str], amount_list:list[Decimal]):
         for currency, amount in zip(currency_list, amount_list))
 
 def convert_money(amount: Decimal, currency_base:str, currency_converted:str, rates:Rates):
-    if currency_base == 'eur':
-        return amount * Decimal(rates[currency_converted.upper()])
-    if currency_converted == 'eur':
+    currency_base, currency_converted = currency_base.upper(), currency_converted.upper()
+    if currency_base == 'EUR':
+        return amount * Decimal(rates[currency_converted])
+    if currency_converted == 'EUR':
         return amount / Decimal(rates[currency_base.upper()])
-    return convert_money(convert_money(amount, currency_base, 'eur', rates=rates), 'eur', currency_converted, rates=rates)
+    return convert_money(convert_money(amount, currency_base, 'EUR', rates=rates), 'EUR', currency_converted, rates=rates)
 
 def make_money_command(name:str, currency:str):
     async def money(update: Update, context: CallbackContext):
@@ -1168,10 +1173,13 @@ async def convertmoney(update, context):
     try:
         if len(context.args) == 2:
             value, currency = context.args
+            currency = currency.upper()
             mode = 'to_chat_currencies'
             direction, currency_converted = None, None
         elif len(context.args) == 4:
             value, currency, direction, currency_converted = context.args
+            currency = currency.upper()
+            currency_converted = currency_converted.upper()
             mode = 'to_one_currency'
             assert direction == 'to'
         else:
@@ -1181,12 +1189,12 @@ async def convertmoney(update, context):
 
     amount_base = Decimal(value)
     rates = get_database_euro_rates()
-
+    
     if mode == 'to_chat_currencies':
         chat_currencies = read_chat_settings('money.currencies') or DEFAULT_CURRENCIES
-        currencies_to_convert = [x for x in chat_currencies if x != currency]
+        currencies_to_convert = [x.upper() for x in chat_currencies if x.upper() != currency.upper()]
     elif mode == 'to_one_currency':
-        currencies_to_convert = [currency_converted]
+        currencies_to_convert = [currency_converted.upper()]
 
     try:
         amounts_converted = [convert_money(amount_base, currency_base=currency, currency_converted=currency_to_convert, rates=rates) for currency_to_convert in currencies_to_convert]
