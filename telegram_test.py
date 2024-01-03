@@ -733,7 +733,10 @@ async def list_events(update: Update, context: CallbackContext):
                         for has_hour in [True])
         if msg and chat_timezones and set(chat_timezones) != {tz}:
             msg += '\n\n' + f"Timezone: {tz}"
-        await send(msg or "No events for that day !")
+        await send(msg or (
+            "No events for the next 7 days !" if when == 'week' else
+            f"No events for {when} !"
+        ))
 
 async def delevent(update, context):
     events = simple_sql_dict(('''select rowid, date, name from Events where chat_id=? order by date''', (update.effective_chat.id,)))
