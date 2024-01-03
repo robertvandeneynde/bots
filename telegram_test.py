@@ -755,8 +755,12 @@ async def delevent(update, context):
 async def do_delete_event(update, context):
     send = make_send(update, context)
     query = update.callback_query
+    await query.answer()
     rowid = query.data
     simple_sql(('delete from Events where chat_id = ? and rowid = ?', (update.effective_chat.id, rowid)))
+    # await query.edit_message_text
+    # await query.edit_message_reply_markup()
+    await query.delete_message()
     await send(f"Event deleted")
     return ConversationHandler.END
 
