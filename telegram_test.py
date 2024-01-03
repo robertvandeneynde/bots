@@ -1,7 +1,7 @@
 from __future__ import annotations
 import logging
-from telegram import Update, Message, Chat
-from telegram.ext import ApplicationBuilder, CallbackContext, CommandHandler, MessageHandler, ContextTypes
+from telegram import Update, Message, Chat, InlineKeyboardMarkup, InlineKeyboardButton
+from telegram.ext import ApplicationBuilder, CallbackContext, CommandHandler, MessageHandler, ContextTypes, CallbackQueryHandler
 from telegram.ext import filters
 from telegram.constants import ChatType
 from telegram_settings_local import TOKEN
@@ -495,8 +495,8 @@ async def guessing_word(update, context):
     return ConversationHandler.END
 
 def make_send(update, context):
-    async def send(m):
-        await context.bot.send_message(text=m, chat_id=update.effective_chat.id)
+    async def send(m, **kwargs):
+        await context.bot.send_message(text=m, chat_id=update.effective_chat.id, **kwargs)
     return send
 
 async def switchpageflashcard(update, context):
@@ -734,6 +734,31 @@ async def list_events(update: Update, context: CallbackContext):
         if msg and chat_timezones and set(chat_timezones) != {tz}:
             msg += '\n\n' + f"Timezone: {tz}"
         await send(msg or "No events for that day !")
+
+async def delevent(update, context):
+    events = simple_sql_dict(('''select rowid, date, name from Events where chat_id=? order by date''', (update.effective_chat.id,)))
+    send = make_send(update, context)
+    
+    keyboard = [
+        [InlineKeyboardButton("{} - {}".format(event['date'], event['name']), callback_data=event['rowid'])]
+        for event in events
+    ]
+
+    if not keyboard:
+        await send("No events to delete !")
+        return ConversationHandler.END
+
+    await send("Choose an event to delete:", reply_markup=InlineKeyboardMarkup(keyboard))
+
+    return 0
+
+async def do_delete_event(update, context):
+    send = make_send(update, context)
+    query = update.callback_query
+    rowid = query.data
+    simple_sql(('delete from Events where chat_id = ? and rowid = ?', (update.effective_chat.id, rowid)))
+    await send(f"Event deleted")
+    return ConversationHandler.END
 
 def n_to_1_dict(x:dict|Iterable):
     gen = x.items() if isinstance(x, dict) else x
@@ -1398,6 +1423,13 @@ if __name__ == '__main__':
     application.add_handler(CommandHandler('caps', caps))
     application.add_handler(CommandHandler('addevent', add_event))
     application.add_handler(CommandHandler('listevents', list_events))
+    application.add_handler(ConversationHandler(
+        entry_points=[CommandHandler("delevent", delevent)],
+        states={
+            0: [CallbackQueryHandler(do_delete_event)],
+        },
+        fallbacks=[],
+    ), group=2)
     application.add_handler(CommandHandler('ru', ru))
     application.add_handler(CommandHandler('dict', dict_))
     application.add_handler(CommandHandler('wikt', wikt))
