@@ -58,6 +58,19 @@ WIKTIONARY_LANGUAGES = read_pure_json('wiktionary_languages.json')
 LAROUSSE_LANGUAGES = read_pure_json('larousse_languages.json')
 DEFAULT_CURRENCIES = ['eur', 'usd', 'rub', 'brl', 'cad']
 
+EVENT_ICS_TEMPLATE = '''\
+BEGIN:VCALENDAR
+VERSION:2.0
+PRODID:-//hacksw/handcal//NONSGML v1.0//EN
+BEGIN:VEVENT
+DTSTAMP:{dt_created_utc:%Y%m%dT%H%M%SZ}
+DTSTART:{dt_start_utc:%Y%m%dT%H%M%SZ}
+DTEND:{dt_end_utc:%Y%m%dT%H%M%SZ}
+SUMMARY:{name_ical_formatted}
+END:VEVENT
+END:VCALENDAR\
+''' # UID:uid1@example.com, GEO:48.85299;2.36885, ORGANIZER;CN=John Doe:MAILTO:john.doe@example.com
+
 def strip_botname(update: Update, context: CallbackContext):
     # TODO analyse message.entities with message.parse_entity and message.parse_entities
     bot_mention: str = '@' + context.bot.username
@@ -544,10 +557,25 @@ async def exportflashcards(update, context):
         wb.save(bytes_io)
         return bytes_io.getvalue()
     
-    #file_content, extension = export_tsv_utf8(), 'tsv'
-    file_content, extension = export_xlsx(), 'xlsx'
+    #file_content = export_tsv_utf8()
+    #extension = 'tsv'
+    file_content: bytes = export_xlsx()
+    extension: str = 'xlsx'
 
     await context.bot.send_document(update.effective_chat.id, file_content, filename="flashcards." + extension)
+
+async def export_event(update, context, *, name, datetime_utc):
+    from datetime import date, time, datetime, timedelta
+    
+    file_content_str = EVENT_ICS_TEMPLATE.format(
+        dt_created_utc=datetime.utcnow(),
+        dt_start_utc=datetime_utc,
+        dt_end_utc=datetime_utc + timedelta(hours=1),
+        name_ical_formatted=name)
+    
+    file_content: bytes = file_content_str.encode('utf-8')
+    
+    await context.bot.send_document(update.effective_chat.id, file_content, filename="event.ics")
 
 import zoneinfo
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
@@ -635,7 +663,7 @@ async def add_event(update: Update, context: CallbackContext):
     datetime = Datetime.combine(date, time or Time(0,0)).replace(tzinfo=tz)
 
     datetime_utc = datetime.astimezone(ZoneInfo('UTC'))
-
+    
     with sqlite3.connect('db.sqlite') as conn:
         cursor = conn.cursor()
 
@@ -646,6 +674,8 @@ async def add_event(update: Update, context: CallbackContext):
     
     read_chat_settings = make_read_chat_settings(update, context)
     chat_timezones = read_chat_settings("event.timezones")
+    
+    # 1. Send info in text
     await send('\n'.join(filter(None, [
         f"Event {name!r} saved",
         f"Date: {datetime.date()} ({date_str})",
@@ -658,6 +688,10 @@ async def add_event(update: Update, context: CallbackContext):
         if timezone != tz
         for datetime_tz in [datetime.astimezone(timezone)]
     ] if time else []))))
+    
+    # 2. Send info as clickable ics file to add to calendar
+    await send('Click the file below to add the event to your calendar:')
+    await export_event(update, context, name=name, datetime_utc=datetime_utc)
 
 def sommeil(s, *, command) -> (datetime, datetime):
     if m := re.match("/%s (.*)" % command, s):
