@@ -635,7 +635,8 @@ class DatetimeText:
         return beg, end
 
 from collections import namedtuple
-ParsedEvent = namedtuple('ParsedEvent', 'date time name')
+ParsedEventMiddle = namedtuple('ParsedEventMiddle', 'date time name')
+ParsedEventFinal = namedtuple('ParsedEventFinal', 'date_str, time, name, date, date_end, datetime, datetime_utc, tz')
 
 def parse_event(args) -> (str, time | None, str):
     from datetime import date as Date, time as Time, timedelta as Timedelta
@@ -649,26 +650,27 @@ def parse_event(args) -> (str, time | None, str):
         time = None
     name = " ".join(rest)
 
-    return ParsedEvent(date, time, name)
+    return ParsedEventMiddle(date, time, name)
+
+def parse_datetime_point(update, context):
+    from datetime import datetime as Datetime, time as Time, date as Date, timedelta
+    tz = get_my_timezone(update.message.from_user.id) or ZoneInfo("Europe/Brussels")
+    date_str, time, name = parse_event(context.args)
+    date, date_end = DatetimeText.to_date_range(date_str, tz=tz)
+    datetime = Datetime.combine(date, time or Time(0,0)).replace(tzinfo=tz)
+    datetime_utc = datetime.astimezone(ZoneInfo('UTC'))
+    return ParsedEventFinal(**locals())
 
 import sqlite3
 async def add_event(update: Update, context: CallbackContext):
     send = make_send(update, context)
     if not context.args:
-        return await send("Usage: /addevent date name")
-    from datetime import datetime as Datetime, time as Time, date as Date, timedelta
+        return await send("Usage: /addevent date name\nUsage: /addevent date hour name")
     
     source_user_id = update.message.from_user.id
     chat_id = update.effective_chat.id
 
-    date_str, time, name = parse_event(context.args)
-
-    tz = get_my_timezone(update.message.from_user.id) or ZoneInfo("Europe/Brussels")
-    
-    date, date_end = DatetimeText.to_date_range(date_str, tz=tz)
-    datetime = Datetime.combine(date, time or Time(0,0)).replace(tzinfo=tz)
-
-    datetime_utc = datetime.astimezone(ZoneInfo('UTC'))
+    date_str, time, name, date, date_end, datetime, datetime_utc, tz = parse_datetime_point(update, context)
     
     with sqlite3.connect('db.sqlite') as conn:
         cursor = conn.cursor()
