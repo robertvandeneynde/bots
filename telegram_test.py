@@ -613,6 +613,12 @@ class DatetimeText:
         if name in ("tomorrow", "demain"):
             return today + timedelta(days=1), today + timedelta(days=2)
         
+        if name in ('future', 'futur'):
+            return today, date.max
+        
+        if name in ('past', 'passé'):
+            return date.min, today
+        
         if name in self.days_french:
             i = self.days_french.index(name)
         elif name in self.days_english:
@@ -718,34 +724,37 @@ async def sleep_(update, context):
     send = make_send(update, context)
     from_dt, to_dt = sommeil(update.effective_message.text, command='sleep')
     await send(str(to_dt - from_dt))
-    
-async def list_events(update: Update, context: CallbackContext):
-    async def send(m):
-        await context.bot.send_message(text=m, chat_id=update.effective_chat.id)
+
+def parse_datetime_range(update, context, *, default="week"):
     if len(context.args) >= 2:
-        return await send("<when> must be a day of the week or week")
+        raise UserError("<when> must be a day of the week or week")
     
     from datetime import date as Date, time as Time, datetime as Datetime
 
     chat_id = update.effective_chat.id
 
-    if not context.args:
-        when = "week"
-    else:
-        when, = context.args
-
+    when = context.args if context.args else default
     time = Time(0, 0)
-
     tz = get_my_timezone(update.message.from_user.id) or ZoneInfo("Europe/Brussels")
     
     beg_date, end_date = DatetimeText.to_date_range(when, tz=tz)
     beg_local, end_local = Datetime.combine(beg_date, time), Datetime.combine(end_date, time)
     
     beg, end = (x.astimezone(ZoneInfo('UTC')) for x in (beg_local, end_local))
+    
+    return dict(beg_utc=beg, end_utc=end, tz=tz, when=when)  # | {x: locals()[x] for x in ()}
 
+async def list_events(update: Update, context: CallbackContext):
+    send = make_send(update, context)
+    
+    datetime_range = parse_datetime_range(update, context)
+    beg, end, tz, when = (datetime_range[x] for x in ('beg_utc', 'end_utc', 'tz', 'when'))
+    
+    chat_id = update.effective_chat.id
     with sqlite3.connect('db.sqlite') as conn:
         cursor = conn.cursor()
-        query = ("""SELECT date, name FROM Events
+        query = ("""SELECT date, name
+                    FROM Events
                     WHERE ? <= date AND date < ?
                     AND chat_id = ?
                     ORDER BY date""",
@@ -760,8 +769,8 @@ async def list_events(update: Update, context: CallbackContext):
         
         read_chat_settings = make_read_chat_settings(update, context)
         chat_timezones = read_chat_settings("event.timezones")
-        msg = '\n'.join(f"{DatetimeText.days_english[date.weekday()]} {date:%d/%m}: {event}" if not has_hour else 
-                        f"{DatetimeText.days_english[date.weekday()]} {date:%d/%m %H:%M}: {event}"
+        msg = '\n'.join(f"- {DatetimeText.days_english[date.weekday()]} {date:%d/%m}: {event}" if not has_hour else 
+                        f"- {DatetimeText.days_english[date.weekday()]} {date:%d/%m %H:%M}: {event}"
                         for date_utc, event in cursor.execute(*query)
                         for date in [strptime(date_utc).replace(tzinfo=ZoneInfo('UTC')).astimezone(tz)]
                         for has_hour in [True])
@@ -773,8 +782,17 @@ async def list_events(update: Update, context: CallbackContext):
         ))
 
 async def delevent(update, context):
-    events = simple_sql_dict(('''select rowid, date, name from Events where chat_id=? order by date''', (update.effective_chat.id,)))
     send = make_send(update, context)
+    
+    datetime_range = parse_datetime_range(update, context, default="future")
+    beg, end = datetime_range['beg_utc'], datetime_range['end_utc']
+    events = simple_sql_dict(('''
+        SELECT rowid, date, name
+        FROM Events
+        WHERE ? <= date AND date < ?
+        AND chat_id=?
+        ORDER BY date''',
+        (beg, end, update.effective_chat.id,)))
     
     keyboard = [
         [InlineKeyboardButton("{} - {}".format(event['date'], event['name']), callback_data=event['rowid'])]
