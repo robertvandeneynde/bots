@@ -689,7 +689,7 @@ async def add_event(update: Update, context: CallbackContext):
             'Your timezone is not in chat timezones, this can be confusing, change your timezone or add your timezone to the chat timezones.',
             '- Your timezone: {tz}'.format(tz=tz),
             '- Chat timezones: {chat_timezone_str}'.format(chat_timezone_str=", ".join(map(str, chat_timezones))),
-        ])
+        ]))
     
     # 1. Send info in text
     await send('\n'.join(filter(None, [
