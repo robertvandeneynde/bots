@@ -684,7 +684,7 @@ async def add_event(update: Update, context: CallbackContext):
     read_chat_settings = make_read_chat_settings(update, context)
     chat_timezones = read_chat_settings("event.timezones")
     
-    if chat_timezones and tz not in chat_timezones:
+    if chat_timezones and tz and tz not in chat_timezones:
         raise UserError('\n'.join([
             'Your timezone is not in chat timezones, this can be confusing, change your timezone or add your timezone to the chat timezones.',
             '- Your timezone: {tz}'.format(tz=tz),
