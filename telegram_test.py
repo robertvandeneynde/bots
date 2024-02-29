@@ -659,7 +659,8 @@ def parse_datetime_point(update, context):
     date, date_end = DatetimeText.to_date_range(date_str, tz=tz)
     datetime = Datetime.combine(date, time or Time(0,0)).replace(tzinfo=tz)
     datetime_utc = datetime.astimezone(ZoneInfo('UTC'))
-    return ParsedEventFinal(**locals())
+    Loc = locals()
+    return ParsedEventFinal(**{x: Loc[x] for x in ParsedEventFinal._fields})
 
 import sqlite3
 async def add_event(update: Update, context: CallbackContext):
