@@ -665,6 +665,8 @@ def parse_datetime_point(update, context):
 import sqlite3
 async def add_event(update: Update, context: CallbackContext):
     send = make_send(update, context)
+    read_chat_settings = make_read_chat_settings(update, context)
+    
     if not context.args:
         return await send("Usage: /addevent date name\nUsage: /addevent date hour name")
     
@@ -673,15 +675,6 @@ async def add_event(update: Update, context: CallbackContext):
 
     date_str, time, name, date, date_end, datetime, datetime_utc, tz = parse_datetime_point(update, context)
     
-    with sqlite3.connect('db.sqlite') as conn:
-        cursor = conn.cursor()
-
-        def strftime(x:datetime):
-            return x.strftime("%Y-%m-%d %H:%M:%S")
-
-        cursor.execute("INSERT INTO Events(date, name, chat_id, source_user_id) VALUES (?,?,?,?)", (strftime(datetime_utc), name, chat_id, source_user_id))
-    
-    read_chat_settings = make_read_chat_settings(update, context)
     chat_timezones = read_chat_settings("event.timezones")
     
     if chat_timezones and tz and tz not in chat_timezones:
@@ -690,6 +683,14 @@ async def add_event(update: Update, context: CallbackContext):
             '- Your timezone: {tz}'.format(tz=tz),
             '- Chat timezones: {chat_timezone_str}'.format(chat_timezone_str=", ".join(map(str, chat_timezones))),
         ]))
+
+    with sqlite3.connect('db.sqlite') as conn:
+        cursor = conn.cursor()
+
+        def strftime(x:datetime):
+            return x.strftime("%Y-%m-%d %H:%M:%S")
+
+        cursor.execute("INSERT INTO Events(date, name, chat_id, source_user_id) VALUES (?,?,?,?)", (strftime(datetime_utc), name, chat_id, source_user_id))
     
     # 1. Send info in text
     await send('\n'.join(filter(None, [
