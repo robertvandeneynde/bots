@@ -743,7 +743,10 @@ def parse_datetime_range(update, context, *, default="week"):
 
     chat_id = update.effective_chat.id
 
-    when = context.args if context.args else default
+    if not context.args:
+        when = default
+    else:
+        when, = context.args  # beware of the ","
     time = Time(0, 0)
     tz = get_my_timezone(update.message.from_user.id) or ZoneInfo("Europe/Brussels")
     
