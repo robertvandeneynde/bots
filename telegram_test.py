@@ -817,7 +817,7 @@ async def delevent(update, context):
    
     keyboard = [
         [InlineKeyboardButton("{} - {}".format(
-            strftime(strptime(event['date']).astimezone(tz)),
+            strftime(strptime(event['date']).replace(tzinfo=ZoneInfo("UTC")).astimezone(tz)),
             event['name']
         ), callback_data=event['rowid'])]
         for event in events
