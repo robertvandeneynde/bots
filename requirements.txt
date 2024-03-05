@@ -2,3 +2,4 @@ python-telegram-bot
 requests
 regex
 pyparsing>=3
+tzdata

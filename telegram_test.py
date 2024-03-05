@@ -797,9 +797,16 @@ async def list_events(update: Update, context: CallbackContext):
 
 async def delevent(update, context):
     send = make_send(update, context)
+   
+    from datetime import datetime
+    def strptime(x:str):
+        return datetime.strptime(x, "%Y-%m-%d %H:%M:%S")
     
+    def strftime(x:datetime):
+        return x.strftime("%Y-%m-%d %H:%M:%S")
+
     datetime_range = parse_datetime_range(update, context, default="future")
-    beg, end = datetime_range['beg_utc'], datetime_range['end_utc']
+    beg, end, tz = datetime_range['beg_utc'], datetime_range['end_utc'], datetime_range['tz']
     events = simple_sql_dict(('''
         SELECT rowid, date, name
         FROM Events
@@ -807,9 +814,12 @@ async def delevent(update, context):
         AND chat_id=?
         ORDER BY date''',
         (beg, end, update.effective_chat.id,)))
-    
+   
     keyboard = [
-        [InlineKeyboardButton("{} - {}".format(event['date'], event['name']), callback_data=event['rowid'])]
+        [InlineKeyboardButton("{} - {}".format(
+            strftime(strptime(event['date']).astimezone(tz)),
+            event['name']
+        ), callback_data=event['rowid'])]
         for event in events
     ]
 
