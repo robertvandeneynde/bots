@@ -695,7 +695,7 @@ async def add_event(update: Update, context: CallbackContext):
     # 1. Send info in text
     await send('\n'.join(filter(None, [
         f"Event {name!r} saved",
-        f"Date: {datetime.date()} ({date_str})",
+        f"Date: {datetime:%A} {datetime.date()} ({date_str})",
         (f"Time: {time:%H:%M} ({tz})" if chat_timezones and set(chat_timezones) != {tz} else
          f"Time: {time:%H:%M}") if time else None
     ] + ([
