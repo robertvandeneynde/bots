@@ -638,8 +638,8 @@ class DatetimeText:
             day = date(*map(int, match.groups()))
             return day, day + timedelta(days=1)
 
-        if match := re.fullmatch("(\d{1,2}) (%s) (\d{4})?" % '|'.join(map(re.escape, self.months_french + self.months_english)), name):
-            dstr,mstr,ystr = match.groups()
+        if match := re.fullmatch("(\d{1,2}) (%s)( (\d{4}))?" % '|'.join(map(re.escape, self.months_french + self.months_english)), name):
+            dstr,mstr,_,ystr = match.groups()
             if not ystr:
                 y = today.year
             else:
