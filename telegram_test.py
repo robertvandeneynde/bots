@@ -583,6 +583,42 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 class DatetimeText:
     days_english = "monday tuesday wednesday thursday friday saturday sunday".split() 
     days_french = "lundi mardi mercredi jeudi vendredi samedi dimanche".split()
+
+    months_english = [
+        "january",
+        "february",
+        "march",
+        "april",
+        "may",
+        "june",
+        "july",
+        "august",
+        "september",
+        "october",
+        "november",
+        "december"
+    ]
+
+    months_french = [
+        "janvier",
+        "février",
+        "mars",
+        "avril",
+        "mai",
+        "juin",
+        "juillet",
+        "août",
+        "septembre",
+        "octobre",
+        "novembre",
+        "décembre"
+    ]
+
+    months_value = {
+        x: i for i, x in enumerate(months_english, start=1)
+    } | {
+        x: i for i, x in enumerate(months_french, start=1)
+    }
     
     @classmethod
     def to_datetime_range(self, name, *, time=None, reference=None, tz=None):
@@ -598,8 +634,19 @@ class DatetimeText:
         today = reference.date()
         name = name.lower()
         
-        if match := re.match("(\d{4})-(\d{2})-(\d{2})", name):
+        if match := re.fullmatch("(\d{4})-(\d{2})-(\d{2})", name):
             day = date(*map(int, match.groups()))
+            return day, day + timedelta(days=1)
+
+        if match := re.fullmatch("(\d{1,2}) (%s) (\d{4})?" % '|'.join(map(re.escape, self.months_french + self.months_english)), name):
+            dstr,mstr,ystr = match.groups()
+            if not ystr:
+                y = today.year
+            else:
+                y = int(ystr)
+            d = int(dstr)
+            m = self.months_value[mstr]
+            day = date(y, m, d)
             return day, day + timedelta(days=1)
         
         if name in ("today", "auj", "aujourdhui", "aujourd'hui"):
@@ -638,10 +685,25 @@ from collections import namedtuple
 ParsedEventMiddle = namedtuple('ParsedEventMiddle', 'date time name')
 ParsedEventFinal = namedtuple('ParsedEventFinal', 'date_str, time, name, date, date_end, datetime, datetime_utc, tz')
 
+def parse_event_date(args):
+
+    Args = GetOrEmpty(args)
+    if (Args[0].isdecimal()
+        and Args[1].lower() in DatetimeText.months_french + DatetimeText.months_english):
+        if Args[2].isdecimal() and len(Args[2]) == 4:
+            n = 3
+        else:
+            n = 2
+    else:
+        n = 1
+    return ' '.join(args[:n]), args[n:]
+
 def parse_event(args) -> (str, time | None, str):
     from datetime import date as Date, time as Time, timedelta as Timedelta
 
-    date, *rest = args
+    date: str
+    rest: list
+    date, rest = parse_event_date(args)
     if match := re.compile('(\\d{1,2})[:hH](\\d{2})?').fullmatch(get_or_empty(rest, 0)):
         hours, minutes = match.group(1), match.group(2)
         time = Time(int(hours), int(minutes or '0'))
