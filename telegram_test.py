@@ -1376,7 +1376,7 @@ async def convertmoney(update, context):
 async def sharemoney(update, context):
     send = make_send(update, context)
     Args = GetOrEmpty(context.args)
-    on_off, = context.args
+    on_off = Args[0]
     try:
         if on_off == 'on':
             return await send("Run: /chatsettings sharemoney.active on")
