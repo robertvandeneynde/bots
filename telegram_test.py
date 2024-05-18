@@ -262,6 +262,13 @@ async def nuniline(update, context):
         S = map(unilinetext, filter(nonascii, arg))
         await send('\n'.join(S) or '[]')
 
+async def befluent(update, context):
+    send = make_send(update, context)
+
+    await send("Hello")
+
+    return ConversationHandler.END
+
 async def ru(update: Update, context: CallbackContext):
     async def send(m):
         await context.bot.send_message(text=m, chat_id=update.effective_chat.id)
@@ -889,8 +896,10 @@ async def delevent(update, context):
     if not keyboard:
         await send("No events to delete !")
         return ConversationHandler.END
+    
+    cancel = [[InlineKeyboardButton("/cancel", callback_data=None)]]
 
-    await send("Choose an event to delete:", reply_markup=InlineKeyboardMarkup(keyboard))
+    await send("Choose an event to delete:", reply_markup=InlineKeyboardMarkup(keyboard + cancel))
 
     return 0
 
@@ -1567,6 +1576,15 @@ if __name__ == '__main__':
     message_handler = MessageHandler(filters.TEXT & (~filters.COMMAND), on_message)
     application.add_handler(message_handler)
     
+    application.add_handler(ConversationHandler(
+        entry_points=[CommandHandler('befluent', befluent)],
+        states = {
+            
+        },
+        fallbacks=[
+
+        ]
+    ))
     application.add_handler(CommandHandler('caps', caps))
     application.add_handler(CommandHandler('addevent', add_event))
     application.add_handler(CommandHandler('listevents', list_events))
