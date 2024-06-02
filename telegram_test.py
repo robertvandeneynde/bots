@@ -755,7 +755,7 @@ def parse_datetime_point(update, context):
 def is_correct_day_of_week(date, day_of_week):
     for days in (DatetimeText.days_english, DatetimeText.days_french):
         try:
-            day_of_week_index = days.index(day_of_week)
+            day_of_week_index = days.index(day_of_week.lower())
             break
         except ValueError:
             pass
