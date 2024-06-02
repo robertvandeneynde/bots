@@ -693,7 +693,7 @@ class DatetimeText:
         return beg, end
 
 from collections import namedtuple
-ParsedEventMiddle = namedtuple('ParsedEventMiddle', 'date time name')
+ParsedEventMiddle = namedtuple('ParsedEventMiddle', 'date time name day_of_week')
 ParsedEventFinal = namedtuple('ParsedEventFinal', 'date_str, time, name, date, date_end, datetime, datetime_utc, tz')
 
 def parse_event_date(args):
@@ -703,6 +703,13 @@ def parse_event_date(args):
     ['25', 'November', '2023', 'A', 'B', 'C'] -> '25 November 2023', ['A', 'B', 'C']  # n = 3
     """
     Args = GetOrEmpty(args)
+    if Args[0].lower() in DatetimeText.days_english + DatetimeText.days_french:
+        day_of_week = Args[0]
+        args = args[1:]
+        Args = GetOrEmpty(args)
+    else:
+        day_of_week = ''
+    
     if (Args[0].isdecimal()
         and Args[1].lower() in DatetimeText.months_french + DatetimeText.months_english):
         if Args[2].isdecimal() and len(Args[2]) == 4:
@@ -711,14 +718,15 @@ def parse_event_date(args):
             n = 2
     else:
         n = 1
-    return ' '.join(args[:n]), args[n:]
+    
+    return day_of_week, ' '.join(args[:n]), args[n:]
 
 def parse_event(args) -> (str, time | None, str):
     from datetime import date as Date, time as Time, timedelta as Timedelta
 
     date: str
     rest: list
-    date, rest = parse_event_date(args)
+    day_of_week, date, rest = parse_event_date(args)
     if match := re.compile('(\\d{1,2})[:hH](\\d{2})?').fullmatch(get_or_empty(rest, 0)):
         hours, minutes = match.group(1), match.group(2)
         time = Time(int(hours), int(minutes or '0'))
@@ -727,17 +735,34 @@ def parse_event(args) -> (str, time | None, str):
         time = None
     name = " ".join(rest)
 
-    return ParsedEventMiddle(date, time, name)
+    return ParsedEventMiddle(date=date, time=time, name=name, day_of_week=day_of_week)
 
 def parse_datetime_point(update, context):
     from datetime import datetime as Datetime, time as Time, date as Date, timedelta
     tz = get_my_timezone(update.message.from_user.id) or ZoneInfo("Europe/Brussels")
-    date_str, time, name = parse_event(context.args)
+    date_str, time, name, day_of_week = parse_event(context.args)
     date, date_end = DatetimeText.to_date_range(date_str, tz=tz)
     datetime = Datetime.combine(date, time or Time(0,0)).replace(tzinfo=tz)
     datetime_utc = datetime.astimezone(ZoneInfo('UTC'))
     Loc = locals()
+
+    if day_of_week:
+        if not is_correct_day_of_week(date, day_of_week):
+            raise UserError(f"{date_str!r} is not a {day_of_week!r}")
+
     return ParsedEventFinal(**{x: Loc[x] for x in ParsedEventFinal._fields})
+
+def is_correct_day_of_week(date, day_of_week):
+    for days in (DatetimeText.days_english, DatetimeText.days_french):
+        try:
+            day_of_week_index = days.index(day_of_week)
+            break
+        except ValueError:
+            pass
+    else:
+        raise ValueError("Programming error, cannot transform {!r} to numeric day of week".format(day_of_week))
+    
+    return day_of_week_index == date.weekday()
 
 import sqlite3
 async def add_event(update: Update, context: CallbackContext):
