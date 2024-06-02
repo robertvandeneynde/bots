@@ -864,8 +864,6 @@ async def list_events(update: Update, context: CallbackContext):
     datetime_range = parse_datetime_range(update, context)
     beg, end, tz, when = (datetime_range[x] for x in ('beg_utc', 'end_utc', 'tz', 'when'))
 
-    print(beg, end)
-
     chat_id = update.effective_chat.id
     with sqlite3.connect('db.sqlite') as conn:
         from datetime import datetime, timedelta
@@ -915,7 +913,7 @@ async def delevent(update, context):
         WHERE ? <= date AND date < ?
         AND chat_id=?
         ORDER BY date''',
-        (beg, end, update.effective_chat.id,)))
+        (strftime(beg), strftime(end), update.effective_chat.id,)))
    
     keyboard = [
         [InlineKeyboardButton("{} - {}".format(
