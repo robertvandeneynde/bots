@@ -919,7 +919,7 @@ async def delevent(update, context):
         [InlineKeyboardButton("{} - {}".format(
             strftime(strptime(event['date']).replace(tzinfo=ZoneInfo("UTC")).astimezone(tz)),
             event['name']
-        ), callback_data=event['rowid'])]
+        ), callback_data=str(event['rowid']))]
         for event in events
     ]
 
@@ -927,7 +927,7 @@ async def delevent(update, context):
         await send("No events to delete !")
         return ConversationHandler.END
     
-    cancel = [[InlineKeyboardButton("/cancel", callback_data=None)]]
+    cancel = [[InlineKeyboardButton("/cancel", callback_data="null")]]
 
     await send("Choose an event to delete:", reply_markup=InlineKeyboardMarkup(keyboard + cancel))
 
@@ -938,11 +938,16 @@ async def do_delete_event(update, context):
     query = update.callback_query
     await query.answer()
     rowid = query.data
-    simple_sql(('delete from Events where chat_id = ? and rowid = ?', (update.effective_chat.id, rowid)))
+    if rowid == "null":
+        await send("Cancelled: No event deleted")
+    else:
+        simple_sql(('delete from Events where chat_id = ? and rowid = ?', (update.effective_chat.id, rowid)))
+        await send(f"Event deleted")
+        
     # await query.edit_message_text
     # await query.edit_message_reply_markup()
     await query.delete_message()
-    await send(f"Event deleted")
+        
     return ConversationHandler.END
 
 def n_to_1_dict(x:dict|Iterable):
