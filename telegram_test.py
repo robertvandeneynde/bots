@@ -856,30 +856,32 @@ def parse_datetime_range(update, context, *, default="week"):
     
     beg, end = (x.astimezone(ZoneInfo('UTC')) for x in (beg_local, end_local))
     
-    return dict(beg_utc=beg, end_utc=end, tz=tz, when=when)  # | {x: locals()[x] for x in ()}
+    return dict(beg_utc=beg, end_utc=end, tz=tz, when=when, beg_local=beg_local, end_local=end_local)  # | {x: locals()[x] for x in ()}
 
 async def list_events(update: Update, context: CallbackContext):
     send = make_send(update, context)
     
     datetime_range = parse_datetime_range(update, context)
     beg, end, tz, when = (datetime_range[x] for x in ('beg_utc', 'end_utc', 'tz', 'when'))
-    
+
+    print(beg, end)
+
     chat_id = update.effective_chat.id
     with sqlite3.connect('db.sqlite') as conn:
-        cursor = conn.cursor()
-        query = ("""SELECT date, name
-                    FROM Events
-                    WHERE ? <= date AND date < ?
-                    AND chat_id = ?
-                    ORDER BY date""",
-                (beg, end, chat_id))
-        
         from datetime import datetime, timedelta
 
         def strptime(x:str):
             return datetime.strptime(x, "%Y-%m-%d %H:%M:%S")
         def strftime(x:datetime):
             return x.strftime("%Y-%m-%d %H:%M:%S")
+        
+        cursor = conn.cursor()
+        query = ("""SELECT date, name
+                    FROM Events
+                    WHERE ? <= date AND date < ?
+                    AND chat_id = ?
+                    ORDER BY date""",
+                (strftime(beg), strftime(end), chat_id))
         
         read_chat_settings = make_read_chat_settings(update, context)
         chat_timezones = read_chat_settings("event.timezones")
@@ -943,7 +945,7 @@ async def do_delete_event(update, context):
     else:
         simple_sql(('delete from Events where chat_id = ? and rowid = ?', (update.effective_chat.id, rowid)))
         await send(f"Event deleted")
-        
+
     # await query.edit_message_text
     # await query.edit_message_reply_markup()
     await query.delete_message()
