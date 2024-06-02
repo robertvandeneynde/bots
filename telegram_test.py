@@ -697,7 +697,11 @@ ParsedEventMiddle = namedtuple('ParsedEventMiddle', 'date time name')
 ParsedEventFinal = namedtuple('ParsedEventFinal', 'date_str, time, name, date, date_end, datetime, datetime_utc, tz')
 
 def parse_event_date(args):
-
+    """
+    ['Something', 'A', 'B', 'C'] -> 'Something', ['A', 'B', 'C']  # n = 1
+    ['25', 'November', 'A', 'B', 'C'] -> '25 November', ['A', 'B', 'C']  # n = 2
+    ['25', 'November', '2023', 'A', 'B', 'C'] -> '25 November 2023', ['A', 'B', 'C']  # n = 3
+    """
     Args = GetOrEmpty(args)
     if (Args[0].isdecimal()
         and Args[1].lower() in DatetimeText.months_french + DatetimeText.months_english):
