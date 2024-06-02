@@ -307,6 +307,8 @@ def make_read_chat_settings(update: Update, context: CallbackContext):
     from functools import partial
     return partial(read_settings, id=update.effective_chat.id, settings_type='chat')
 
+DICT_ENGINES = ('wikt', 'larousse', 'glosbe')
+
 async def dict_command(update: Update, context: CallbackContext, *, engine:'wikt' | 'larousse' | 'glosbe', command_name:str):
     async def send(m):
         await context.bot.send_message(text=m, chat_id=update.effective_chat.id)
@@ -1061,6 +1063,11 @@ ACCEPTED_SETTINGS_CHAT = (
     'event.timezones',
 )
 
+def assert_true(condition, error_to_raise=None):
+    if not condition:
+        raise error_to_raise
+    return True
+
 def CONVERSION_SETTINGS_BUILDER():
     import json
     default_serializer = {
@@ -1089,6 +1096,10 @@ def CONVERSION_SETTINGS_BUILDER():
     }
     mapping_user = {
         'event.timezone': timezone_serializer,
+        'dict.engine': {
+            'from_db': lambda x: x,
+            'to_db': lambda x: x if assert_true(x in DICT_ENGINES, UserError("{!r} is not a known engine. List is [{}]".format(x, ', '.join(DICT_ENGINES)))) else None
+        }
     }
     from collections import defaultdict
     return {
