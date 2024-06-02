@@ -858,6 +858,57 @@ def parse_datetime_range(update, context, *, default="week"):
     
     return dict(beg_utc=beg, end_utc=end, tz=tz, when=when, beg_local=beg_local, end_local=end_local)  # | {x: locals()[x] for x in ()}
 
+async def list_days(update: Update, context: CallbackContext):
+    send = make_send(update, context)
+    
+    datetime_range = parse_datetime_range(update, context)
+    beg, end, tz, when = (datetime_range[x] for x in ('beg_utc', 'end_utc', 'tz', 'when'))
+
+    def strptime(x:str):
+        from datetime import datetime
+        return datetime.strptime(x, "%Y-%m-%d %H:%M:%S")
+    
+    def strftime(x:datetime):
+        from datetime import datetime
+        return x.strftime("%Y-%m-%d %H:%M:%S")
+
+    events = simple_sql_dict(('''
+        SELECT date, name
+        FROM Events
+        WHERE ? <= date AND date < ?
+        AND chat_id=?
+        ORDER BY date''',
+        (strftime(beg), strftime(end), update.effective_chat.id,)))
+
+    from collections import defaultdict
+    days = defaultdict(list)
+    for event in events:
+        date = strptime(event['date']).replace(tzinfo=ZoneInfo("UTC")).astimezone(tz)
+        event_name = event['name']
+        days[date.timetuple()[:3]].append((date, event_name))
+
+    days_as_lines = []
+    for day in sorted(days):
+        date = days[day][0][0]
+        day_of_week = DatetimeText.days_english[date.weekday()]
+        days_as_lines.append(
+            f"{day_of_week.capitalize()} {date:%d/%m}"
+            + "\n"
+            + "\n".join(f"- {event_date:%H:%M}: {event_name}" for event_date, event_name in days[day]))
+    
+    msg = '\n\n'.join(days_as_lines)
+
+    read_chat_settings = make_read_chat_settings(update, context)
+    chat_timezones = read_chat_settings("event.timezones")
+
+    if msg and chat_timezones and set(chat_timezones) != {tz}:
+        msg += '\n\n' + f'Timezone: {tz}'
+
+    await send(msg or (
+        "No events for the next 7 days !" if when == 'week' else
+        f"No events for {when} !"
+    ))
+
 async def list_events(update: Update, context: CallbackContext):
     send = make_send(update, context)
     
@@ -1570,6 +1621,7 @@ COMMAND_DESC = {
     "caps": "Returns the list of parameters in capital letters",
     "addevent": "Add event",
     "listevents": "List events",
+    "listdays": "List events grouped by days",
     "delevent": "Delete event",
     "ru": "Latin alphabet to Cyrillic using Russian convention",
     "dict": "Shows definition of each word using dictionary and settings engine",
@@ -1599,7 +1651,7 @@ COMMAND_DESC = {
 
 COMMAND_LIST = (
     'caps',
-    'addevent', 'listevents', 'delevent',
+    'addevent', 'listevents', 'listdays', 'delevent',
     'ru',
     'dict', 'wikt', 'larousse',
     'convertmoney', 'eur', 'brl', 'rub',
@@ -1632,6 +1684,7 @@ if __name__ == '__main__':
     application.add_handler(CommandHandler('caps', caps))
     application.add_handler(CommandHandler('addevent', add_event))
     application.add_handler(CommandHandler('listevents', list_events))
+    application.add_handler(CommandHandler('listdays', list_days))
     application.add_handler(ConversationHandler(
         entry_points=[CommandHandler("delevent", delevent)],
         states={
