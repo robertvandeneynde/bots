@@ -753,16 +753,7 @@ def parse_datetime_point(update, context):
     return ParsedEventFinal(**{x: Loc[x] for x in ParsedEventFinal._fields})
 
 def is_correct_day_of_week(date, day_of_week):
-    for days in (DatetimeText.days_english, DatetimeText.days_french):
-        try:
-            day_of_week_index = days.index(day_of_week.lower())
-            break
-        except ValueError:
-            pass
-    else:
-        raise ValueError("Programming error, cannot transform {!r} to numeric day of week".format(day_of_week))
-    
-    return day_of_week_index == date.weekday()
+    return date.weekday() == (DatetimeText.days_english + DatetimeText.days_french).index(day_of_week.lower()) % 7
 
 import sqlite3
 async def add_event(update: Update, context: CallbackContext):
