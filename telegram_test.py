@@ -378,6 +378,8 @@ async def dict_command(update: Update, context: CallbackContext, *, engine:'wikt
         base_lang = LAROUSSE_LANGUAGES.get('fr', {}).get(base_lang or 'fr', base_lang)
     elif engine == 'glosbe':
         pass
+    else:
+        raise UsageError("Engine is misconfigured, please run /settings dict.engine {}".format('|'.join(DICT_ENGINES)))
 
     # url maker
     if engine == 'wikt':
@@ -1098,7 +1100,7 @@ def CONVERSION_SETTINGS_BUILDER():
         'event.timezone': timezone_serializer,
         'dict.engine': {
             'from_db': lambda x: x,
-            'to_db': lambda x: x if assert_true(x in DICT_ENGINES, UserError("{!r} is not a known engine. List is [{}]".format(x, ', '.join(DICT_ENGINES)))) else None
+            'to_db': lambda x: x if assert_true(x in DICT_ENGINES, UserError("{!r} is not a known engine.\nAvaiblable options: {}".format(x, ', '.join(DICT_ENGINES)))) else None
         }
     }
     from collections import defaultdict
