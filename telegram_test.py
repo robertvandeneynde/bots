@@ -709,7 +709,7 @@ def parse_event_date(args):
         Args = GetOrEmpty(args)
     else:
         day_of_week = ''
-    
+
     if (Args[0].isdecimal()
         and Args[1].lower() in DatetimeText.months_french + DatetimeText.months_english):
         if Args[2].isdecimal() and len(Args[2]) == 4:
@@ -717,9 +717,12 @@ def parse_event_date(args):
         else:
             n = 2
     else:
-        n = 1
+        if day_of_week:
+            n = 0
+        else:
+            n = 1
     
-    return day_of_week, ' '.join(args[:n]), args[n:]
+    return day_of_week, ' '.join(args[:n]) if n > 0 else day_of_week, args[n:]
 
 def parse_event(args) -> (str, time | None, str):
     from datetime import date as Date, time as Time, timedelta as Timedelta
