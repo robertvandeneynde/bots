@@ -958,6 +958,9 @@ async def delevent(update, context):
     
     def strftime(x:datetime):
         return x.strftime("%Y-%m-%d %H:%M:%S")
+    
+    def strftime_minutes(x:datetime):
+        return x.strftime("%Y-%m-%d %H:%M")
 
     datetime_range = parse_datetime_range(update, context, default="future")
     beg, end, tz = datetime_range['beg_utc'], datetime_range['end_utc'], datetime_range['tz']
@@ -971,7 +974,7 @@ async def delevent(update, context):
    
     keyboard = [
         [InlineKeyboardButton("{} - {}".format(
-            strftime(strptime(event['date']).replace(tzinfo=ZoneInfo("UTC")).astimezone(tz)),
+            strftime_minutes(strptime(event['date']).replace(tzinfo=ZoneInfo("UTC")).astimezone(tz)),
             event['name']
         ), callback_data=str(event['rowid']))]
         for event in events
