@@ -641,7 +641,7 @@ class DatetimeText:
     @classmethod
     def to_date_range(self, name, *, reference=None, tz=None) -> date:
         from datetime import datetime, timedelta, date, date as Date
-        reference = reference or datetime.now().astimezone(ZoneInfo("Europe/Brussels") if tz is None else tz).replace(tzinfo=None)
+        reference = reference or datetime.now().astimezone(tz).replace(tzinfo=None)
         today = reference.date()
         name = name.lower()
         
@@ -857,7 +857,7 @@ def parse_datetime_range(update, context, *, default="week"):
     beg_date, end_date = DatetimeText.to_date_range(when, tz=tz)
     beg_local, end_local = Datetime.combine(beg_date, time), Datetime.combine(end_date, time)
     
-    beg, end = (x.astimezone(ZoneInfo('UTC')) for x in (beg_local, end_local))
+    beg, end = (x.replace(tzinfo=tz).astimezone(ZoneInfo('UTC')) for x in (beg_local, end_local))
     
     return dict(beg_utc=beg, end_utc=end, tz=tz, when=when, beg_local=beg_local, end_local=end_local)  # | {x: locals()[x] for x in ()}
 
