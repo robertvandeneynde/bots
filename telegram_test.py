@@ -740,9 +740,12 @@ def parse_event(args) -> (str, time | None, str):
 
     return ParsedEventMiddle(date=date, time=time, name=name, day_of_week=day_of_week)
 
+def induce_my_timezone(user_id):
+    return get_my_timezone(user_id) or ZoneInfo("Europe/Brussels")
+
 def parse_datetime_point(update, context):
     from datetime import datetime as Datetime, time as Time, date as Date, timedelta
-    tz = get_my_timezone(update.message.from_user.id) or ZoneInfo("Europe/Brussels")
+    tz = induce_my_timezone(update.message.from_user.id)
     date_str, time, name, day_of_week = parse_event(context.args)
     date, date_end = DatetimeText.to_date_range(date_str, tz=tz)
     datetime = Datetime.combine(date, time or Time(0,0)).replace(tzinfo=tz)
@@ -852,7 +855,7 @@ def parse_datetime_range(update, context, *, default="week"):
     else:
         when, = context.args  # beware of the ","
     time = Time(0, 0)
-    tz = get_my_timezone(update.message.from_user.id) or ZoneInfo("Europe/Brussels")
+    tz = induce_my_timezone(update.message.from_user.id)
     
     beg_date, end_date = DatetimeText.to_date_range(when, tz=tz)
     beg_local, end_local = Datetime.combine(beg_date, time), Datetime.combine(end_date, time)
@@ -1637,7 +1640,7 @@ COMMAND_DESC = {
     'brl': "Convert brazilian reals to other currencies",
     'rub': "Convert russian rubles to other currencies",
     'convertmoney': 'Convert money to chat currencies or to specific currency',
-    "mytimezone": "Set your timezone so that Europe/Brussels is not assumed by events commands",
+    "mytimezone": "Set your timezone to use events commands",
     "settings": "Change user settings that are usable for commands",
     "delsettings": "Delete user settings that are usable for commands",
     "chatsettings": "Change chat settings that are usable for commands",
