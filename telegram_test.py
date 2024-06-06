@@ -740,12 +740,31 @@ def parse_event(args) -> (str, time | None, str):
 
     return ParsedEventMiddle(date=date, time=time, name=name, day_of_week=day_of_week)
 
-def induce_my_timezone(user_id):
-    return get_my_timezone(user_id) or ZoneInfo("Europe/Brussels")
+def raise_error(error):
+    raise error
+
+
+def induce_my_timezone(*, user_id, chat_id):
+    if tz := get_my_timezone(user_id):
+        return tz
+    elif tzs := read_settings("event.timezones", id=chat_id, settings_type='chat'):
+        if len(tzs) == 1:
+            return tzs[0]
+    raise UserError(
+        "I don't know your timezone and the chat doesn't have one and only one timezone.\n"
+        "\n"
+        "Set your timezone by typing...\n"
+        "- This: /mytimezone TIMEZONE\n"
+        "- Example: /mytimezone Europe/Brussels\n"
+        "- Example: /mytimezone America/Los_Angeles\n"
+        "\n"
+        "Or set the chat timezone by typing...\n"
+        "- This: /chatsettings event.timezones TIMEZONE\n"
+        "- Example: /chatsettings event.timezones Europe/Brussels\n")
 
 def parse_datetime_point(update, context):
     from datetime import datetime as Datetime, time as Time, date as Date, timedelta
-    tz = induce_my_timezone(update.message.from_user.id)
+    tz = induce_my_timezone(user_id=update.message.from_user.id, chat_id=update.effective_chat.id)
     date_str, time, name, day_of_week = parse_event(context.args)
     date, date_end = DatetimeText.to_date_range(date_str, tz=tz)
     datetime = Datetime.combine(date, time or Time(0,0)).replace(tzinfo=tz)
@@ -848,14 +867,12 @@ def parse_datetime_range(update, context, *, default="week"):
     
     from datetime import date as Date, time as Time, datetime as Datetime
 
-    chat_id = update.effective_chat.id
-
     if not context.args:
         when = default
     else:
         when, = context.args  # beware of the ","
     time = Time(0, 0)
-    tz = induce_my_timezone(update.message.from_user.id)
+    tz = induce_my_timezone(user_id=update.message.from_user.id, chat_id=update.effective_chat.id)
     
     beg_date, end_date = DatetimeText.to_date_range(when, tz=tz)
     beg_local, end_local = Datetime.combine(beg_date, time), Datetime.combine(end_date, time)
@@ -1127,7 +1144,10 @@ async def mytimezone(update: Update, context: CallbackContext):
     if not context.args:
         # get timezone
         tz = get_my_timezone_from_timezone_table(update.message.from_user.id)
-        base_text = ("You don't have any timezone set.\nUse /mytimezone Continent/City to set it" if tz is None else
+        base_text = ("You don't have any timezone set.\n"
+                     "Use /mytimezone Continent/City to set it.\n"
+                     "Example: /mytimezone Europe/Brussels\n"
+                     "Example: /mytimezone America/Los_Angeles" if tz is None else
                      "Your timezone is: {}".format(tz))
         return await send(base_text)
     else:
@@ -1136,7 +1156,7 @@ async def mytimezone(update: Update, context: CallbackContext):
         try:
             tz = ZoneInfo(tz_name)
         except ZoneInfoNotFoundError:
-            raise UserError("This time zone is not known by the system. Correct examples include America/Los_Angeles or Europe/Brussels")
+            raise UserError("This timezone is not known by the system, correct examples include America/Los_Angeles and Europe/Brussels")
         set_my_timezone(update.message.from_user.id, tz)
         return await send("Your timezone is now: {}".format(tz))
 
