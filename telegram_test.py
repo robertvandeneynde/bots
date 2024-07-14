@@ -835,6 +835,10 @@ async def add_event(update: Update, context: CallbackContext):
     await send('Click the file below to add the event to your calendar:')
     await export_event(update, context, name=name, datetime_utc=datetime_utc)
 
+def eatevent(update, context):
+    send_message = make_send(update, context)
+    send_message("Hello!")
+
 def sommeil(s, *, command) -> (datetime, datetime):
     if m := re.match("/%s (.*)" % command, s):
         s = m.group(1)
