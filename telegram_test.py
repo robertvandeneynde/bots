@@ -839,6 +839,10 @@ def eatevent(update, context):
     send_message = make_send(update, context)
     send_message("Hello!")
 
+def whereis(update, context):
+    send_message = make_send(update, context)
+    send_message("At home :) :)")
+
 def sommeil(s, *, command) -> (datetime, datetime):
     if m := re.match("/%s (.*)" % command, s):
         s = m.group(1)
