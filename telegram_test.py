@@ -520,7 +520,11 @@ async def guessing_word(update, context):
 
 def make_send(update, context):
     async def send(m, **kwargs):
-        await context.bot.send_message(text=m, chat_id=update.effective_chat.id, **kwargs)
+        await context.bot.send_message(
+            text=m,
+            chat_id=update.effective_chat.id,
+            thread_id=update.effective_chat.thread_id,
+            **kwargs)
     return send
 
 async def switchpageflashcard(update, context):
@@ -814,6 +818,7 @@ async def add_event(update: Update, context: CallbackContext):
          Name="📃",
          Time="⌚",
          Date="🗓️",
+         Location="📍",
     ) if True else {}
 
     # 1. Send info in text
