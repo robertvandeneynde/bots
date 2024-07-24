@@ -523,7 +523,7 @@ def make_send(update, context):
         await context.bot.send_message(
             text=m,
             chat_id=update.effective_chat.id,
-            thread_id=update.effective_chat.thread_id,
+            message_thread_id=update.message.message_thread_id,
             **kwargs)
     return send
 
@@ -590,7 +590,11 @@ async def export_event(update, context, *, name, datetime_utc):
     
     file_content: bytes = file_content_str.encode('utf-8')
     
-    await context.bot.send_document(update.effective_chat.id, file_content, filename="event.ics")
+    await context.bot.send_document(
+        update.effective_chat.id,
+        file_content,
+        filename="event.ics",
+        message_thread_id=update.message.message_thread_id)
 
 import zoneinfo
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
