@@ -651,8 +651,12 @@ class DatetimeText:
             day = date(*map(int, match.groups()))
             return day, day + timedelta(days=1)
 
-        if match := re.fullmatch("(\d{1,2}) (%s)( (\d{4}))?" % '|'.join(map(re.escape, self.months_french + self.months_english)), name):
-            dstr,mstr,_,ystr = match.groups()
+        if (match_eu := re.fullmatch(r"(\d{1,2}) (%s)( (\d{4}))?" % '|'.join(map(re.escape, self.months_value)), name)) or \
+           (match_us := re.fullmatch(r"(%s) (\d{1,2})( (\d{4}))?" % '|'.join(map(re.escape, self.months_value)), name)):
+            if match := match_eu:
+                dstr,mstr,_,ystr = match.groups()
+            elif match := match_us:
+                mstr,dstr,_,ystr = match.groups()
             if not ystr:
                 y = today.year
             else:
@@ -712,8 +716,8 @@ def parse_event_date(args):
     else:
         day_of_week = ''
 
-    if (Args[0].isdecimal()
-        and Args[1].lower() in DatetimeText.months_french + DatetimeText.months_english):
+    if Args[0].isdecimal() and Args[1].lower() in DatetimeText.months_value \
+    or Args[1].isdecimal() and Args[0].lower() in DatetimeText.months_value:
         if Args[2].isdecimal() and len(Args[2]) == 4:
             n = 3
         else:
