@@ -210,8 +210,7 @@ async def sharemoney_responder(msg:str, send:'async def', *, update, context):
 RESPONDERS = (hello_responder, money_responder, sharemoney_responder)
 
 async def on_message(update: Update, context: CallbackContext):
-    async def send(m):
-        await context.bot.send_message(text=m, chat_id=update.effective_chat.id)
+    send = make_send(update, context)
     
     # if update.message:
     #     logging.info("@{username}: {text} (In {group})".format(
@@ -270,8 +269,7 @@ async def befluent(update, context):
     return ConversationHandler.END
 
 async def ru(update: Update, context: CallbackContext):
-    async def send(m):
-        await context.bot.send_message(text=m, chat_id=update.effective_chat.id)
+    send = make_send(update, context)
     if not context.args:
         return await send("Usage: /ru word1 word2 word3...")
     d1 = ("azertyuiopqsdfghjklmwxcvbn",
@@ -310,8 +308,7 @@ def make_read_chat_settings(update: Update, context: CallbackContext):
 DICT_ENGINES = ('wikt', 'larousse', 'glosbe')
 
 async def dict_command(update: Update, context: CallbackContext, *, engine:'wikt' | 'larousse' | 'glosbe', command_name:str):
-    async def send(m):
-        await context.bot.send_message(text=m, chat_id=update.effective_chat.id)
+    send = make_send(update, context)
     read_my_settings = make_read_my_settings(update, context)
 
     if not context.args:
@@ -422,8 +419,7 @@ class UsageError(Exception):
     pass
 
 async def flashcard(update, context):
-    async def send(m):
-        await context.bot.send_message(text=m, chat_id=update.effective_chat.id)
+    send = make_send(update, context)
     
     try:
       if update.message.reply_to_message:
@@ -480,8 +476,7 @@ def simple_sql_dict(query):
         return conn.execute(*query).fetchall()
 
 async def practiceflashcards(update, context):
-    async def send(m):
-        await context.bot.send_message(text=m, chat_id=update.effective_chat.id)
+    send = make_send(update, context)
 
     try:
         n = None
@@ -511,8 +506,7 @@ from telegram.ext import ConversationHandler
 async def guessing_word(update, context):
     sample = context.user_data['sample']
     direction = context.user_data['direction']
-    async def send(m):
-        await context.bot.send_message(text=m, chat_id=update.effective_chat.id)
+    send = make_send(update, context)
     answers = [x[1] if direction == 'normal' else x[0] for x in sample]
     await send('\n'.join(map("- {}".format, answers)))
     context.user_data.clear()
@@ -1156,8 +1150,7 @@ def delete_settings(*, id, key, settings_type:'chat' | 'user'):
         conn.execute(*query_delete)
 
 async def mytimezone(update: Update, context: CallbackContext):
-    async def send(m):
-        await context.bot.send_message(text=m, chat_id=update.effective_chat.id)
+    send = make_send(update, context)
 
     if not context.args:
         # get timezone
@@ -1272,8 +1265,7 @@ async def listallsettings(update: Update, context: CallbackContext):
         for setting in sorted(ACCEPTED_SETTINGS_USER + ACCEPTED_SETTINGS_CHAT)))
 
 async def settings_command(update: Update, context: CallbackContext, *, command_name: str, settings_type:'chat' | 'user', accepted_settings:list[str]):
-    async def send(m):
-        await context.bot.send_message(text=m, chat_id=update.effective_chat.id)
+    send = make_send(update, context)
 
     async def print_usage():
         await send(f"Usage:\n/{command_name} command.key\n/{command_name} command.key value")
@@ -1313,8 +1305,7 @@ async def settings_command(update: Update, context: CallbackContext, *, command_
         await send(f"Settings: {key} = {value}")
 
 async def delsettings_command(update:Update, context: CallbackContext, *, accepted_settings:list[str], settings_type:'chat' | 'id', command_name:str):
-    async def send(m):
-        await context.bot.send_message(text=m, chat_id=update.effective_chat.id)
+    send = make_send(update, context)
     
     if len(context.args) != 1:
         return await send(f"Usage: /{command_name} command.key")
@@ -1468,8 +1459,7 @@ def convert_money(amount: Decimal, currency_base:str, currency_converted:str, ra
 
 def make_money_command(name:str, currency:str):
     async def money(update: Update, context: CallbackContext):
-        async def send(m):
-            await context.bot.send_message(text=m, chat_id=update.effective_chat.id)
+        send = make_send(update, context)
         read_chat_settings = make_read_chat_settings(update, context)
 
         chat_currencies = read_chat_settings('money.currencies') or DEFAULT_CURRENCIES
@@ -1488,8 +1478,7 @@ brl = make_money_command("brl", "brl")
 rub = make_money_command("rub", "rub")
 
 async def convertmoney(update, context):
-    async def send(m):
-        await context.bot.send_message(text=m, chat_id=update.effective_chat.id)
+    send = make_send(update, context)
     read_chat_settings = make_read_chat_settings(update, context)
 
     try:
@@ -1567,8 +1556,7 @@ async def listdebts(update, context):
     
 
 async def help(update, context):
-    async def send(m):
-        await context.bot.send_message(text=m, chat_id=update.effective_chat.id)
+    send = make_send(update, context)
 
     fmt = ('{} - {}' if '--botfather' in context.args else
            '/{} {}')
@@ -1586,11 +1574,12 @@ async def log_error(error, send):
         return await send("An unknown error occured in your command, ask @robertvend to fix it !")
 
 async def general_error_callback(update:Update, context:CallbackContext):
-    async def send(m):
+    send = make_send(update, context)
+    async def send_on_error(m):
         if update and update.effective_chat:
-            await context.bot.send_message(text=m, chat_id=update.effective_chat.id)
+            await send(m)
     
-    return await log_error(context.error, send)
+    return await log_error(context.error, send_on_error)
 
 import unittest
 import unittest.mock
