@@ -523,7 +523,7 @@ def make_send(update, context):
         await context.bot.send_message(
             text=m,
             chat_id=update.effective_chat.id,
-            message_thread_id=update.message.message_thread_id,
+            message_thread_id=update.message.message_thread_id if update.message.is_topic_message else None,
             **kwargs)
     return send
 
@@ -594,7 +594,7 @@ async def export_event(update, context, *, name, datetime_utc):
         update.effective_chat.id,
         file_content,
         filename="event.ics",
-        message_thread_id=update.message.message_thread_id)
+        message_thread_id=update.message.message_thread_id if update.message.is_topic_message else None)
 
 import zoneinfo
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
@@ -826,6 +826,7 @@ async def add_event(update: Update, context: CallbackContext):
     ) if True else {}
 
     # 1. Send info in text
+
     await send('\n'.join(filter(None, [
         f"Event added",
         f"{emojis['Name']} {name}",
