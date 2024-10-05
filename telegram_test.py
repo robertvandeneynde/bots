@@ -517,7 +517,7 @@ def make_send(update, context):
         await context.bot.send_message(
             text=m,
             chat_id=update.effective_chat.id,
-            message_thread_id=update.message.message_thread_id if update.message.is_topic_message else None,
+            message_thread_id=update.message.message_thread_id if update.message and update.message.is_topic_message else None,
             **kwargs)
     return send
 
