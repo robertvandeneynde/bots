@@ -730,7 +730,7 @@ def parse_event_date(args):
     
     return day_of_week, ' '.join(args[:n]) if n > 0 else day_of_week, args[n:]
 
-def parse_event(args) -> (str, time | None, str):
+def parse_event(args) -> tuple[str, time | None, str]:
     from datetime import date as Date, time as Time, timedelta as Timedelta
 
     date: str
@@ -851,7 +851,7 @@ def whereis(update, context):
     send_message = make_send(update, context)
     send_message("At home :) :)")
 
-def sommeil(s, *, command) -> (datetime, datetime):
+def sommeil(s, *, command) -> tuple[datetime, datetime]:
     if m := re.match("/%s (.*)" % command, s):
         s = m.group(1)
     args = s.split()
