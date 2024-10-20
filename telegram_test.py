@@ -1283,7 +1283,9 @@ async def settings_command(update: Update, context: CallbackContext, *, command_
         return await send(f'Unknown settings: {key!r}\n\nType /listallsettings for complete list of settings (hidden command)')
 
     if key in ('money.currencies', 'event.timezones'):
-        value = list(rest)
+        value = ([] if list(rest) in [['()'], ['[]']] else
+                 None if not rest else
+                 list(rest))
     else:
         # default, single value no space string
         if len(rest) not in (0, 1):
