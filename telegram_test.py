@@ -1191,7 +1191,7 @@ ACCEPTED_SETTINGS_CHAT = (
     'event.timezones',
 )
 
-def assert_true(condition, error_to_raise=None):
+def assert_true(condition, error_to_raise=AssertionError):
     if not condition:
         raise error_to_raise
     return True
