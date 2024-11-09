@@ -790,6 +790,7 @@ import sqlite3
 async def add_event(update: Update, context: CallbackContext):
     send = make_send(update, context)
     read_chat_settings = make_read_chat_settings(update, context)
+    read_my_settings = make_read_my_settings(update, context)
     
     if not context.args:
         return await send("Usage: /addevent date name\nUsage: /addevent date hour name")
@@ -839,9 +840,10 @@ async def add_event(update: Update, context: CallbackContext):
         for datetime_tz in [datetime.astimezone(timezone)]
     ] if time else []))))
     
-    # 2. Send info as clickable ics file to add to calendar
-    await send('Click the file below to add the event to your calendar:')
-    await export_event(update, context, name=name, datetime_utc=datetime_utc)
+    if (display_file := read_chat_settings('event.addevent.display_file')) is None or display_file.lower() != 'off':
+        # 2. Send info as clickable ics file to add to calendar
+        await send('Click the file below to add the event to your calendar:')
+        await export_event(update, context, name=name, datetime_utc=datetime_utc)
 
 def eatevent(update, context):
     send_message = make_send(update, context)
@@ -1189,6 +1191,7 @@ ACCEPTED_SETTINGS_CHAT = (
     'money.currencies',
     'sharemoney.active',
     'event.timezones',
+    'event.addevent.display_file',
 )
 
 def assert_true(condition, error_to_raise=AssertionError):
