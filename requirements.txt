@@ -4,3 +4,4 @@ regex
 pyparsing>=3
 tzdata
 openpyxl
+pyyaml
