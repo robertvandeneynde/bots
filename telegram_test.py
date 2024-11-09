@@ -92,7 +92,7 @@ async def hello_responder(msg:str, send:'async def', *, update, context):
     elif user.id == FRIENDS_USER.get(FriendsUser.JOKÈRE):
         if msg.lower().startswith("hello"):
             await send("Ʒokère ! Nous nous retrouvons ! Pas de spam en public !")
-    elif user.id == FRIENDS_USER.get(FriendsUser.KOROLEVA_LION);
+    elif user.id == FRIENDS_USER.get(FriendsUser.KOROLEVA_LION):
         if msg.lower().startswith("hello"):
             await send("Hellow you wild sladkij ^^ Hope your day will improve your life !")
     else:
