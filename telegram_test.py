@@ -795,8 +795,17 @@ async def add_event(update: Update, context: CallbackContext):
     read_my_settings = make_read_my_settings(update, context)
     
     if not context.args:
-        return await send("Usage: /addevent date name\nUsage: /addevent date hour name")
-    
+        reply = update.message.reply_to_message
+        if reply:
+            infos_event = addevent_analyse(update, context)
+        else:
+            return await send("Usage: /addevent date name\nUsage: /addevent date hour name" + ("\n" + str(e) if str(e) else ""))
+    else:
+        infos_event = None
+
+    if infos_event is not None:
+        return await send(str(infos_event))
+
     source_user_id = update.message.from_user.id
     chat_id = update.effective_chat.id
 
@@ -847,9 +856,24 @@ async def add_event(update: Update, context: CallbackContext):
         await send('Click the file below to add the event to your calendar:')
         await export_event(update, context, name=name, datetime_utc=datetime_utc)
 
-def eatevent(update, context):
-    send_message = make_send(update, context)
-    send_message("Hello!")
+import yaml
+def addevent_analyse(update, context):
+    reply = update.message.reply_to_message
+    if not reply:
+        raise UserError("Cannot analyse if there is nothing to analyse")
+    Y = yaml.safe_load(reply.text)
+    if not isinstance(Y, dict):
+        raise UserError('Each line should have a colon (":")')
+    
+    result = {}
+    keys_lower = {k.lower(): k for k in Y.keys()}
+    possibles = {'what': 'what', 'when': 'when', 'where': 'where',
+                 'quand': 'when', 'quoi': 'what', 'où': 'where'}
+    for field in possibles:
+        if field in keys_lower:
+            result[possibles[field]] = Y[keys_lower[field]]
+    
+    return result
 
 def whereis(update, context):
     send_message = make_send(update, context)
