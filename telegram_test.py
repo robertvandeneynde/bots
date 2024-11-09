@@ -126,12 +126,7 @@ NamedChatDebt = namedtuple('NamedChatDebt', 'chat_id, debitor_id, creditor_id, a
 
 async def sharemoney_responder(msg:str, send:'async def', *, update, context):
     chat_id = update.effective_chat.id
-    read_chat_settings = make_read_chat_settings(update, context)
 
-    setting = read_chat_settings('sharemoney.active')
-    if not(setting and setting == 'on'):
-        return
-    
     def Amount():
         from pyparsing import Word, nums, infix_notation, opAssoc, one_of
 
@@ -207,7 +202,7 @@ async def sharemoney_responder(msg:str, send:'async def', *, update, context):
         return await send('Debt "{d.debitor_id} owes {d.creditor_id} {d.amount}" created'.format(d=debt) if not debt.currency else
                           'Debt "{d.debitor_id} owes {d.creditor_id} {d.amount} {d.amount}" created'.format(d=debt))
 
-RESPONDERS = (hello_responder, money_responder, sharemoney_responder)
+RESPONDERS = ((hello_responder, 'hello', 'on'), (money_responder, 'money', 'on'), (sharemoney_responder, 'sharemoney', 'off'))
 
 async def on_message(update: Update, context: CallbackContext):
     send = make_send(update, context)
@@ -224,8 +219,11 @@ async def on_message(update: Update, context: CallbackContext):
 
     if update.message:
         msg = strip_botname(update, context)
+        read_settings = make_read_chat_settings(update, context)
 
-        for responder in RESPONDERS:
+        for responder, setting, default in RESPONDERS:
+            if (read_settings(setting + '.active') or default) == 'off':
+                continue
             try:
                 await responder(msg, send, update=update, context=context)
             except Exception as e:
@@ -1189,9 +1187,10 @@ ACCEPTED_SETTINGS_USER = (
 )
 ACCEPTED_SETTINGS_CHAT = (
     'money.currencies',
-    'sharemoney.active',
     'event.timezones',
     'event.addevent.display_file',
+) + tuple(
+    settings + '.active' for _, setting, _ in RESPONDERS
 )
 
 def assert_true(condition, error_to_raise=AssertionError):
