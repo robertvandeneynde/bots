@@ -1175,6 +1175,13 @@ async def mytimezone(update: Update, context: CallbackContext):
         set_my_timezone(update.message.from_user.id, tz)
         return await send("Your timezone is now: {}".format(tz))
 
+def remove_dup_keep_order(it):
+    S = set()
+    for x in it:
+        if x not in S:
+            S.add(x)
+            yield x
+
 ACCEPTED_SETTINGS_USER = (
     'event.timezone',
     'wikt.text',
@@ -1190,7 +1197,7 @@ ACCEPTED_SETTINGS_CHAT = (
     'event.timezones',
     'event.addevent.display_file',
 ) + tuple(
-    settings + '.active' for _, setting, _ in RESPONDERS
+    remove_dup_keep_order(setting + '.active' for _, setting, _ in RESPONDERS)
 )
 
 def assert_true(condition, error_to_raise=AssertionError):
