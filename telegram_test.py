@@ -10,6 +10,7 @@ from telegram_settings_local import FRIENDS_USER
 import enum
 class FriendsUser(enum.StrEnum):
     FLOCON = 'flocon'
+    KOROLEVA_LION = 'koroleva-lion'
     LOUKOUM = 'loukoum'
     JOKÈRE = 'jokère'
 
@@ -91,6 +92,9 @@ async def hello_responder(msg:str, send:'async def', *, update, context):
     elif user.id == FRIENDS_USER.get(FriendsUser.JOKÈRE):
         if msg.lower().startswith("hello"):
             await send("Ʒokère ! Nous nous retrouvons ! Pas de spam en public !")
+    elif user.id == FRIENDS_USER.get(FriendsUser.KOROLEVA_LION);
+        if msg.lower().startswith("hello"):
+            await send("Hellow you wild sladkij ^^ Hope your day will improve your life !")
     else:
         if msg.lower().startswith("hello"):
             await send("Hello ! :3")
