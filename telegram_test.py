@@ -770,10 +770,18 @@ def induce_my_timezone(*, user_id, chat_id):
         "- This: /chatsettings event.timezones TIMEZONE\n"
         "- Example: /chatsettings event.timezones Europe/Brussels\n")
 
-def parse_datetime_point(update, context):
+def parse_datetime_point(update, context, when_infos=None, what_infos=None):
     from datetime import datetime as Datetime, time as Time, date as Date, timedelta
     tz = induce_my_timezone(user_id=update.message.from_user.id, chat_id=update.effective_chat.id)
-    date_str, time, name, day_of_week = parse_event(context.args)
+    
+    if when_infos is None and what_infos is None:
+        date_str, time, name, day_of_week = parse_event(context.args)
+    else:
+        date_str, time, name_from_when_part, day_of_week = parse_event(when_infos.split())
+        if name_from_when_part:
+            raise UserError("Too much infos in the When part")
+        name = what_infos or ''
+    
     date, date_end = DatetimeText.to_date_range(date_str, tz=tz)
     datetime = Datetime.combine(date, time or Time(0,0)).replace(tzinfo=tz)
     datetime_utc = datetime.astimezone(ZoneInfo('UTC'))
@@ -795,21 +803,24 @@ async def add_event(update: Update, context: CallbackContext):
     read_my_settings = make_read_my_settings(update, context)
     
     if not context.args:
-        reply = update.message.reply_to_message
-        if reply:
+        if reply := update.message.reply_to_message:
             infos_event = addevent_analyse(update, context)
         else:
-            return await send("Usage: /addevent date name\nUsage: /addevent date hour name" + ("\n" + str(e) if str(e) else ""))
+            return await send("Usage: /addevent date name\nUsage: /addevent date hour name")
     else:
         infos_event = None
 
     if infos_event is not None:
-        return await send(str(infos_event))
+        when_infos = infos_event.get('when', '')
+        what_infos = infos_event.get('what', '') + (" @ " + infos_event['where'] if infos_event.get('where') else '')
+    else:
+        when_infos = ''
+        what_infos = ''
 
     source_user_id = update.message.from_user.id
     chat_id = update.effective_chat.id
 
-    date_str, time, name, date, date_end, datetime, datetime_utc, tz = parse_datetime_point(update, context)
+    date_str, time, name, date, date_end, datetime, datetime_utc, tz = parse_datetime_point(update, context, when_infos=when_infos, what_infos=what_infos)
     
     chat_timezones = read_chat_settings("event.timezones")
     
@@ -863,7 +874,7 @@ def addevent_analyse(update, context):
         raise UserError("Cannot analyse if there is nothing to analyse")
     Y = yaml.safe_load(reply.text)
     if not isinstance(Y, dict):
-        raise UserError('Each line should have a colon (":")')
+        raise UserError('Each line should have a colon symbol, example:\n\nWhat: Party\nWhen: Tomorrow 16h')
     
     result = {}
     keys_lower = {k.lower(): k for k in Y.keys()}
