@@ -108,11 +108,11 @@ async def money_responder(msg:str, send:'async def', *, update, context):
     if detected_currencies:
         read_chat_settings = make_read_chat_settings(update, context)
 
-        chat_currencies = remove_dup_keep_order(map(str.lower, read_chat_settings('money.currencies') or DEFAULT_CURRENCIES))
+        chat_currencies = list(remove_dup_keep_order(map(str.lower, read_chat_settings('money.currencies') or DEFAULT_CURRENCIES)))
         rates = get_database_euro_rates()
 
-        for value, currency in detect_currencies(msg):
-            if currency.lower() in chat_currencies:
+        for value, currency_lower in detect_currencies(msg):
+            if (currency := currency_lower.upper()) in chat_currencies:
                 currencies_to_convert = [x for x in chat_currencies if x != currency]
                 amount_base = Decimal(value)
                 amounts_converted = [convert_money(amount_base, currency_base=currency, currency_converted=currency_to_convert, rates=rates) for currency_to_convert in currencies_to_convert]
