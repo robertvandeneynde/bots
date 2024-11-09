@@ -936,6 +936,59 @@ def parse_datetime_range(update, context, *, default="week"):
     
     return dict(beg_utc=beg, end_utc=end, tz=tz, when=when, beg_local=beg_local, end_local=end_local)  # | {x: locals()[x] for x in ()}
 
+async def next_event(update: Update, context: CallbackContext):
+    from datetime import datetime as Datetime
+    send = make_send(update, context)
+    read_chat_settings = make_read_chat_settings(update, context)
+
+    if len(context.args) > 0:
+        raise UserError("Usage: /nextevent")
+
+    events = simple_sql_dict(('''
+        SELECT date as date_utc, name as name
+        FROM Events
+        WHERE date >= ?
+        AND chat_id=?
+        ORDER BY date
+        LIMIT 1
+    ''', (Datetime.now(ZoneInfo('UTC')), update.effective_chat.id)))
+
+    if len(events) == 0:
+        return await send("No events !")
+
+    def strptime(x:str):
+        from datetime import datetime
+        return datetime.strptime(x, "%Y-%m-%d %H:%M:%S")
+    def strftime(x:Datetime):
+        return x.strftime("%Y-%m-%d %H:%M:%S")
+
+    chat_timezones = read_chat_settings("event.timezones")
+    tz = induce_my_timezone(user_id=update.message.from_user.id, chat_id=update.effective_chat.id)
+    date_utc, name = events[0]
+    datetime = strptime(date_utc).replace(tzinfo=ZoneInfo('UTC')).astimezone(tz)
+    date, time = datetime.date(), datetime.time()
+
+    emojis = dict(
+         Name="📃",
+         Time="⌚",
+         Date="🗓️",
+         Location="📍",
+    ) if True else {}
+
+    await send('\n'.join(filter(None, [
+        f"Event!",
+        f"{emojis['Name']} {name}",
+        f"{emojis['Date']} {datetime:%A} {datetime.date():%d/%m}",
+        (f"{emojis['Time']} {time:%H:%M} ({tz})" if chat_timezones and set(chat_timezones) != {tz} else
+         f"{emojis['Time']} {time:%H:%M}") if time else None
+    ] + ([
+        f"{emojis['Time']} {datetime_tz:%H:%M} ({timezone})" if datetime_tz.date() == datetime.date() else
+        f"{emojis['Time']} {datetime_tz:%H:%M} on {datetime_tz.date()} ({timezone})"
+        for timezone in chat_timezones or []
+        if timezone != tz
+        for datetime_tz in [datetime.astimezone(timezone)]
+    ] if time else []))))
+
 async def list_days(update: Update, context: CallbackContext):
     send = make_send(update, context)
     
@@ -1710,6 +1763,7 @@ COMMAND_DESC = {
     "help": "Help !",
     "caps": "Returns the list of parameters in capital letters",
     "addevent": "Add event",
+    "nextevent": "Display the next event in emoji row format",
     "listevents": "List events",
     "listdays": "List events grouped by days",
     "delevent": "Delete event",
@@ -1741,7 +1795,7 @@ COMMAND_DESC = {
 
 COMMAND_LIST = (
     'caps',
-    'addevent', 'listevents', 'listdays', 'delevent',
+    'addevent', 'nextevent', 'listevents', 'listdays', 'delevent',
     'ru',
     'dict', 'wikt', 'larousse',
     'convertmoney', 'eur', 'brl', 'rub',
@@ -1773,6 +1827,7 @@ if __name__ == '__main__':
     ))
     application.add_handler(CommandHandler('caps', caps))
     application.add_handler(CommandHandler('addevent', add_event))
+    application.add_handler(CommandHandler('nextevent', next_event))
     application.add_handler(CommandHandler('listevents', list_events))
     application.add_handler(CommandHandler('listdays', list_days))
     application.add_handler(ConversationHandler(
