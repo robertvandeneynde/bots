@@ -814,8 +814,8 @@ async def add_event(update: Update, context: CallbackContext):
         when_infos = infos_event.get('when', '')
         what_infos = infos_event.get('what', '') + (" @ " + infos_event['where'] if infos_event.get('where') else '')
     else:
-        when_infos = ''
-        what_infos = ''
+        when_infos = None
+        what_infos = None
 
     source_user_id = update.message.from_user.id
     chat_id = update.effective_chat.id
