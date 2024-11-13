@@ -936,7 +936,7 @@ def parse_datetime_range(update, context, *, default="week"):
     
     return dict(beg_utc=beg, end_utc=end, tz=tz, when=when, beg_local=beg_local, end_local=end_local)  # | {x: locals()[x] for x in ()}
 
-async def next_event(update: Update, context: CallbackContext):
+async def next_or_last_event(update: Update, context: CallbackContext, n:int):
     from datetime import datetime as Datetime
     send = make_send(update, context)
     read_chat_settings = make_read_chat_settings(update, context)
@@ -947,11 +947,11 @@ async def next_event(update: Update, context: CallbackContext):
     events = simple_sql_dict(('''
         SELECT date as date_utc, name as name
         FROM Events
-        WHERE date >= ?
+        WHERE %s
         AND chat_id=?
         ORDER BY date
         LIMIT 1
-    ''', (Datetime.now(ZoneInfo('UTC')), update.effective_chat.id)))
+    ''' % {1: "date >= ?", -1: "date <= ?"}[n], (Datetime.now(ZoneInfo('UTC')), update.effective_chat.id)))
 
     if len(events) == 0:
         return await send("No events !")
@@ -988,6 +988,12 @@ async def next_event(update: Update, context: CallbackContext):
         if timezone != tz
         for datetime_tz in [datetime.astimezone(timezone)]
     ] if time else []))))
+
+async def last_event(update, context):
+    return await next_or_last_event(update, context, -1)
+
+async def next_event(update, context):
+    return await next_or_last_event(update, context, 1)
 
 async def list_days(update: Update, context: CallbackContext):
     send = make_send(update, context)
@@ -1764,6 +1770,7 @@ COMMAND_DESC = {
     "caps": "Returns the list of parameters in capital letters",
     "addevent": "Add event",
     "nextevent": "Display the next event in emoji row format",
+    "lastevent": "Display the last event in emoji row format",
     "listevents": "List events",
     "listdays": "List events grouped by days",
     "delevent": "Delete event",
@@ -1830,6 +1837,7 @@ if __name__ == '__main__':
     application.add_handler(CommandHandler('nextevent', next_event))
     application.add_handler(CommandHandler('listevents', list_events))
     application.add_handler(CommandHandler('listdays', list_days))
+    application.add_handler(CommandHandler('lastevent', last_event))
     application.add_handler(ConversationHandler(
         entry_points=[CommandHandler("delevent", delevent)],
         states={
