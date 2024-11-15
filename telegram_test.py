@@ -680,10 +680,10 @@ class DatetimeText:
             return today + timedelta(days=1), today + timedelta(days=2)
         
         if name in ('future', 'futur'):
-            return today, date.max
+            return today, date.max - timedelta(days=7)
         
         if name in ('past', 'passé'):
-            return date.min, today
+            return date.min + timedelta(days=7), today
         
         if name in self.days_french:
             i = self.days_french.index(name)
