@@ -1078,6 +1078,11 @@ async def list_days_or_today(update: Update, context: CallbackContext, mode: Lit
         days[date.timetuple()[:3]].append((date, event_name))
 
     read_chat_settings = make_read_chat_settings(update, context)
+    display_time_marker = read_chat_settings('event.listtoday.display_time_marker')
+
+    now_tz = datetime.now().astimezone(tz)
+    def is_past(event_date):
+        return event_date <= now_tz
     
     days_as_lines = []
     for day in sorted(days):
@@ -1086,7 +1091,7 @@ async def list_days_or_today(update: Update, context: CallbackContext, mode: Lit
         days_as_lines.append(
             f"{day_of_week.capitalize()} {date:%d/%m}"
             + "\n"
-            + "\n".join(f"- {event_date:%H:%M}: {event_name}" for event_date, event_name in days[day]))
+            + "\n".join(f"-{marker} {event_date:%H:%M}: {event_name}" for event_date, event_name in days[day] for marker in ['>' if display_time_marker and is_past(event_date) else '']))
     
     msg = '\n\n'.join(days_as_lines)
 
