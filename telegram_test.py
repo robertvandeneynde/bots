@@ -837,8 +837,7 @@ async def add_event(update: Update, context: CallbackContext):
     with sqlite3.connect('db.sqlite') as conn:
         cursor = conn.cursor()
 
-        def strftime(x:datetime):
-            return x.strftime("%Y-%m-%d %H:%M:%S")
+        strftime = DatetimeDbSerializer.strftime
 
         cursor.execute("INSERT INTO Events(date, name, chat_id, source_user_id) VALUES (?,?,?,?)", (strftime(datetime_utc), name, chat_id, source_user_id))
     
@@ -1019,11 +1018,7 @@ async def next_or_last_event(update: Update, context: CallbackContext, n:int):
     if len(events) == 0:
         return await send("No events !")
 
-    def strptime(x:str):
-        from datetime import datetime
-        return datetime.strptime(x, "%Y-%m-%d %H:%M:%S")
-    def strftime(x:Datetime):
-        return x.strftime("%Y-%m-%d %H:%M:%S")
+    strptime = DatetimeDbSerializer.strptime
 
     chat_timezones = read_chat_settings("event.timezones")
     tz = induce_my_timezone(user_id=update.message.from_user.id, chat_id=update.effective_chat.id)
@@ -1064,13 +1059,8 @@ async def list_days_or_today(update: Update, context: CallbackContext, mode: Lit
     datetime_range = parse_datetime_range(update, args=context.args if mode == 'list' else 'today' if mode == 'today' else raise_error(AssertionError('mode must be a correct value')))
     beg, end, tz, when = (datetime_range[x] for x in ('beg_utc', 'end_utc', 'tz', 'when'))
 
-    def strptime(x:str):
-        from datetime import datetime
-        return datetime.strptime(x, "%Y-%m-%d %H:%M:%S")
-    
-    def strftime(x:datetime):
-        from datetime import datetime
-        return x.strftime("%Y-%m-%d %H:%M:%S")
+    strptime = DatetimeDbSerializer.strptime
+    strftime = DatetimeDbSerializer.strftime
 
     events = simple_sql_dict(('''
         SELECT date, name
@@ -1123,10 +1113,8 @@ async def list_events(update: Update, context: CallbackContext):
     with sqlite3.connect('db.sqlite') as conn:
         from datetime import datetime, timedelta
 
-        def strptime(x:str):
-            return datetime.strptime(x, "%Y-%m-%d %H:%M:%S")
-        def strftime(x:datetime):
-            return x.strftime("%Y-%m-%d %H:%M:%S")
+        strptime = DatetimeDbSerializer.strptime
+        strftime = DatetimeDbSerializer.strftime
         
         cursor = conn.cursor()
         query = ("""SELECT date, name
@@ -1154,14 +1142,10 @@ async def delevent(update, context):
     send = make_send(update, context)
    
     from datetime import datetime
-    def strptime(x:str):
-        return datetime.strptime(x, "%Y-%m-%d %H:%M:%S")
-    
-    def strftime(x:datetime):
-        return x.strftime("%Y-%m-%d %H:%M:%S")
-    
-    def strftime_minutes(x:datetime):
-        return x.strftime("%Y-%m-%d %H:%M")
+    strptime = DatetimeDbSerializer.strptime
+
+    strftime = DatetimeDbSerializer.strftime
+    strftime_minutes = DatetimeDbSerializer.strftime_minutes
 
     datetime_range = parse_datetime_range(update, args=context.args, default="future")
     beg, end, tz = datetime_range['beg_utc'], datetime_range['end_utc'], datetime_range['tz']
@@ -1583,7 +1567,7 @@ class DatetimeDbSerializer:
     def strptime(x:str):
         from datetime import datetime
         return datetime.strptime(x, "%Y-%m-%d %H:%M:%S")
-
+    
     @staticmethod
     def strftime(x:datetime):
         return x.strftime("%Y-%m-%d %H:%M:%S")
@@ -1593,6 +1577,10 @@ class DatetimeDbSerializer:
 
     def from_db(self, x: any):
         return self.strptime(x)
+    
+    @staticmethod
+    def strftime_minutes(x:datetime):
+        return x.strftime("%Y-%m-%d %H:%M")
 
 class JsonDbSerializer:
     def to_db(self, x: json):
