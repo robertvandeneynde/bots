@@ -79,7 +79,7 @@ def strip_botname(update: Update, context: CallbackContext):
         return update.message.text[len(bot_mention):].strip()
     return update.message.text.strip()
 
-async def hello_responder(msg:str, send:'async def', *, update, context):
+async def hello_responder(msg:str, send: AsyncSend, *, update, context):
     user = update.effective_user
     if user.id == FRIENDS_USER.get(FriendsUser.LOUKOUM):
         if msg.lower().startswith("hello"):
@@ -102,7 +102,10 @@ async def hello_responder(msg:str, send:'async def', *, update, context):
 def detect_currencies(msg: str):
     return [(value, MONEY_CURRENCIES_ALIAS[currency_raw.lower()]) for value, currency_raw in MONEY_RE.findall(msg)]
 
-async def money_responder(msg:str, send:'async def', *, update, context):
+from typing import Callable, Awaitable
+AsyncSend = Callable[[Update, CallbackContext], Awaitable[None]]
+
+async def money_responder(msg:str, send: AsyncSend, *, update, context):
     detected_currencies = detect_currencies(msg)
 
     if detected_currencies:
@@ -128,7 +131,7 @@ class GetOrEmpty(list):
 from collections import namedtuple
 NamedChatDebt = namedtuple('NamedChatDebt', 'chat_id, debitor_id, creditor_id, amount, currency')
 
-async def sharemoney_responder(msg:str, send:'async def', *, update, context):
+async def sharemoney_responder(msg:str, send: AsyncSend, *, update, context):
     chat_id = update.effective_chat.id
 
     def Amount():
@@ -514,7 +517,7 @@ async def guessing_word(update, context):
     context.user_data.clear()
     return ConversationHandler.END
 
-def make_send(update, context):
+def make_send(update: Update, context: CallbackContext) -> AsyncSend:
     async def send(m, **kwargs):
         await context.bot.send_message(
             text=m,
@@ -949,6 +952,7 @@ def whereis(update, context):
     send_message = make_send(update, context)
     send_message("At home :) :)")
 
+from datetime import datetime, timedelta
 def sommeil(s, *, command) -> tuple[datetime, datetime]:
     if m := re.match("/%s (.*)" % command, s):
         s = m.group(1)
@@ -975,16 +979,16 @@ async def sleep_(update, context):
     from_dt, to_dt = sommeil(update.effective_message.text, command='sleep')
     await send(str(to_dt - from_dt))
 
-def parse_datetime_range(update, context, *, default="week"):
-    if len(context.args) >= 2:
+def parse_datetime_range(update, *, args, default="week"):
+    if len(args) >= 2:
         raise UserError("<when> must be a day of the week or week")
     
     from datetime import date as Date, time as Time, datetime as Datetime
 
-    if not context.args:
+    if not args:
         when = default
     else:
-        when, = context.args  # beware of the ","
+        when, = args  # beware of the ","
     time = Time(0, 0)
     tz = induce_my_timezone(user_id=update.message.from_user.id, chat_id=update.effective_chat.id)
     
@@ -1049,9 +1053,15 @@ async def next_event(update, context):
     return await next_or_last_event(update, context, 1)
 
 async def list_days(update: Update, context: CallbackContext):
+    return await list_days_or_today(update, context, mode='list')
+
+from typing import Literal
+async def list_days_or_today(update: Update, context: CallbackContext, mode: Literal['list', 'today']):
+    assert mode in ('list', 'today')
+
     send = make_send(update, context)
     
-    datetime_range = parse_datetime_range(update, context)
+    datetime_range = parse_datetime_range(update, args=context.args if mode == 'list' else 'today' if mode == 'today' else raise_error(AssertionError('mode must be a correct value')))
     beg, end, tz, when = (datetime_range[x] for x in ('beg_utc', 'end_utc', 'tz', 'when'))
 
     def strptime(x:str):
@@ -1077,6 +1087,8 @@ async def list_days(update: Update, context: CallbackContext):
         event_name = event['name']
         days[date.timetuple()[:3]].append((date, event_name))
 
+    read_chat_settings = make_read_chat_settings(update, context)
+    
     days_as_lines = []
     for day in sorted(days):
         date = days[day][0][0]
@@ -1088,7 +1100,6 @@ async def list_days(update: Update, context: CallbackContext):
     
     msg = '\n\n'.join(days_as_lines)
 
-    read_chat_settings = make_read_chat_settings(update, context)
     chat_timezones = read_chat_settings("event.timezones")
 
     if msg and chat_timezones and set(chat_timezones) != {tz}:
@@ -1099,10 +1110,13 @@ async def list_days(update: Update, context: CallbackContext):
         f"No events for {when} !"
     ))
 
+async def list_today(update: Update, context: CallbackContext):
+    return list_days
+
 async def list_events(update: Update, context: CallbackContext):
     send = make_send(update, context)
     
-    datetime_range = parse_datetime_range(update, context)
+    datetime_range = parse_datetime_range(update, args=context.args)
     beg, end, tz, when = (datetime_range[x] for x in ('beg_utc', 'end_utc', 'tz', 'when'))
 
     chat_id = update.effective_chat.id
@@ -1149,7 +1163,7 @@ async def delevent(update, context):
     def strftime_minutes(x:datetime):
         return x.strftime("%Y-%m-%d %H:%M")
 
-    datetime_range = parse_datetime_range(update, context, default="future")
+    datetime_range = parse_datetime_range(update, args=context.args, default="future")
     beg, end, tz = datetime_range['beg_utc'], datetime_range['end_utc'], datetime_range['tz']
     events = simple_sql_dict(('''
         SELECT rowid, date, name
@@ -1347,6 +1361,7 @@ ACCEPTED_SETTINGS_CHAT = (
     'money.currencies',
     'event.timezones',
     'event.addevent.display_file',
+    'event.listtoday.display_time_marker',
 ) + tuple(
     remove_dup_keep_order(setting + '.active' for _, setting, _ in RESPONDERS)
 )
@@ -1852,6 +1867,7 @@ COMMAND_DESC = {
     "lastevent": "Display the last event in emoji row format",
     "listevents": "List events",
     "listdays": "List events grouped by days",
+    "listtoday": "Shortcut for /listdays today, can add time marker",
     "delevent": "Delete event",
     "ru": "Latin alphabet to Cyrillic using Russian convention",
     "dict": "Shows definition of each word using dictionary and settings engine",
@@ -1916,6 +1932,8 @@ if __name__ == '__main__':
     application.add_handler(CommandHandler('nextevent', next_event))
     application.add_handler(CommandHandler('listevents', list_events))
     application.add_handler(CommandHandler('listdays', list_days))
+    application.add_handler(CommandHandler('listoday', list_today)) # hidden command, for typo
+    application.add_handler(CommandHandler('listtoday', list_today))
     application.add_handler(CommandHandler('lastevent', last_event))
     application.add_handler(ConversationHandler(
         entry_points=[CommandHandler("delevent", delevent)],
