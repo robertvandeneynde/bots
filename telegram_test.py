@@ -899,8 +899,12 @@ def addevent_analyse_from_bot(update, context, text:str):
         if match := Re.match(line):
             infos_raw[EventInfosAnalyse.emojis_meaning[match.group(1)]] = match.group(2)
     
+
     what = infos_raw.get('Name', '')
-    when = infos_raw['Date'] + ((' ' + infos_raw['Time']) if infos_raw.get('Time') else '')
+    try:
+        when = infos_raw['Date'] + ((' ' + infos_raw['Time']) if infos_raw.get('Time') else '')
+    except KeyError:
+        raise EventAnalyseError("Missing Date in message")
 
     if match := re.search('\s*' + re.escape('(') + '.*' + re.escape(')'), when):
         when = when[:match.span(0)[0]] + when[match.span(0)[1]:]
