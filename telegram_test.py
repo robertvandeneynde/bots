@@ -1008,7 +1008,7 @@ async def next_or_last_event(update: Update, context: CallbackContext, n:int):
         FROM Events
         WHERE %s
         AND chat_id=?
-        ORDER BY date %s
+        ORDER BY date %s, rowid DESC
         LIMIT 1
     ''' % ({1: "date >= ?", -1: "date <= ?"}[n], {1: 'ASC', -1:'DESC'}[n]), (Datetime.now(ZoneInfo('UTC')), update.effective_chat.id)))
 
