@@ -1056,7 +1056,7 @@ async def list_days_or_today(update: Update, context: CallbackContext, mode: Lit
 
     send = make_send(update, context)
     
-    datetime_range = parse_datetime_range(update, args=context.args if mode == 'list' else 'today' if mode == 'today' else raise_error(AssertionError('mode must be a correct value')))
+    datetime_range = parse_datetime_range(update, args=context.args if mode == 'list' else ('today',) if mode == 'today' else raise_error(AssertionError('mode must be a correct value')))
     beg, end, tz, when = (datetime_range[x] for x in ('beg_utc', 'end_utc', 'tz', 'when'))
 
     strptime = DatetimeDbSerializer.strptime
@@ -1101,7 +1101,7 @@ async def list_days_or_today(update: Update, context: CallbackContext, mode: Lit
     ))
 
 async def list_today(update: Update, context: CallbackContext):
-    return list_days
+    return await list_days_or_today(update, context, mode='today')
 
 async def list_events(update: Update, context: CallbackContext):
     send = make_send(update, context)
