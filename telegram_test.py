@@ -867,23 +867,11 @@ async def add_event(update: Update, context: CallbackContext):
         await send('Click the file below to add the event to your calendar:')
         await export_event(update, context, name=name, datetime_utc=datetime_utc)
 
-class EventInfosAnalyse:
-    possibles = {
-        'what': 'what', 'when': 'when', 'where': 'where',
-        'quand': 'when', 'quoi': 'what', 'où': 'where'
-    }
-
-class EventAnalyseError(UserError):
-    pass
-
 import yaml
-def addevent_analyse_yaml(update, context):
-    reply = update.message.reply_to_message
-    if not reply:
-        raise UserError("Cannot analyse if there is nothing to analyse")
-    Y = yaml.safe_load(reply.text)
+def addevent_analyse_yaml(update, context, text:str):
+    Y = yaml.safe_load(text)
     if not isinstance(Y, dict):
-        raise UserError('Each line should have a colon symbol, example:\n\nWhat: Party\nWhen: Tomorrow 16h')
+        raise EventAnalyseError('Each line should have a colon symbol, example:\n\nWhat: Party\nWhen: Tomorrow 16h')
     
     result = {}
     keys_lower = {k.lower(): k for k in Y.keys()}
@@ -894,14 +882,64 @@ def addevent_analyse_yaml(update, context):
     
     return result
 
-def addevent_analyse_from_bot(update, context):
-    reply = update.message.reply_to_message
+def addevent_analyse_from_bot(update, context, text:str):
+    lines = GetOrEmpty(text.splitlines())
+    if lines[0] in ("Event!", "Event added:"):
+        del lines[0]
+        
+    re_pattern = (
+        '^'
+        + '({})'.format('|'.join(map(re.escape, EventInfosAnalyse.emojis_meaning)))
+        + '\\s*'
+        + '(.*)'
+    )
+    infos_raw = {}
+    Re = re.compile(re_pattern, re.I)
+    for line in lines:
+        if match := Re.match(line):
+            infos_raw[EventInfosAnalyse.emojis_meaning[match.group(1)]] = match.group(2)
+    
+    what = infos_raw.get('Name', '')
+    when = infos_raw['Date'] + ((' ' + infos_raw['Time']) if infos_raw.get('Time') else '')
+
+    if match := re.search('\s*' + re.escape('(') + '.*' + re.escape(')'), when):
+        when = when[:match.span(0)[0]] + when[match.span(0)[1]:]
+
+    if match := re.match('|'.join(map(re.escape, DatetimeText.days_english)), when, re.I):
+        when = when[:match.span(0)[0]] + when[match.span(0)[1]:]
+
+    if match := re.search('(' + '\d+' + re.escape('/') + '\d+' + re.escape('/') + '\d+' + ')', when):
+        when = when[:match.span(0)[0]] + '-'.join(reversed(match.group(1).split('/'))) + when[match.span(0)[1]:]
+
+    when = when.strip()
+
+    return {
+        'what': what,
+        'when': when,
+    }
 
 def addevent_analyse(update, context):
+    reply = update.message.reply_to_message
+    if not reply:
+        raise UserError("Cannot analyse if there is nothing to analyse")
+
+    exceptions = []
     try:
-        return addevent_analyse_yaml(update, context)
+        return addevent_analyse_yaml(update, context, reply.text)
     except yaml.error.YAMLError as e:
-        raise UserError("YAML Error:" + str(e))
+        exceptions.append(EventAnalyseError("YAML Error:" + str(e)))
+    except EventAnalyseError as e:
+        exceptions.append(e)
+    
+    try:
+        return addevent_analyse_from_bot(update, context, reply.text)
+    except EventAnalyseError as e:
+        exceptions.append(e)
+    
+    if exceptions:
+        raise exceptions[0] if len(exceptions) == 1 else EventAnalyseMultipleError(exceptions)
+    else:
+        raise EventAnalyseError("I cannot interpret this message as an event")
 
 def whereis(update, context):
     send_message = make_send(update, context)
@@ -985,17 +1023,11 @@ async def next_or_last_event(update: Update, context: CallbackContext, n:int):
     datetime = strptime(date_utc).replace(tzinfo=ZoneInfo('UTC')).astimezone(tz)
     date, time = datetime.date(), datetime.time()
 
-    emojis = dict(
-         Name="📃",
-         Time="⌚",
-         Date="🗓️",
-         Location="📍",
-    ) if True else {}
-
+    emojis = EventFormatting.emojis
     await send('\n'.join(filter(None, [
         f"Event!",
         f"{emojis['Name']} {name}",
-        f"{emojis['Date']} {datetime:%A} {datetime.date():%d/%m}",
+        f"{emojis['Date']} {datetime:%A} {datetime.date():%d/%m/%Y}",
         (f"{emojis['Time']} {time:%H:%M} ({tz})" if chat_timezones and set(chat_timezones) != {tz} else
          f"{emojis['Time']} {time:%H:%M}") if time else None
     ] + ([
@@ -1695,6 +1727,32 @@ async def help(update, context):
 
 class UserError(ValueError):
     pass
+
+class EventFormatting:
+    emojis = dict(
+         Name="📃",
+         Time="⌚",
+         Date="🗓️",
+         Location="📍",
+    )
+
+class EventInfosAnalyse:
+    possibles = {
+        'what': 'what', 'when': 'when', 'where': 'where',
+        'quand': 'when', 'quoi': 'what', 'où': 'where'
+    }
+
+    emojis_meaning = {y:x for x,y in EventFormatting.emojis.items()}
+
+class EventAnalyseError(UserError):
+    pass
+
+class EventAnalyseMultipleError(EventAnalyseError):
+    def __init__(self, exceptions):
+        self.exceptions = exceptions
+        
+    def __str__(self):
+        return '\n\n'.join(map(str, self.exceptions))
 
 async def log_error(error, send):
     if isinstance(error, UserError):
