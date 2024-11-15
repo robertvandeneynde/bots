@@ -1012,6 +1012,8 @@ async def next_or_last_event(update: Update, context: CallbackContext, n:int):
             datetime_str += ' ' + '00:00:00'
     elif len(context.args) == 2:
         date, hour = context.args
+        if len(hour) <= len('08:00'):
+            hour += ':00'
         datetime_str = date + ' ' + hour
     else:
         raise UserError("Usage: /nextevent\n/nextevent datetime")
