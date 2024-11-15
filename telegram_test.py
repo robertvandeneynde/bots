@@ -597,6 +597,7 @@ async def export_event(update, context, *, name, datetime_utc):
 
 import zoneinfo
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
+UTC = ZoneInfo('UTC')
 
 class DatetimeText:
     days_english = "monday tuesday wednesday thursday friday saturday sunday".split() 
@@ -1003,8 +1004,21 @@ async def next_or_last_event(update: Update, context: CallbackContext, n:int):
     send = make_send(update, context)
     read_chat_settings = make_read_chat_settings(update, context)
 
-    if len(context.args) > 0:
-        raise UserError("Usage: /nextevent")
+    if len(context.args) == 0:
+        datetime_str = None
+    elif len(context.args) == 1:
+        datetime_str, = context.args
+        if len(datetime_str) <= len('2020-01-01'):
+            datetime_str += ' ' + '00:00:00'
+    elif len(context.args) == 2:
+        date, hour = context.args
+        datetime_str = date + ' ' + hour
+    else:
+        raise UserError("Usage: /nextevent\n/nextevent datetime")
+    
+    chat_timezones = read_chat_settings("event.timezones")
+    tz = induce_my_timezone(user_id=update.message.from_user.id, chat_id=update.effective_chat.id)
+    now = Datetime.now(UTC) if not datetime_str else DatetimeDbSerializer.strptime(datetime_str.replace('T', ' ')).replace(tzinfo=tz).astimezone(ZoneInfo('UTC'))
 
     events = simple_sql_dict(('''
         SELECT date as date_utc, name as name
@@ -1013,15 +1027,13 @@ async def next_or_last_event(update: Update, context: CallbackContext, n:int):
         AND chat_id=?
         ORDER BY date %s, rowid DESC
         LIMIT 1
-    ''' % ({1: "date >= ?", -1: "date <= ?"}[n], {1: 'ASC', -1:'DESC'}[n]), (Datetime.now(ZoneInfo('UTC')), update.effective_chat.id)))
+    ''' % ({1: "date >= ?", -1: "date <= ?"}[n], {1: 'ASC', -1:'DESC'}[n]), (now, update.effective_chat.id)))
 
     if len(events) == 0:
         return await send("No events !")
 
     strptime = DatetimeDbSerializer.strptime
 
-    chat_timezones = read_chat_settings("event.timezones")
-    tz = induce_my_timezone(user_id=update.message.from_user.id, chat_id=update.effective_chat.id)
     date_utc, name = events[0]
     datetime = strptime(date_utc).replace(tzinfo=ZoneInfo('UTC')).astimezone(tz)
     date, time = datetime.date(), datetime.time()
