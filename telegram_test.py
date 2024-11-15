@@ -1050,6 +1050,12 @@ async def next_event(update, context):
 async def list_days(update: Update, context: CallbackContext):
     return await list_days_or_today(update, context, mode='list')
 
+def setting_on_off(s, default=False):
+    return (False if s is None else
+            True if s.lower() == 'on' else
+            False if s.lower() == 'off' else 
+            default)
+
 from typing import Literal
 async def list_days_or_today(update: Update, context: CallbackContext, mode: Literal['list', 'today']):
     assert mode in ('list', 'today')
@@ -1078,7 +1084,7 @@ async def list_days_or_today(update: Update, context: CallbackContext, mode: Lit
         days[date.timetuple()[:3]].append((date, event_name))
 
     read_chat_settings = make_read_chat_settings(update, context)
-    display_time_marker = read_chat_settings('event.listtoday.display_time_marker')
+    display_time_marker = False if mode == 'list' else setting_on_off(read_chat_settings('event.listtoday.display_time_marker'), default='on')
 
     now_tz = datetime.now().astimezone(tz)
     def is_past(event_date):
