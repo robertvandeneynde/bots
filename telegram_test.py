@@ -873,6 +873,9 @@ class EventInfosAnalyse:
         'quand': 'when', 'quoi': 'what', 'où': 'where'
     }
 
+class EventAnalyseError(UserError):
+    pass
+
 import yaml
 def addevent_analyse_yaml(update, context):
     reply = update.message.reply_to_message
@@ -891,8 +894,14 @@ def addevent_analyse_yaml(update, context):
     
     return result
 
+def addevent_analyse_from_bot(update, context):
+    reply = update.message.reply_to_message
+
 def addevent_analyse(update, context):
-    return addevent_analyse_yaml(update, context)
+    try:
+        return addevent_analyse_yaml(update, context)
+    except yaml.error.YAMLError as e:
+        raise UserError("YAML Error:" + str(e))
 
 def whereis(update, context):
     send_message = make_send(update, context)
