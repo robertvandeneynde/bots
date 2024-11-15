@@ -867,8 +867,14 @@ async def add_event(update: Update, context: CallbackContext):
         await send('Click the file below to add the event to your calendar:')
         await export_event(update, context, name=name, datetime_utc=datetime_utc)
 
+class EventInfosAnalyse:
+    possibles = {
+        'what': 'what', 'when': 'when', 'where': 'where',
+        'quand': 'when', 'quoi': 'what', 'où': 'where'
+    }
+
 import yaml
-def addevent_analyse(update, context):
+def addevent_analyse_yaml(update, context):
     reply = update.message.reply_to_message
     if not reply:
         raise UserError("Cannot analyse if there is nothing to analyse")
@@ -878,13 +884,15 @@ def addevent_analyse(update, context):
     
     result = {}
     keys_lower = {k.lower(): k for k in Y.keys()}
-    possibles = {'what': 'what', 'when': 'when', 'where': 'where',
-                 'quand': 'when', 'quoi': 'what', 'où': 'where'}
+    possibles = EventInfosAnalyse.possibles
     for field in possibles:
         if field in keys_lower:
             result[possibles[field]] = Y[keys_lower[field]]
     
     return result
+
+def addevent_analyse(update, context):
+    return addevent_analyse_yaml(update, context)
 
 def whereis(update, context):
     send_message = make_send(update, context)
