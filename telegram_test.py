@@ -1910,7 +1910,7 @@ COMMAND_DESC = {
 
 COMMAND_LIST = (
     'caps',
-    'addevent', 'nextevent', 'listevents', 'listdays', 'delevent',
+    'addevent', 'nextevent', 'lastevent', 'listevents', 'listdays', 'listtoday', 'delevent',
     'ru',
     'dict', 'wikt', 'larousse',
     'convertmoney', 'eur', 'brl', 'rub',
