@@ -434,8 +434,8 @@ async def flashcard(update, context):
         translation = ' '.join(context.args)
       else:
         def find_sentence_translation(args):
-            if "/" in args:
-                separator_position = args.index("/")
+            if any(x in args for x in ("=", "/")):
+                separator_position = args.index("=" if "=" in args else "/")
                 sentence, translation = args[:separator_position], args[separator_position+1:]
                 sentence, translation = map(' '.join, (sentence, translation))
             elif len(args) == 2:
@@ -448,7 +448,7 @@ async def flashcard(update, context):
         
         sentence, translation = find_sentence_translation(context.args)
     except UsageError:
-        return await send("Usage:\n/flashcard word translation\n/flashcard words+ / translation+\nCan also be used on a reply message to replace the words")
+        return await send("Usage:\n/flashcard word translation\n/flashcard words+ = translation+\n/flashcard words+ / translation+\nCan also be used on a reply message to replace the words")
     
     user_id = update.effective_user.id
     page_name = get_current_flashcard_page(user_id)
