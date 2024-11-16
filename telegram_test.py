@@ -7,6 +7,8 @@ from telegram.constants import ChatType
 from telegram_settings_local import TOKEN
 from telegram_settings_local import FRIENDS_USER
 
+import json
+
 import enum
 class FriendsUser(enum.StrEnum):
     FLOCON = 'flocon'
@@ -517,14 +519,23 @@ async def guessing_word(update, context):
     context.user_data.clear()
     return ConversationHandler.END
 
-def make_send(update: Update, context: CallbackContext) -> AsyncSend:
+SendSaveInfo = namedtuple('SendSaveInfo', 'chat_id thread_id')
+def make_send(update: Update, context: CallbackContext, *, save_info: SendSaveInfo = None) -> AsyncSend:
+    if not save_info:
+        save_info = make_send_save_info(update, context)
     async def send(m, **kwargs):
         await context.bot.send_message(
             text=m,
-            chat_id=update.effective_chat.id,
-            message_thread_id=update.message.message_thread_id if update.message and update.message.is_topic_message else None,
+            chat_id=save_info.chat_id,
+            message_thread_id=save_info.thread_id,
             **kwargs)
     return send
+
+def make_send_save_info(update: Update, context: CallbackContext) -> SendSaveInfo:
+    return SendSaveInfo(
+        chat_id=update.effective_chat.id,
+        thread_id=update.message.message_thread_id if update.message and update.message.is_topic_message else None,
+    )
 
 async def switchpageflashcard(update, context):
     send = make_send(update, context)
@@ -1136,8 +1147,6 @@ async def list_events(update: Update, context: CallbackContext):
 
     chat_id = update.effective_chat.id
     with sqlite3.connect('db.sqlite') as conn:
-        from datetime import datetime, timedelta
-
         strptime = DatetimeDbSerializer.strptime
         strftime = DatetimeDbSerializer.strftime
         
@@ -1182,11 +1191,14 @@ async def delevent(update, context):
         ORDER BY date''',
         (strftime(beg), strftime(end), update.effective_chat.id,)))
    
+
+    saved_info_dict: dict = make_send_save_info(update, context)._asdict()
+
     keyboard = [
         [InlineKeyboardButton("{} - {}".format(
             strftime_minutes(strptime(event['date']).replace(tzinfo=ZoneInfo("UTC")).astimezone(tz)),
             event['name']
-        ), callback_data=str(event['rowid']))]
+        ), callback_data=json.dumps(saved_info_dict | dict(rowid=str(event['rowid']))))]
         for event in events
     ]
 
@@ -1194,17 +1206,20 @@ async def delevent(update, context):
         await send("No events to delete !")
         return ConversationHandler.END
     
-    cancel = [[InlineKeyboardButton("/cancel", callback_data="null")]]
+    cancel = [[InlineKeyboardButton("/cancel", callback_data=json.dumps(saved_info_dict | dict(rowid="null")))]]
 
     await send("Choose an event to delete:", reply_markup=InlineKeyboardMarkup(keyboard + cancel))
 
     return 0
 
 async def do_delete_event(update, context):
-    send = make_send(update, context)
     query = update.callback_query
     await query.answer()
-    rowid = query.data
+
+    data_dict: dict = json.loads(query.data)
+    send = make_send(update, context, save_info=SendSaveInfo(chat_id=data_dict['chat_id'], thread_id=data_dict['thread_id']))
+    
+    rowid = data_dict["rowid"]
     if rowid == "null":
         await send("Cancelled: No event deleted")
     else:
