@@ -74,6 +74,14 @@ END:VEVENT
 END:VCALENDAR\
 ''' # UID:uid1@example.com, GEO:48.85299;2.36885, ORGANIZER;CN=John Doe:MAILTO:john.doe@example.com
 
+def get_reply(message):
+    if not message.is_topic_message:
+        return message.reply_to_message
+    elif message.reply_to_message.id == message.message_thread_id:
+        return None
+    else:
+        return message.reply_to_message
+
 def strip_botname(update: Update, context: CallbackContext):
     # TODO analyse message.entities with message.parse_entity and message.parse_entities
     bot_mention: str = '@' + context.bot.username
@@ -251,8 +259,7 @@ def unilinetext(x):
 
 async def uniline(update, context):
     send = make_send(update, context)
-    reply = update.message.reply_to_message
-    if not reply and not context.args:
+    if not (reply := get_reply(update.message)) and not context.args:
         return await send("Usage: /uniline word1 word2\nCan also be used on a reply message")
     for arg in ([reply.text] if reply else []) + list(context.args):
         S = map(unilinetext, arg)
@@ -261,8 +268,7 @@ async def uniline(update, context):
 async def nuniline(update, context):
     send = make_send(update, context)
     nonascii = lambda x: ord(x) > 0x7F
-    reply = update.message.reply_to_message
-    if not reply and not context.args:
+    if not (reply := get_reply(update.message)) and not context.args:
         return await send("Usage: /nuniline word1 word2\nCan also be used on a reply message")
     for arg in ([reply.text] if reply else []) + list(context.args):
         S = map(unilinetext, filter(nonascii, arg))
@@ -319,13 +325,13 @@ async def dict_command(update: Update, context: CallbackContext, *, engine:'wikt
     read_my_settings = make_read_my_settings(update, context)
 
     if not context.args:
-        if not update.message.reply_to_message:
+        if not get_reply(update.message):
             return await send(f"Usage: /{command_name} word1 word2 word3...\nCan also be used on a reply message")
 
     is_reply = False
-    if update.message.reply_to_message:
+    if reply := get_reply(update.message):
         is_reply = True
-        reply_message_words = update.message.reply_to_message.text.split()
+        reply_message_words = reply.text.split()
         
         def any_number(items):
             import re
@@ -427,10 +433,9 @@ class UsageError(Exception):
 
 async def flashcard(update, context):
     send = make_send(update, context)
-    
     try:
-      if update.message.reply_to_message:
-        sentence = update.message.reply_to_message.text
+      if reply := get_reply(update.message):
+        sentence = reply.text 
         translation = ' '.join(context.args)
       else:
         def find_sentence_translation(args):
@@ -495,8 +500,11 @@ async def practiceflashcards(update, context):
         return await send("Usage:\n/practiceflashcards [n] [days]")
     
     user_id = update.effective_user.id
-    query = ('select sentence, translation from flashcard where user_id=? and page_name=?', (user_id, get_current_flashcard_page(user_id)))
+    query = ('select sentence, translation from flashcard where user_id=? and page_name=?', (user_id, current_page := get_current_flashcard_page(user_id)))
     lines = simple_sql(query)
+
+    if not lines:
+        return await send(f"No flashcards for page {current_page}")
     
     import random
     sample = random.sample(lines, n if n is not None else len(lines))
@@ -818,7 +826,7 @@ async def add_event(update: Update, context: CallbackContext):
     read_my_settings = make_read_my_settings(update, context)
     
     if not context.args:
-        if reply := update.message.reply_to_message:
+        if reply := get_reply(update.message):
             infos_event = addevent_analyse(update, context)
         else:
             return await send("Usage: /addevent date name\nUsage: /addevent date hour name")
@@ -937,8 +945,7 @@ def addevent_analyse_from_bot(update, context, text:str):
     }
 
 def addevent_analyse(update, context):
-    reply = update.message.reply_to_message
-    if not reply:
+    if not (reply := get_reply(update.message)):
         raise UserError("Cannot analyse if there is nothing to analyse")
 
     exceptions = []
