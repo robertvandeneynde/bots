@@ -1390,6 +1390,9 @@ ACCEPTED_SETTINGS_CHAT = (
     remove_dup_keep_order(setting + '.active' for _, setting, _ in RESPONDERS)
 )
 
+assert len(set(ACCEPTED_SETTINGS_USER)) == len(ACCEPTED_SETTINGS_USER), "Duplicates in ACCEPTED_SETTINGS_USER" 
+assert len(set(ACCEPTED_SETTINGS_CHAT)) == len(ACCEPTED_SETTINGS_CHAT), "Duplicates in ACCEPTED_SETTINGS_CHAT" 
+
 def assert_true(condition, error_to_raise=AssertionError):
     if not condition:
         raise error_to_raise
