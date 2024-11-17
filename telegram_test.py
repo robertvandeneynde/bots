@@ -803,7 +803,7 @@ def parse_datetime_point(update, context, when_infos=None, what_infos=None):
         if name_from_when_part:
             raise UserError("Too much infos in the When part")
         name = what_infos or ''
-    
+
     date, date_end = DatetimeText.to_date_range(date_str, tz=tz)
     datetime = Datetime.combine(date, time or Time(0,0)).replace(tzinfo=tz)
     datetime_utc = datetime.astimezone(ZoneInfo('UTC'))
@@ -833,8 +833,16 @@ async def add_event(update: Update, context: CallbackContext):
         infos_event = None
 
     if infos_event is not None:
-        when_infos = (infos_event.get('when') or '')
-        what_infos = (infos_event.get('what') or '') + (" @ " + infos_event['where'] if infos_event.get('where') else '')
+        other_infos = {k: infos_event[k] for k in infos_event.keys() - {'when', 'what', 'where'}}        
+        when_infos = infos_event.get('when') or ''
+        what_infos = ' '.join(filter(None, [
+            infos_event.get('what') or '',
+        ] + [
+            '{%s: %s}' % (item[0].capitalize(), item[1])
+            for item in other_infos.items()
+        ] + [
+            "@ " + infos_event['where'] if infos_event.get('where') else '',
+        ]))
     else:
         when_infos = None
         what_infos = None
@@ -901,7 +909,10 @@ def addevent_analyse_yaml(update, context, text:str):
     possibles = EventInfosAnalyse.possibles
     for field in possibles:
         if field in keys_lower:
-            result[possibles[field]] = Y.get(keys_lower[field], '')
+            result[possibles[field].lower()] = Y.get(keys_lower[field], '')
+    
+    for field in Y.keys() - possibles.keys():
+        result[field.lower()] = Y[field]
     
     return result
 
