@@ -883,9 +883,9 @@ async def add_event(update: Update, context: CallbackContext):
         for datetime_tz in [datetime.astimezone(timezone)]
     ] if time else []))))
     
-    if setting_on_off(read_chat_settings('event.addevent.display_file'), default=True):
+    if do_unless_setting_off(read_chat_settings('event.addevent.display_file')):
         # 2. Send info as clickable ics file to add to calendar
-        if setting_on_off(read_chat_settings('event.addevent.help_file'), default=True):
+        if do_unless_setting_off(read_chat_settings('event.addevent.help_file')):
             await send('Click the file below to add the event to your calendar:')
         await export_event(update, context, name=name, datetime_utc=datetime_utc)
 
@@ -1082,12 +1082,18 @@ async def next_event(update, context):
 async def list_days(update: Update, context: CallbackContext):
     return await list_days_or_today(update, context, mode='list')
 
-def setting_on_off(s, default=False):
+def setting_on_off(s, default):
     return (s if isinstance(s, bool) else
             True if isinstance(s, str) and s.lower() == 'on' else
             False if isinstance(s, str) and s.lower() == 'off' else 
             setting_on_off(default) if isinstance(default, str) and default.lower() in ('on', 'off') else
             default)
+
+def do_if_setting_on(setting):
+    return setting_on_off(setting, default=False)
+
+def do_unless_setting_off(setting):
+    return setting_on_off(setting, default=True)
 
 from typing import Literal
 async def list_days_or_today(update: Update, context: CallbackContext, mode: Literal['list', 'today']):
@@ -1117,7 +1123,7 @@ async def list_days_or_today(update: Update, context: CallbackContext, mode: Lit
         days[date.timetuple()[:3]].append((date, event_name))
 
     read_chat_settings = make_read_chat_settings(update, context)
-    display_time_marker = False if mode == 'list' else setting_on_off(read_chat_settings('event.listtoday.display_time_marker'), default=True)
+    display_time_marker = False if mode == 'list' else do_unless_setting_off(read_chat_settings('event.listtoday.display_time_marker'))
 
     now_tz = datetime.now().astimezone(tz)
     def is_past(event_date):
