@@ -883,7 +883,7 @@ async def add_event(update: Update, context: CallbackContext):
         for datetime_tz in [datetime.astimezone(timezone)]
     ] if time else []))))
     
-    if (display_file := read_chat_settings('event.addevent.display_file')) is None or display_file.lower() != 'off':
+    if setting_on_off(read_chat_settings('event.addevent.display_file'), default=True):
         # 2. Send info as clickable ics file to add to calendar
         if setting_on_off(read_chat_settings('event.addevent.help_file'), default=True):
             await send('Click the file below to add the event to your calendar:')
