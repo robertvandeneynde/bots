@@ -1819,7 +1819,8 @@ class EventFormatting:
 class EventInfosAnalyse:
     possibles = {
         'what': 'what', 'when': 'when', 'where': 'where',
-        'quand': 'when', 'quoi': 'what', 'où': 'where'
+        'quand': 'when', 'quoi': 'what', 'où': 'where',
+        'name': 'what', 'location': 'where', 
     }
 
     emojis_meaning = {y:x for x,y in EventFormatting.emojis.items()}
