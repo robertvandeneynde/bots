@@ -891,6 +891,7 @@ async def add_event(update: Update, context: CallbackContext):
 
 import yaml
 def addevent_analyse_yaml(update, context, text:str):
+    text = '\n'.join(l for l in text.splitlines() if ':' in l)
     Y = yaml.safe_load(text)
     if not isinstance(Y, dict):
         raise EventAnalyseError('Each line should have a colon symbol, example:\n\nWhat: Party\nWhen: Tomorrow 16h')
