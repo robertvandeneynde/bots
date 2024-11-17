@@ -1086,6 +1086,7 @@ def setting_on_off(s, default=False):
     return (s if isinstance(s, bool) else
             True if isinstance(s, str) and s.lower() == 'on' else
             False if isinstance(s, str) and s.lower() == 'off' else 
+            setting_on_off(default) if isinstance(default, str) and default.lower() in ('on', 'off') else
             default)
 
 from typing import Literal
