@@ -914,6 +914,9 @@ def addevent_analyse_yaml(update, context, text:str):
     for field in Y.keys() - possibles.keys():
         result[field.lower()] = Y[field]
     
+    if not result.get('when'):
+        raise EventAnalyseError("When is mandatory")
+
     return result
 
 def addevent_analyse_from_bot(update, context, text:str):
