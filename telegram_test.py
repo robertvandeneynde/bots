@@ -880,12 +880,12 @@ async def add_event(update: Update, context: CallbackContext):
     await send('\n'.join(filter(None, [
         f"Event added:",
         f"{emojis['Name']} {name}",
-        f"{emojis['Date']} {datetime:%A} {datetime.date()} ({date_str})",
+        f"{emojis['Date']} {datetime:%A} {datetime.date():%d/%m/%Y} ({date_str})",
         (f"{emojis['Time']} {time:%H:%M} ({tz})" if chat_timezones and set(chat_timezones) != {tz} else
          f"{emojis['Time']} {time:%H:%M}") if time else None
     ] + ([
         f"{emojis['Time']} {datetime_tz:%H:%M} ({timezone})" if datetime_tz.date() == datetime.date() else
-        f"{emojis['Time']} {datetime_tz:%H:%M} on {datetime_tz.date()} ({timezone})"
+        f"{emojis['Time']} {datetime_tz:%H:%M} on {datetime_tz.date():%d/%m/%Y} ({timezone})"
         for timezone in chat_timezones or []
         if timezone != tz
         for datetime_tz in [datetime.astimezone(timezone)]
