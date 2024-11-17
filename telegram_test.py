@@ -1818,7 +1818,7 @@ class EventAnalyseMultipleError(EventAnalyseError):
         self.exceptions = exceptions
         
     def __str__(self):
-        return '\n\n'.join(map(str, self.exceptions))
+        return '\n---\n'.join(map(str, self.exceptions))
 
 async def log_error(error, send):
     if isinstance(error, UserError):
