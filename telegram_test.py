@@ -833,8 +833,8 @@ async def add_event(update: Update, context: CallbackContext):
         infos_event = None
 
     if infos_event is not None:
-        when_infos = infos_event.get('when', '')
-        what_infos = infos_event.get('what', '') + (" @ " + infos_event['where'] if infos_event.get('where') else '')
+        when_infos = (infos_event.get('when') or '')
+        what_infos = (infos_event.get('what') or '') + (" @ " + infos_event['where'] if infos_event.get('where') else '')
     else:
         when_infos = None
         what_infos = None
@@ -901,7 +901,7 @@ def addevent_analyse_yaml(update, context, text:str):
     possibles = EventInfosAnalyse.possibles
     for field in possibles:
         if field in keys_lower:
-            result[possibles[field]] = Y[keys_lower[field]]
+            result[possibles[field]] = Y.get(keys_lower[field], '')
     
     return result
 
