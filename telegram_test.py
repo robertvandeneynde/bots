@@ -324,13 +324,12 @@ async def dict_command(update: Update, context: CallbackContext, *, engine:'wikt
     send = make_send(update, context)
     read_my_settings = make_read_my_settings(update, context)
 
+    reply = get_reply(update.message)
     if not context.args:
-        if not get_reply(update.message):
+        if not reply:
             return await send(f"Usage: /{command_name} word1 word2 word3...\nCan also be used on a reply message")
 
-    is_reply = False
-    if reply := get_reply(update.message):
-        is_reply = True
+    if reply:
         reply_message_words = reply.text.split()
         
         def any_number(items):
@@ -367,7 +366,7 @@ async def dict_command(update: Update, context: CallbackContext, *, engine:'wikt
         base_lang = None
         target_lang = None
     
-    if is_reply:
+    if reply:
         if any_number(parameter_words):
             words = list(substitute_numbers(parameter_words))
         else:
@@ -886,7 +885,8 @@ async def add_event(update: Update, context: CallbackContext):
     
     if (display_file := read_chat_settings('event.addevent.display_file')) is None or display_file.lower() != 'off':
         # 2. Send info as clickable ics file to add to calendar
-        await send('Click the file below to add the event to your calendar:')
+        if setting_on_off(read_chat_settings('event.addevent.help_file'), default=True):
+            await send('Click the file below to add the event to your calendar:')
         await export_event(update, context, name=name, datetime_utc=datetime_utc)
 
 import yaml
@@ -1391,6 +1391,7 @@ ACCEPTED_SETTINGS_USER = (
 ACCEPTED_SETTINGS_CHAT = (
     'money.currencies',
     'event.timezones',
+    'event.addevent.help_file',
     'event.addevent.display_file',
     'event.listtoday.display_time_marker',
 ) + tuple(
