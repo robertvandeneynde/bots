@@ -927,12 +927,43 @@ def addevent_analyse_from_bot(update, context, text:str):
         + '\\s*'
         + '(.*)'
     )
-    infos_raw = {}
+    from collections import defaultdict
+    infos_raw = defaultdict(list)
     Re = re.compile(re_pattern, re.I)
     for line in lines:
         if match := Re.match(line):
-            infos_raw[EventInfosAnalyse.emojis_meaning[match.group(1)]] = match.group(2)
+            infos_raw[EventInfosAnalyse.emojis_meaning[match.group(1)].lower()].append(match.group(2))
+
+    def deal_with_timezones(infos_raw):
+        infos_raw = infos_raw.copy()
+
+        def extract_timezone(data):
+            Re2 = re.compile(
+                '(.*)'
+                + '\s*'
+                + re.escape('(') + '(' + '.*?' + ')' + re.escape(')')
+            )
+            if match := Re2.search(data):
+                time_str, tz = match.group(1), match.group(2)
+                try:
+                    tz = ZoneInfo(tz)
+                except ZoneInfoNotFoundError:
+                    tz = None
+                if not tz:
+                    return time_str.strip(), None
+                return time_str, tz
+            return data.strip(), None
+        
+        if 'when' in infos_raw:
+            infos_raw['when'] = [ extract_timezone(infos_raw['when'][0])[0] ]
+
+        return infos_raw
     
+    def reduce_multi_values(infos_raw):
+        return {k: ' & '.join(v) for k,v in infos_raw.items()} 
+
+    infos_raw = deal_with_timezones(infos_raw)
+    infos_raw = reduce_multi_values(infos_raw)
 
     what = infos_raw.get('Name', '')
     try:
