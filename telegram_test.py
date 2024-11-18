@@ -916,7 +916,18 @@ def addevent_analyse_yaml(update, context, text:str):
 
     return result
 
+def only_one(it, error=ValueError):
+    if len(L := list(it)) == 1:
+        return L[0]
+    else:
+        raise error
+
+def only_one_with_error(error):
+    return partial(only_one, error=error)
+
 def addevent_analyse_from_bot(update, context, text:str):
+    my_timezone = induce_my_timezone(user_id=update.message.from_user.id, chat_id=update.effective_chat.id)
+
     lines = GetOrEmpty(text.splitlines())
     if lines[0] in ("Event!", "Event added:"):
         del lines[0]
@@ -954,20 +965,24 @@ def addevent_analyse_from_bot(update, context, text:str):
                 return time_str, tz
             return data.strip(), None
         
-        if 'when' in infos_raw:
-            infos_raw['when'] = [ extract_timezone(infos_raw['when'][0])[0] ]
+        if 'date' in infos_raw:
+            ldate = infos_raw['date']
+            local_only_one = only_one_with_error(EventAnalyseError(f'Multiple values for timezone {my_timezone!s}'))
+            all_timezone_info = [local_only_one(x[0] for x in infos_raw['date'] if my_timezone == x[1])]
+            local_time, local_time_tz = extract_timezone(all_timezone_info)
+            infos_raw['date'] = [ '{} ({})'.format(local_time, local_time_tz) ]
 
         return infos_raw
     
     def reduce_multi_values(infos_raw):
         return {k: ' & '.join(v) for k,v in infos_raw.items()} 
 
-    infos_raw = deal_with_timezones(infos_raw)
+    # infos_raw = deal_with_timezones(infos_raw)  # TODO
     infos_raw = reduce_multi_values(infos_raw)
 
-    what = infos_raw.get('Name', '')
+    what = infos_raw.get('name', '')
     try:
-        when = infos_raw['Date'] + ((' ' + infos_raw['Time']) if infos_raw.get('Time') else '')
+        when = infos_raw['date'] + ((' ' + infos_raw['time']) if infos_raw.get('time') else '')
     except KeyError:
         raise EventAnalyseError("Missing Date in message")
 
