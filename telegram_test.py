@@ -899,6 +899,8 @@ def addevent_analyse_yaml(update, context, text:str):
     if not isinstance(Y, dict):
         raise EventAnalyseError('Each line should have a colon symbol, example:\n\nWhat: Party\nWhen: Tomorrow 16h')
     
+    Y = {k.lower(): v for k,v in Y.items()}
+
     result = {}
     keys_lower = {k.lower(): k for k in Y.keys()}
     possibles = EventInfosAnalyse.possibles
