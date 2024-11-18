@@ -1547,9 +1547,14 @@ class SettingsInfo:
     TABLES = {'chat': 'ChatSettings', 'user': 'UserSettings'}
     FIELDS = {'chat': 'chat_id', 'user': 'user_id'}
 
-def read_settings(key, *, id, settings_type:Literal['chat'] | Literal['user']):
-    conversion = CONVERSION_SETTINGS[settings_type][key]['from_db']
+SettingType = Literal['chat', 'user']
 
+def read_settings(key, *, id, settings_type: SettingType):
+    conversion = CONVERSION_SETTINGS[settings_type][key]['from_db']
+    raw = read_raw_settings(key, id=id, settings_type=settings_type)
+    return conversion(raw) if raw is not None else None
+
+def read_raw_settings(key, *, id, settings_type: SettingType):
     with sqlite3.connect('db.sqlite') as conn:
         cursor = conn.cursor()
 
@@ -1563,7 +1568,7 @@ def read_settings(key, *, id, settings_type:Literal['chat'] | Literal['user']):
         )
 
         results = cursor.execute(*query).fetchall()
-        return conversion(results[0][0]) if results else None
+        return results[0][0] if results else None
 
 async def listallsettings(update: Update, context: CallbackContext):
     send = make_send(update, context)
@@ -1610,7 +1615,7 @@ async def settings_command(update: Update, context: CallbackContext, *, command_
 
     if value is None:
         # read
-        value = read_settings(id=id, key=key, settings_type=settings_type)
+        value = read_raw_settings(id=id, key=key, settings_type=settings_type)
         await send(f'Settings: {key} = {value}' if value is not None else
                     f'No settings for {key!r}')
     
