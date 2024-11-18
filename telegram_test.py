@@ -1579,14 +1579,19 @@ async def settings_command(update: Update, context: CallbackContext, *, command_
     if key not in accepted_settings:
         return await send(f'Unknown settings: {key!r}\n\nType /listallsettings for complete list of settings (hidden command)')
 
+    if rest and rest[0] == '=':
+        rest = rest[1:]
+        if not rest:
+            raise UserError('Must sepcify a value when setting a value with "a.b = c"')
+
     if key in ('money.currencies', 'event.timezones'):
         value = ([] if list(rest) in [['()'], ['[]']] else
                  None if not rest else
                  list(rest))
     else:
-        # default, single value no space string
         if len(rest) not in (0, 1):
             return await print_usage()
+        # default, single value no space string
         value = rest[0] if rest else None
 
     if settings_type == 'user':
