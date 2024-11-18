@@ -868,24 +868,19 @@ async def add_event(update: Update, context: CallbackContext):
 
         cursor.execute("INSERT INTO Events(date, name, chat_id, source_user_id) VALUES (?,?,?,?)", (strftime(datetime_utc), name, chat_id, source_user_id))
     
-    emojis = dict(
-         Name="📃",
-         Time="⌚",
-         Date="🗓️",
-         Location="📍",
-    ) if True else {}
+    emojis = EventFormatting.emojis
 
     # 1. Send info in text
 
     await send('\n'.join(filter(None, [
         f"Event added:",
-        f"{emojis['Name']} {name}",
-        f"{emojis['Date']} {datetime:%A} {datetime.date():%d/%m/%Y} ({date_str})",
-        (f"{emojis['Time']} {time:%H:%M} ({tz})" if chat_timezones and set(chat_timezones) != {tz} else
-         f"{emojis['Time']} {time:%H:%M}") if time else None
+        f"{emojis.Name} {name}",
+        f"{emojis.Date} {datetime:%A} {datetime.date():%d/%m/%Y} ({date_str})",
+        (f"{emojis.Time} {time:%H:%M} ({tz})" if chat_timezones and set(chat_timezones) != {tz} else
+         f"{emojis.Time} {time:%H:%M}") if time else None
     ] + ([
-        f"{emojis['Time']} {datetime_tz:%H:%M} ({timezone})" if datetime_tz.date() == datetime.date() else
-        f"{emojis['Time']} {datetime_tz:%H:%M} on {datetime_tz.date():%d/%m/%Y} ({timezone})"
+        f"{emojis.Time} {datetime_tz:%H:%M} ({timezone})" if datetime_tz.date() == datetime.date() else
+        f"{emojis.Time} {datetime_tz:%H:%M} on {datetime_tz.date():%d/%m/%Y} ({timezone})"
         for timezone in chat_timezones or []
         if timezone != tz
         for datetime_tz in [datetime.astimezone(timezone)]
@@ -1076,13 +1071,13 @@ async def next_or_last_event(update: Update, context: CallbackContext, n:int):
     emojis = EventFormatting.emojis
     await send('\n'.join(filter(None, [
         f"Event!",
-        f"{emojis['Name']} {name}",
-        f"{emojis['Date']} {datetime:%A} {datetime.date():%d/%m/%Y}",
-        (f"{emojis['Time']} {time:%H:%M} ({tz})" if chat_timezones and set(chat_timezones) != {tz} else
-         f"{emojis['Time']} {time:%H:%M}") if time else None
+        f"{emojis.Name} {name}",
+        f"{emojis.Date} {datetime:%A} {datetime.date():%d/%m/%Y}",
+        (f"{emojis.Time} {time:%H:%M} ({tz})" if chat_timezones and set(chat_timezones) != {tz} else
+         f"{emojis.Time} {time:%H:%M}") if time else None
     ] + ([
-        f"{emojis['Time']} {datetime_tz:%H:%M} ({timezone})" if datetime_tz.date() == datetime.date() else
-        f"{emojis['Time']} {datetime_tz:%H:%M} on {datetime_tz.date()} ({timezone})"
+        f"{emojis.Time} {datetime_tz:%H:%M} ({timezone})" if datetime_tz.date() == datetime.date() else
+        f"{emojis.Time} {datetime_tz:%H:%M} on {datetime_tz.date()} ({timezone})"
         for timezone in chat_timezones or []
         if timezone != tz
         for datetime_tz in [datetime.astimezone(timezone)]
@@ -1808,8 +1803,14 @@ async def help(update, context):
 class UserError(ValueError):
     pass
 
+class DictJsLike(dict):
+    def __getattribute__(self, x):
+        if x in self:
+            return self[x]
+        return super().__getattribute__(x)
+
 class EventFormatting:
-    emojis = dict(
+    emojis = DictJsLike(
          Name="📃",
          Time="⌚",
          Date="🗓️",
