@@ -892,6 +892,9 @@ async def add_event(update: Update, context: CallbackContext):
             await send('Click the file below to add the event to your calendar:')
         await export_event(update, context, name=name, datetime_utc=datetime_utc)
 
+def natural_filter(x):
+    return filter(None, x)
+
 import yaml
 def addevent_analyse_yaml(update, context, text:str):
     text = '\n'.join(l for l in text.splitlines() if ':' in l)
@@ -916,7 +919,7 @@ def addevent_analyse_yaml(update, context, text:str):
     
     Interval = re.compile('(\d{2}:\d{2}) - (\d{2}:\d{2})')
     if match := Interval.search(result['when']):
-        result['what'] = ' '.join(filter(None, [result.get('what'), '({})'.format(match.group(0))]))
+        result['what'] = ' '.join(natural_filter([result.get('what'), '({})'.format(match.group(0))]))
         result['when'] = Interval.sub(match.group(1), result['when'])
 
     return result
@@ -1122,7 +1125,7 @@ async def next_or_last_event(update: Update, context: CallbackContext, n:int):
     date, time = datetime.date(), datetime.time()
 
     emojis = EventFormatting.emojis
-    await send('\n'.join(filter(None, [
+    await send('\n'.join(natural_filter([
         f"Event!",
         f"{emojis.Name} {name}",
         f"{emojis.Date} {datetime:%A} {datetime.date():%d/%m/%Y}",
