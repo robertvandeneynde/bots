@@ -886,7 +886,7 @@ async def add_event(update: Update, context: CallbackContext):
         for datetime_tz in [datetime.astimezone(timezone)]
     ] if time else []))))
     
-    if read_chat_settings('event.addevent.display_file'):
+    if do_unless_setting_off(read_chat_settings('event.addevent.display_file')):
         # 2. Send info as clickable ics file to add to calendar
         if do_unless_setting_off(read_chat_settings('event.addevent.help_file')):
             await send('Click the file below to add the event to your calendar:')
@@ -1488,10 +1488,17 @@ ACCEPTED_SETTINGS_CHAT = (
 assert len(set(ACCEPTED_SETTINGS_USER)) == len(ACCEPTED_SETTINGS_USER), "Duplicates in ACCEPTED_SETTINGS_USER" 
 assert len(set(ACCEPTED_SETTINGS_CHAT)) == len(ACCEPTED_SETTINGS_CHAT), "Duplicates in ACCEPTED_SETTINGS_CHAT" 
 
-def assert_true(condition, error_to_raise=AssertionError):
+def assert_true(condition, error=AssertionError):
     if not condition:
-        raise error_to_raise
+        raise error
     return True
+
+def is_timezone(x: str) -> bool:
+    try:
+        ZoneInfo(x)
+        return True
+    except ZoneInfoNotFoundError:
+        return False
 
 def CONVERSION_SETTINGS_BUILDER():
     import json
@@ -1506,11 +1513,12 @@ def CONVERSION_SETTINGS_BUILDER():
     }
     timezone_serializer = {
         'from_db': ZoneInfo,
-        'to_db': lambda x:x,
+        'to_db': lambda x: assert_true(is_timezone(x), UserError(f"{x} is not a timezone"))
+                 and x,
     }
     list_of_timezone_serializer = {
         'from_db': lambda s: list(map(ZoneInfo, json.loads(s))),
-        'to_db': lambda L: json.dumps(list(map(str, L)))
+        'to_db': lambda L: json.dumps(list(map(timezone_serializer['to_db'], L)))
     }
     list_of_currencies_serializer = {
         'from_db': lambda s: list(map(str.upper, json.loads(s))),
@@ -1518,7 +1526,8 @@ def CONVERSION_SETTINGS_BUILDER():
     }
     on_off_serializer = {
         'from_db': lambda x: x != 'off',
-        'to_db': lambda x: assert_true(isinstance(x, str) and x.lower() in ('on', 'off', 'true', 'false', 'yes', 'no')) and {'true': 'on', 'false': 'off', 'yes': 'on', 'no': 'off'}[x.lower()],
+        'to_db': lambda x: assert_true(isinstance(x, str) and x.lower() in ('on', 'off', 'true', 'false', 'yes', 'no'), UserError(f"{x} must be on/off"))
+                 and {'true': 'on', 'false': 'off', 'yes': 'on', 'no': 'off'}.get(x.lower(), x.lower()),
     }
     # mappings
     mapping_chat = {
