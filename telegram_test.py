@@ -886,7 +886,7 @@ async def add_event(update: Update, context: CallbackContext):
         for datetime_tz in [datetime.astimezone(timezone)]
     ] if time else []))))
     
-    if do_unless_setting_off(read_chat_settings('event.addevent.display_file')):
+    if read_chat_settings('event.addevent.display_file'):
         # 2. Send info as clickable ics file to add to calendar
         if do_unless_setting_off(read_chat_settings('event.addevent.help_file')):
             await send('Click the file below to add the event to your calendar:')
@@ -1495,6 +1495,7 @@ def assert_true(condition, error_to_raise=AssertionError):
 
 def CONVERSION_SETTINGS_BUILDER():
     import json
+    # serializers
     default_serializer = {
         'from_db': lambda x:x,
         'to_db': lambda x:x,
@@ -1515,9 +1516,15 @@ def CONVERSION_SETTINGS_BUILDER():
         'from_db': lambda s: list(map(str.upper, json.loads(s))),
         'to_db': lambda L: json.dumps(list(map(str.upper, L)))
     }
+    on_off_serializer = {
+        'from_db': lambda x: x != 'off',
+        'to_db': lambda x: assert_true(isinstance(x, str) and x.lower() in ('on', 'off', 'true', 'false', 'yes', 'no')) and {'true': 'on', 'false': 'off', 'yes': 'on', 'no': 'off'}[x.lower()],
+    }
+    # mappings
     mapping_chat = {
         'money.currencies': list_of_currencies_serializer,
         'event.timezones': list_of_timezone_serializer,
+        'event.addevent.display_file': on_off_serializer,
     }
     mapping_user = {
         'event.timezone': timezone_serializer,
