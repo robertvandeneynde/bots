@@ -320,7 +320,7 @@ def make_read_chat_settings(update: Update, context: CallbackContext):
 
 DICT_ENGINES = ('wikt', 'larousse', 'glosbe')
 
-async def dict_command(update: Update, context: CallbackContext, *, engine:'wikt' | 'larousse' | 'glosbe', command_name:str):
+async def dict_command(update: Update, context: CallbackContext, *, engine:Literal['wikt'] | Literal['larousse'] | Literal['glosbe'], command_name:str):
     send = make_send(update, context)
     read_my_settings = make_read_my_settings(update, context)
 
@@ -665,7 +665,7 @@ class DatetimeText:
         return datetime, date_end
 
     @classmethod
-    def to_date_range(self, name, *, reference=None, tz=None) -> date:
+    def to_date_range(self, name, *, reference=None, tz=None) -> datetime.date:
         from datetime import datetime, timedelta, date, date as Date
         reference = reference or datetime.now().astimezone(tz).replace(tzinfo=None)
         today = reference.date()
@@ -754,7 +754,7 @@ def parse_event_date(args):
     
     return day_of_week, ' '.join(args[:n]) if n > 0 else day_of_week, args[n:]
 
-def parse_event(args) -> tuple[str, time | None, str]:
+def parse_event(args) -> tuple[str, datetime.time | None, str]:
     from datetime import date as Date, time as Time, timedelta as Timedelta
 
     date: str
@@ -1256,6 +1256,7 @@ async def do_delete_event(update, context):
         
     return ConversationHandler.END
 
+from typing import Iterable
 def n_to_1_dict(x:dict|Iterable):
     gen = x.items() if isinstance(x, dict) else x
     
@@ -1339,7 +1340,7 @@ def set_my_timezone(user_id, tz:ZoneInfo):
             raise ValueError("Unique constraint failed: Multiple timezone for user {}".format(user_id))
         conn.execute("end transaction")
 
-def set_settings(*, id, key, value_raw:any, settings_type:'chat' | 'user'):
+def set_settings(*, id, key, value_raw:any, settings_type:Literal['chat'] | Literal['user']):
     conversion = CONVERSION_SETTINGS[settings_type][key]['to_db']
 
     value: any = conversion(value_raw)
@@ -1359,7 +1360,7 @@ def set_settings(*, id, key, value_raw:any, settings_type:'chat' | 'user'):
             raise ValueError("Unique constraint failed: Multiple settings for {} {} and key {!r}".format(settings_type, id, key))
         conn.execute("end transaction")
 
-def delete_settings(*, id, key, settings_type:'chat' | 'user'):
+def delete_settings(*, id, key, settings_type:Literal['chat'] | Literal['user']):
     table = SettingsInfo.TABLES[settings_type]
     field_id = SettingsInfo.FIELDS[settings_type]
     query_delete = (f"""DELETE FROM {table} WHERE {field_id}=? and key=?""", (id, key))
@@ -1470,7 +1471,7 @@ class SettingsInfo:
     TABLES = {'chat': 'ChatSettings', 'user': 'UserSettings'}
     FIELDS = {'chat': 'chat_id', 'user': 'user_id'}
 
-def read_settings(key, *, id, settings_type:'chat' | 'user'):
+def read_settings(key, *, id, settings_type:Literal['chat'] | Literal['user']):
     conversion = CONVERSION_SETTINGS[settings_type][key]['from_db']
 
     with sqlite3.connect('db.sqlite') as conn:
@@ -1495,7 +1496,7 @@ async def listallsettings(update: Update, context: CallbackContext):
             '|'.join(['user'] * (setting in ACCEPTED_SETTINGS_USER) + ['chat'] * (setting in ACCEPTED_SETTINGS_CHAT)))
         for setting in sorted(ACCEPTED_SETTINGS_USER + ACCEPTED_SETTINGS_CHAT)))
 
-async def settings_command(update: Update, context: CallbackContext, *, command_name: str, settings_type:'chat' | 'user', accepted_settings:list[str]):
+async def settings_command(update: Update, context: CallbackContext, *, command_name: str, settings_type:Literal['chat'] | Literal['user'], accepted_settings:list[str]):
     send = make_send(update, context)
 
     async def print_usage():
@@ -1537,7 +1538,7 @@ async def settings_command(update: Update, context: CallbackContext, *, command_
         set_settings(value_raw=value, id=id, key=key, settings_type=settings_type)
         await send(f"Settings: {key} = {value}")
 
-async def delsettings_command(update:Update, context: CallbackContext, *, accepted_settings:list[str], settings_type:'chat' | 'id', command_name:str):
+async def delsettings_command(update:Update, context: CallbackContext, *, accepted_settings:list[str], settings_type:Literal['chat'] | Literal['id'], command_name:str):
     send = make_send(update, context)
     
     if len(context.args) != 1:
@@ -1640,7 +1641,7 @@ class DatetimeDbSerializer:
     def strftime(x:datetime):
         return x.strftime("%Y-%m-%d %H:%M:%S")
 
-    def to_db(self, x: Datetime):
+    def to_db(self, x: datetime):
         return self.strftime(x)
 
     def from_db(self, x: any):
@@ -1659,6 +1660,7 @@ class JsonDbSerializer:
         import json
         return json.loads(x)
 
+Rates = dict
 def get_database_euro_rates() -> Rates:
     query_get_last_date = ('''select MAX(datetime), rates from EuroRates''', ())
 
