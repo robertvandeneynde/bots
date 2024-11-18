@@ -1088,19 +1088,31 @@ async def next_or_last_event(update: Update, context: CallbackContext, n:int):
     send = make_send(update, context)
     read_chat_settings = make_read_chat_settings(update, context)
 
+    datetime_str = None
+    skip_n = None
     if len(context.args) == 0:
-        datetime_str = None
+        pass
     elif len(context.args) == 1:
-        datetime_str, = context.args
-        if len(datetime_str) <= len('2020-01-01'):
-            datetime_str += ' ' + '00:00:00'
+        first_arg, = context.args
+        try:
+            skip_n = int(first_arg)
+        except ValueError:
+            pass
+        if not skip_n > 0:
+            raise UserError('n must be > 0')
+        if skip_n is None:
+            datetime_str = first_arg
+            if len(datetime_str) <= len('2020-01-01'):
+                datetime_str += ' ' + '00:00:00'
     elif len(context.args) == 2:
         date, hour = context.args
         if len(hour) <= len('08:00'):
             hour += ':00'
         datetime_str = date + ' ' + hour
     else:
-        raise UserError("Usage: /nextevent\n/nextevent datetime")
+        raise UserError("Usage: /nextevent\n/nextevent datetime\n/nextevent n")
+    if skip_n is None:
+        skip_n = 1
     
     chat_timezones = read_chat_settings("event.timezones")
     tz = induce_my_timezone(user_id=update.message.from_user.id, chat_id=update.effective_chat.id)
@@ -1113,10 +1125,11 @@ async def next_or_last_event(update: Update, context: CallbackContext, n:int):
         AND chat_id=?
         ORDER BY date %s, rowid DESC
         LIMIT 1
-    ''' % ({1: "date >= ?", -1: "date <= ?"}[n], {1: 'ASC', -1:'DESC'}[n]), (now, update.effective_chat.id)))
+        OFFSET ?
+    ''' % ({1: "date >= ?", -1: "date <= ?"}[n], {1: 'ASC', -1:'DESC'}[n]), (now, update.effective_chat.id, skip_n - 1)))
 
     if len(events) == 0:
-        return await send("No events !")
+        return await send("No event !")
 
     strptime = DatetimeDbSerializer.strptime
 
