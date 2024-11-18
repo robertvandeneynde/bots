@@ -913,6 +913,11 @@ def addevent_analyse_yaml(update, context, text:str):
     
     if not result.get('when'):
         raise EventAnalyseError("When is mandatory")
+    
+    Interval = re.compile('(\d{2}:\d{2}) - (\d{2}:\d{2})')
+    if match := Interval.search(result['when']):
+        result['what'] = ' '.join(filter(None, [result.get('what'), '({})'.format(match.group(0))]))
+        result['when'] = Interval.sub(match.group(1), result['when'])
 
     return result
 
