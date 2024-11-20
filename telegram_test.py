@@ -1262,7 +1262,7 @@ async def list_events(update: Update, context: CallbackContext):
             msg += '\n\n' + f"Timezone: {tz}"
         await send(msg or (
             "No events for the next 7 days !" if when == 'week' else
-            f"No events for {when} !"
+            f"No events for {when} !" + (" 😱" if "today" == when else "")
         ))
 
 async def delevent(update, context):
