@@ -1226,7 +1226,7 @@ async def list_days_or_today(update: Update, context: CallbackContext, mode: Lit
 
     await send(msg or (
         "No events for the next 7 days !" if when == 'week' else
-        f"No events for {when} !"
+        f"No events for {when} !" + (" 😱" if mode == "today" else "")
     ))
 
 async def list_today(update: Update, context: CallbackContext):
