@@ -2028,6 +2028,7 @@ COMMAND_DESC = {
     "listevents": "List events",
     "listdays": "List events grouped by days",
     "listtoday": "Shortcut for /listdays today, can add time marker",
+    "today": "Shortcut for /listtoday",
     "delevent": "Delete event",
     "ru": "Latin alphabet to Cyrillic using Russian convention",
     "dict": "Shows definition of each word using dictionary and settings engine",
@@ -2057,7 +2058,7 @@ COMMAND_DESC = {
 
 COMMAND_LIST = (
     'caps',
-    'addevent', 'nextevent', 'lastevent', 'listevents', 'listdays', 'listtoday', 'delevent',
+    'addevent', 'nextevent', 'lastevent', 'listevents', 'listdays', 'listtoday', 'today', 'delevent',
     'ru',
     'dict', 'wikt', 'larousse',
     'convertmoney', 'eur', 'brl', 'rub',
@@ -2094,6 +2095,7 @@ if __name__ == '__main__':
     application.add_handler(CommandHandler('listdays', list_days))
     application.add_handler(CommandHandler('listoday', list_today)) # hidden command, for typo
     application.add_handler(CommandHandler('listtoday', list_today))
+    application.add_handler(CommandHandler('today', list_today))
     application.add_handler(CommandHandler('lastevent', last_event))
     application.add_handler(ConversationHandler(
         entry_points=[CommandHandler("delevent", delevent)],
