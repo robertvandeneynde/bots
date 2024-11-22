@@ -1032,9 +1032,13 @@ def addevent_analyse(update, context):
     else:
         raise EventAnalyseError("I cannot interpret this message as an event")
 
-def whereis(update, context):
-    send_message = make_send(update, context)
-    send_message("At home :) :)")
+async def whereis(update, context):
+    send = make_send(update, context)
+    await send("At home :) :)")
+
+async def thereis(update, context):
+    send = make_send(update, context)
+    await send("I will try to remember that but I have fish memory \N{FISH}")
 
 from datetime import datetime, timedelta
 def sommeil(s, *, command) -> tuple[datetime, datetime]:
@@ -2033,6 +2037,8 @@ COMMAND_DESC = {
     "listdays": "List events grouped by days",
     "listtoday": "Shortcut for /listdays today, can add time marker",
     "today": "Shortcut for /listtoday",
+    "whereis": "Remember a place/directions for events",
+    "thereis": "Set a place a place/directions for events",
     "delevent": "Delete event",
     "ru": "Latin alphabet to Cyrillic using Russian convention",
     "dict": "Shows definition of each word using dictionary and settings engine",
@@ -2063,6 +2069,7 @@ COMMAND_DESC = {
 COMMAND_LIST = (
     'caps',
     'addevent', 'nextevent', 'lastevent', 'listevents', 'listdays', 'listtoday', 'today', 'delevent',
+    'whereis', 'thereis',
     'ru',
     'dict', 'wikt', 'larousse',
     'convertmoney', 'eur', 'brl', 'rub',
@@ -2101,6 +2108,8 @@ if __name__ == '__main__':
     application.add_handler(CommandHandler('listtoday', list_today))
     application.add_handler(CommandHandler('today', list_today))
     application.add_handler(CommandHandler('lastevent', last_event))
+    application.add_handler(CommandHandler('whereis', whereis))
+    application.add_handler(CommandHandler('thereis', thereis))
     application.add_handler(ConversationHandler(
         entry_points=[CommandHandler("delevent", delevent)],
         states={
