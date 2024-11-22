@@ -1075,7 +1075,7 @@ async def thereis(update, context):
             my_simple_sql(('insert into EventLocaton(key, value, chat_id) VALUES (?,?,?)', (key, value, chat_id)))
         conn.execute('end transaction')
 
-    await send(f"My elephant memory now remembers {key!r} → {value!r}")
+    await send(f"My elephant memory now remembers...\n{key!r}\n→ {value!r}")
 
 from datetime import datetime, timedelta
 def sommeil(s, *, command) -> tuple[datetime, datetime]:
