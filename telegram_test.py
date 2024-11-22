@@ -1267,8 +1267,10 @@ async def list_events(update: Update, context: CallbackContext):
 
 async def delevent(update, context):
     send = make_send(update, context)
-   
-    from datetime import datetime
+
+    # if reply := get_reply(update, context):
+    #   return await send("Not implemented yet !")
+
     strptime = DatetimeDbSerializer.strptime
 
     strftime = DatetimeDbSerializer.strftime
@@ -1284,7 +1286,6 @@ async def delevent(update, context):
         ORDER BY date''',
         (strftime(beg), strftime(end), update.effective_chat.id,)))
    
-
     saved_info_dict: dict = make_send_save_info(update, context)._asdict()
 
     keyboard = [
@@ -1316,14 +1317,17 @@ async def do_delete_event(update, context):
     if rowid == "null":
         await send("Cancelled: No event deleted")
     else:
-        simple_sql(('delete from Events where chat_id = ? and rowid = ?', (update.effective_chat.id, rowid)))
-        await send(f"Event deleted")
+        await db_delete_event(send, chat_id=update.effective_chat.id, event_id=rowid)
 
     # await query.edit_message_text
     # await query.edit_message_reply_markup()
     await query.delete_message()
         
     return ConversationHandler.END
+
+async def db_delete_event(send, *, chat_id, event_id):
+    simple_sql(('delete from Events where chat_id = ? and rowid = ?', (chat_id, event_id)))
+    await send(f"Event deleted")
 
 from typing import Iterable
 def n_to_1_dict(x:dict|Iterable):
