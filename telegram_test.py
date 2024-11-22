@@ -473,9 +473,12 @@ def save_flashcard(sentence, translation, *, user_id, page_name):
     query = ('insert into Flashcard(sentence, translation, user_id, page_name) values (?,?,?,?)', (sentence, translation, user_id, page_name))
     simple_sql(query)
 
-def simple_sql(query):
+def simple_sql(query, *, connection=None):
+    conn = connection
     assert isinstance(query, (tuple, list))
     assert isinstance(query[1], (tuple, list))
+    if conn:
+        return conn.execute(*query).fetchall()
     with sqlite3.connect("db.sqlite") as conn:
         return conn.execute(*query).fetchall()
 
@@ -1061,7 +1064,17 @@ async def thereis(update, context):
         value = ' '.join(values)
 
     assert_true(key and value, UserError("Key and Values must be non null"))
-    
+
+    with sqlite3.connect("db.sqlite") as conn:
+        my_simple_sql = partial(simple_sql, connection=conn)
+        conn.execute('begin transaction')
+        chat_id = update.effective_chat.id
+        if my_simple_sql(('select count(*) from EventLocation where chat_id=? and key=?', (chat_id, key))):
+            my_simple_sql(('update EventLocation set value=? where chat_id=? and key=?', (value, chat_id, key)))
+        else:
+            my_simple_sql(('insert into EventLocaton(key, value, chat_id) VALUES (?,?,?)', (key, value, chat_id)))
+        conn.execute('end transaction')
+
     await send(f"My elephant memory now remembers {key!r} → {value!r}")
 
 from datetime import datetime, timedelta
