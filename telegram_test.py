@@ -1268,8 +1268,8 @@ async def list_events(update: Update, context: CallbackContext):
 async def delevent(update, context):
     send = make_send(update, context)
 
-    # if reply := get_reply(update, context):
-    #   return await send("Not implemented yet !")
+    if reply := get_reply(update, context):
+        return await send("Not implemented yet but will allow to deleent an event by responding to it.")
 
     strptime = DatetimeDbSerializer.strptime
 
