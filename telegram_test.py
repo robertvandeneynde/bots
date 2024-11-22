@@ -1069,13 +1069,13 @@ async def thereis(update, context):
         my_simple_sql = partial(simple_sql, connection=conn)
         conn.execute('begin transaction')
         chat_id = update.effective_chat.id
-        if my_simple_sql(('select count(*) from EventLocation where chat_id=? and key=?', (chat_id, key))):
+        if my_simple_sql(('select * from EventLocation where chat_id=? and key=?', (chat_id, key))):
             my_simple_sql(('update EventLocation set value=? where chat_id=? and key=?', (value, chat_id, key)))
         else:
-            my_simple_sql(('insert into EventLocaton(key, value, chat_id) VALUES (?,?,?)', (key, value, chat_id)))
+            my_simple_sql(('insert into EventLocation(key, value, chat_id) VALUES (?,?,?)', (key, value, chat_id)))
         conn.execute('end transaction')
 
-    await send(f"My elephant memory now remembers...\n{key!r}\n→ {value!r}")
+    await send(f"My elephant memory now remembers:\n{key!r}\n→ {value!r}")
 
 from datetime import datetime, timedelta
 def sommeil(s, *, command) -> tuple[datetime, datetime]:
