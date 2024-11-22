@@ -1034,11 +1034,35 @@ def addevent_analyse(update, context):
 
 async def whereis(update, context):
     send = make_send(update, context)
-    await send("At home :) :)")
+
+    try:
+        key, = context.args
+    except ValueError:
+        return await send("Usage: /whereis place")
+
+    results = simple_sql(('select value from EventLocation where chat_id=? and key=?', (chat_id := update.effective_chat.id, key,)))
+    await send("I don't know ! :)" if not results else "→ " + only_one(results)[0])
 
 async def thereis(update, context):
     send = make_send(update, context)
-    await send("I will try to remember that but I have fish memory \N{FISH}")
+
+    try:
+        key, value = context.args
+    except ValueError:
+        try:
+            i = context.args.index('=')
+            keys, values = context.args[:i], context.args[i+1:]
+            key = ' '.join(keys)
+        except ValueError:
+            try:
+                key, *values = context.args
+            except ValueError:
+                return await send("Usage: /thereis place location")
+        value = ' '.join(values)
+
+    assert_true(key and value, UserError("Key and Values must be non null"))
+    
+    await send(f"My elephant memory now remembers {key!r} → {value!r}")
 
 from datetime import datetime, timedelta
 def sommeil(s, *, command) -> tuple[datetime, datetime]:
@@ -1722,6 +1746,12 @@ def migration8():
     with sqlite3.connect('db.sqlite') as conn:
         conn.execute('begin transaction')
         conn.execute("create table NamedChatDebt(chat_id, debitor_id, creditor_id, amount, currency)") # debitor owes creditor
+        conn.execute('end transaction')
+
+def migration9():
+    with sqlite3.connect('db.sqlite') as conn:
+        conn.execute('begin transaction')
+        conn.execute('create table EventLocation(key, value, chat_id)')
         conn.execute('end transaction')
 
 
