@@ -473,9 +473,12 @@ def save_flashcard(sentence, translation, *, user_id, page_name):
     query = ('insert into Flashcard(sentence, translation, user_id, page_name) values (?,?,?,?)', (sentence, translation, user_id, page_name))
     simple_sql(query)
 
-def simple_sql(query):
+def simple_sql(query, *, connection=None):
+    conn = connection
     assert isinstance(query, (tuple, list))
     assert isinstance(query[1], (tuple, list))
+    if conn:
+        return conn.execute(*query).fetchall()
     with sqlite3.connect("db.sqlite") as conn:
         return conn.execute(*query).fetchall()
 
@@ -1032,9 +1035,47 @@ def addevent_analyse(update, context):
     else:
         raise EventAnalyseError("I cannot interpret this message as an event")
 
-def whereis(update, context):
-    send_message = make_send(update, context)
-    send_message("At home :) :)")
+async def whereis(update, context):
+    send = make_send(update, context)
+
+    try:
+        key, = context.args
+    except ValueError:
+        return await send("Usage: /whereis place")
+
+    results = simple_sql(('select value from EventLocation where chat_id=? and key=?', (chat_id := update.effective_chat.id, key,)))
+    await send("I don't know ! :)" if not results else "→ " + only_one(results)[0])
+
+async def thereis(update, context):
+    send = make_send(update, context)
+
+    try:
+        key, value = context.args
+    except ValueError:
+        try:
+            i = context.args.index('=')
+            keys, values = context.args[:i], context.args[i+1:]
+            key = ' '.join(keys)
+        except ValueError:
+            try:
+                key, *values = context.args
+            except ValueError:
+                return await send("Usage: /thereis place location")
+        value = ' '.join(values)
+
+    assert_true(key and value, UserError("Key and Values must be non null"))
+
+    with sqlite3.connect("db.sqlite") as conn:
+        my_simple_sql = partial(simple_sql, connection=conn)
+        conn.execute('begin transaction')
+        chat_id = update.effective_chat.id
+        if my_simple_sql(('select * from EventLocation where chat_id=? and key=?', (chat_id, key))):
+            my_simple_sql(('update EventLocation set value=? where chat_id=? and key=?', (value, chat_id, key)))
+        else:
+            my_simple_sql(('insert into EventLocation(key, value, chat_id) VALUES (?,?,?)', (key, value, chat_id)))
+        conn.execute('end transaction')
+
+    await send(f"My elephant memory now remembers:\n{key!r}\n→ {value!r}")
 
 from datetime import datetime, timedelta
 def sommeil(s, *, command) -> tuple[datetime, datetime]:
@@ -1720,6 +1761,12 @@ def migration8():
         conn.execute("create table NamedChatDebt(chat_id, debitor_id, creditor_id, amount, currency)") # debitor owes creditor
         conn.execute('end transaction')
 
+def migration9():
+    with sqlite3.connect('db.sqlite') as conn:
+        conn.execute('begin transaction')
+        conn.execute('create table EventLocation(key, value, chat_id)')
+        conn.execute('end transaction')
+
 
 def get_latest_euro_rates_from_api() -> json:
     import requests
@@ -2033,6 +2080,8 @@ COMMAND_DESC = {
     "listdays": "List events grouped by days",
     "listtoday": "Shortcut for /listdays today, can add time marker",
     "today": "Shortcut for /listtoday",
+    "whereis": "Remember a place/directions for events",
+    "thereis": "Set a place a place/directions for events",
     "delevent": "Delete event",
     "ru": "Latin alphabet to Cyrillic using Russian convention",
     "dict": "Shows definition of each word using dictionary and settings engine",
@@ -2063,6 +2112,7 @@ COMMAND_DESC = {
 COMMAND_LIST = (
     'caps',
     'addevent', 'nextevent', 'lastevent', 'listevents', 'listdays', 'listtoday', 'today', 'delevent',
+    'whereis', 'thereis',
     'ru',
     'dict', 'wikt', 'larousse',
     'convertmoney', 'eur', 'brl', 'rub',
@@ -2101,6 +2151,8 @@ if __name__ == '__main__':
     application.add_handler(CommandHandler('listtoday', list_today))
     application.add_handler(CommandHandler('today', list_today))
     application.add_handler(CommandHandler('lastevent', last_event))
+    application.add_handler(CommandHandler('whereis', whereis))
+    application.add_handler(CommandHandler('thereis', thereis))
     application.add_handler(ConversationHandler(
         entry_points=[CommandHandler("delevent", delevent)],
         states={
