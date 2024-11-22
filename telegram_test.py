@@ -1039,7 +1039,10 @@ async def whereis(update, context):
     send = make_send(update, context)
 
     try:
-        key, = context.args
+        keys = context.args
+        key = ' '.join(keys)
+        if not key:
+            raise ValueError
     except ValueError:
         return await send("Usage: /whereis place")
 
