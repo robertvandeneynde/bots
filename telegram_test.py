@@ -1013,6 +1013,15 @@ def addevent_analyse_from_bot(update, context, text:str) -> {'what': str, 'when'
         'when': when,
     }
 
+def enrich_event_with_where(event):
+    if event.get('where'):
+        return event
+    event = dict(event)
+    event['where'] = GetOrEmpty(re.compile('(?:[ ]|^)[@][ ]').split(event['what']))[1]
+    if not event.get('where'):
+        del event['where']
+    return event
+
 def addevent_analyse(update, context):
     if not (reply := get_reply(update.message)):
         raise UserError("Cannot analyse if there is nothing to analyse")
@@ -1042,7 +1051,8 @@ async def whereis(update, context):
     if reply := get_reply(update.message):
         try:
             infos_event = addevent_analyse(update, context)
-            key = infos_event.get('where')
+            infos_event = enrich_event_with_where(infos_event)
+            key = infos_event.get('where', None)  
         except UserError as e:
             reply_error = e
 
