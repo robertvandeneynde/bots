@@ -899,7 +899,7 @@ def natural_filter(x):
     return filter(None, x)
 
 import yaml
-def addevent_analyse_yaml(update, context, text:str):
+def addevent_analyse_yaml(update, context, text:str) -> {'what': str, 'when': str}:
     text = '\n'.join(l for l in text.splitlines() if ':' in l)
     Y = yaml.safe_load(text)
     if not isinstance(Y, dict):
@@ -936,7 +936,7 @@ def only_one(it, error=ValueError):
 def only_one_with_error(error):
     return partial(only_one, error=error)
 
-def addevent_analyse_from_bot(update, context, text:str):
+def addevent_analyse_from_bot(update, context, text:str) -> {'what': str, 'when': str}:
     my_timezone = induce_my_timezone(user_id=update.message.from_user.id, chat_id=update.effective_chat.id)
 
     lines = GetOrEmpty(text.splitlines())
@@ -1038,13 +1038,24 @@ def addevent_analyse(update, context):
 async def whereis(update, context):
     send = make_send(update, context)
 
-    try:
-        keys = context.args
-        key = ' '.join(keys)
-        if not key:
-            raise ValueError
-    except ValueError:
-        return await send("Usage: /whereis place")
+    key = None
+    if reply := get_reply(update.message):
+        try:
+            infos_event = addevent_analyse(update, context)
+            key = infos_event.get('where')
+        except UserError as e:
+            reply_error = e
+
+    if key is None:
+        try:
+            keys = context.args
+            key = ' '.join(keys)
+            if not key:
+                raise ValueError
+        except ValueError:
+            return await send("Usage: /whereis place\n/whereis (on a event message)")
+    
+    key: str
 
     results = simple_sql(('select value from EventLocation where chat_id=? and LOWER(key)=LOWER(?)', (chat_id := update.effective_chat.id, key,)))
     await send("I don't know ! :)" if not results else "→ " + only_one(results)[0])
