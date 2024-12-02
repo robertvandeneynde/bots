@@ -1073,19 +1073,24 @@ async def whereis(update, context):
 async def thereis(update, context):
     send = make_send(update, context)
 
-    try:
-        key, value = context.args
-    except ValueError:
+    if reply := get_reply(update.message):
+        value = reply.text
+        key = ' '.join(context.args)
+
+    else:
         try:
-            i = context.args.index('=')
-            keys, values = context.args[:i], context.args[i+1:]
-            key = ' '.join(keys)
+            key, value = context.args
         except ValueError:
             try:
-                key, *values = context.args
+                i = context.args.index('=')
+                keys, values = context.args[:i], context.args[i+1:]
+                key = ' '.join(keys)
             except ValueError:
-                return await send("Usage: /thereis place location")
-        value = ' '.join(values)
+                try:
+                    key, *values = context.args
+                except ValueError:
+                    return await send("Usage: /thereis place location")
+            value = ' '.join(values)
 
     assert_true(key and value, UserError("Key and Values must be non null"))
 
