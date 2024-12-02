@@ -1046,7 +1046,7 @@ async def whereis(update, context):
     except ValueError:
         return await send("Usage: /whereis place")
 
-    results = simple_sql(('select value from EventLocation where chat_id=? and key=?', (chat_id := update.effective_chat.id, key,)))
+    results = simple_sql(('select value from EventLocation where chat_id=? and LOWER(key)=LOWER(?)', (chat_id := update.effective_chat.id, key,)))
     await send("I don't know ! :)" if not results else "→ " + only_one(results)[0])
 
 async def thereis(update, context):
