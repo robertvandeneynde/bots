@@ -899,7 +899,7 @@ def natural_filter(x):
     return filter(None, x)
 
 import yaml
-def addevent_analyse_yaml(update, context, text:str):
+def addevent_analyse_yaml(update, context, text:str) -> {'what': str, 'when': str}:
     text = '\n'.join(l for l in text.splitlines() if ':' in l)
     Y = yaml.safe_load(text)
     if not isinstance(Y, dict):
@@ -936,7 +936,7 @@ def only_one(it, error=ValueError):
 def only_one_with_error(error):
     return partial(only_one, error=error)
 
-def addevent_analyse_from_bot(update, context, text:str):
+def addevent_analyse_from_bot(update, context, text:str) -> {'what': str, 'when': str}:
     my_timezone = induce_my_timezone(user_id=update.message.from_user.id, chat_id=update.effective_chat.id)
 
     lines = GetOrEmpty(text.splitlines())
@@ -1013,6 +1013,15 @@ def addevent_analyse_from_bot(update, context, text:str):
         'when': when,
     }
 
+def enrich_event_with_where(event):
+    if event.get('where'):
+        return event
+    event = dict(event)
+    event['where'] = GetOrEmpty(re.compile('(?:[ ]|^)[@][ ]').split(event['what']))[1]
+    if not event.get('where'):
+        del event['where']
+    return event
+
 def addevent_analyse(update, context):
     if not (reply := get_reply(update.message)):
         raise UserError("Cannot analyse if there is nothing to analyse")
@@ -1038,13 +1047,25 @@ def addevent_analyse(update, context):
 async def whereis(update, context):
     send = make_send(update, context)
 
-    try:
-        keys = context.args
-        key = ' '.join(keys)
-        if not key:
-            raise ValueError
-    except ValueError:
-        return await send("Usage: /whereis place")
+    key = None
+    if reply := get_reply(update.message):
+        try:
+            infos_event = addevent_analyse(update, context)
+            infos_event = enrich_event_with_where(infos_event)
+            key = infos_event.get('where', None)  
+        except UserError as e:
+            reply_error = e
+
+    if key is None:
+        try:
+            keys = context.args
+            key = ' '.join(keys)
+            if not key:
+                raise ValueError
+        except ValueError:
+            return await send("Usage: /whereis place\n/whereis (on a event message)")
+    
+    key: str
 
     results = simple_sql(('select value from EventLocation where chat_id=? and LOWER(key)=LOWER(?)', (chat_id := update.effective_chat.id, key,)))
     await send("I don't know ! :)" if not results else "→ " + only_one(results)[0])
@@ -1052,19 +1073,24 @@ async def whereis(update, context):
 async def thereis(update, context):
     send = make_send(update, context)
 
-    try:
-        key, value = context.args
-    except ValueError:
+    if reply := get_reply(update.message):
+        value = reply.text
+        key = ' '.join(context.args)
+
+    else:
         try:
-            i = context.args.index('=')
-            keys, values = context.args[:i], context.args[i+1:]
-            key = ' '.join(keys)
+            key, value = context.args
         except ValueError:
             try:
-                key, *values = context.args
+                i = context.args.index('=')
+                keys, values = context.args[:i], context.args[i+1:]
+                key = ' '.join(keys)
             except ValueError:
-                return await send("Usage: /thereis place location")
-        value = ' '.join(values)
+                try:
+                    key, *values = context.args
+                except ValueError:
+                    return await send("Usage: /thereis place location")
+            value = ' '.join(values)
 
     assert_true(key and value, UserError("Key and Values must be non null"))
 
