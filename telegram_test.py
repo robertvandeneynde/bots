@@ -1544,8 +1544,13 @@ async def mytimezone(update: Update, context: CallbackContext):
                 break
             except ZoneInfoNotFoundError:
                 continue
+            except Exception as e:
+                if isinstance(e, IsADirectoryError):
+                    continue
+                else:
+                    raise e
         else:
-            raise UserError("This timezone is not known by the system, correct examples include America/Los_Angeles and Europe/Brussels")
+            raise UserError("This timezone is not known by the system.\nCorrect examples include:\n- America/Los_Angeles\n- Europe/Brussels")
         set_my_timezone(update.message.from_user.id, tz)
         return await send("Your timezone is now: {}".format(tz))
 
