@@ -1137,7 +1137,7 @@ async def save_thereis(key, value, *, update, context):
             my_simple_sql(('insert into EventLocation(key, value, chat_id) VALUES (?,?,?)', (key, value, chat_id)))
         conn.execute('end transaction')
 
-    await send(f"My elephant memory now remembers:\n{key!r}\n→ {value!r}")
+    await send(f"Elephant remembers location:\n{key!r}\n→ {value!r}")
 
 from datetime import datetime, timedelta
 def sommeil(s, *, command) -> tuple[datetime, datetime]:
