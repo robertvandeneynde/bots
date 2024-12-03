@@ -1082,19 +1082,24 @@ async def thereis(update:Update, context:CallbackContext):
             key = ' '.join(context.args)
 
     else:
-        try:
-            key, value = context.args
-        except ValueError:
+        for tries in (1, 2, 3):
             try:
-                i = context.args.index('=')
-                keys, values = context.args[:i], context.args[i+1:]
-                key = ' '.join(keys)
+                match tries:
+                    case 1:
+                        key, value = context.args
+                    case 2:
+                        i = context.args.index('=')
+                        keys, values = context.args[:i], context.args[i+1:]
+                        key = ' '.join(keys)
+                        value = ' '.join(values)
+                    case 3:
+                        key, *values = context.args
+                        value = ' '.join(values)
+                break
             except ValueError:
-                try:
-                    key, *values = context.args
-                except ValueError:
-                    return await send("Usage: /thereis place location")
-            value = ' '.join(values)
+                continue
+        else:
+            return await send("Usage: /thereis place location")
 
     assert_true(key and value, UserError("Key and Values must be non null"))
 
