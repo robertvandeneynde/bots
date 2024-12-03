@@ -478,7 +478,7 @@ async def flashcard(update, context):
     page_name = get_current_flashcard_page(user_id)
     save_flashcard(sentence, translation, user_id=user_id, page_name=page_name)
 
-    await send(f"New flashcard:\n{sentence!r}\n-> {translation!r}")
+    await send(f"New flashcard:\n{sentence!r}\n→ {translation!r}")
 
 def get_current_flashcard_page(user_id):
     with sqlite3.connect("db.sqlite") as conn:
