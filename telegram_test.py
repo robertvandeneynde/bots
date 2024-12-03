@@ -131,12 +131,27 @@ async def money_responder(msg:str, send: AsyncSend, *, update, context):
                 amounts_converted = [convert_money(amount_base, currency_base=currency, currency_converted=currency_to_convert, rates=rates) for currency_to_convert in currencies_to_convert]
                 await send(format_currency(currency_list=[currency] + currencies_to_convert, amount_list=[amount_base] + amounts_converted))
 
+async def whereisanswer_responder(msg:str, send: AsyncSend, *, update, context):
+    print(f"{update=} {context=}")
+    reply = get_reply(update.message)
+    if not reply:
+        return
+    if not(reply.text.startswith('/whereis') or reply.text.startswith('/whereis@' + context.bot.username)):
+        return
+    
+    key = ' '.join(InfiniteEmptyList(reply.text.split())[1:])
+    value = msg
+    
+    await save_thereis(key, value, update=update, context=context)
+    
+    
 class GetOrEmpty(list):
     def __getitem__(self, i):
         try:
             return super().__getitem__(i)
         except IndexError:
             return ''
+InfiniteEmptyList = GetOrEmpty
 
 from collections import namedtuple
 NamedChatDebt = namedtuple('NamedChatDebt', 'chat_id, debitor_id, creditor_id, amount, currency')
@@ -219,7 +234,12 @@ async def sharemoney_responder(msg:str, send: AsyncSend, *, update, context):
         return await send('Debt "{d.debitor_id} owes {d.creditor_id} {d.amount}" created'.format(d=debt) if not debt.currency else
                           'Debt "{d.debitor_id} owes {d.creditor_id} {d.amount} {d.amount}" created'.format(d=debt))
 
-RESPONDERS = ((hello_responder, 'hello', 'on'), (money_responder, 'money', 'on'), (sharemoney_responder, 'sharemoney', 'off'))
+RESPONDERS = (
+    (hello_responder, 'hello', 'on'),
+    (money_responder, 'money', 'on'),
+    (sharemoney_responder, 'sharemoney', 'off'),
+    (whereisanswer_responder, 'whereisanswer', 'on'),
+)
 
 async def on_message(update: Update, context: CallbackContext):
     send = make_send(update, context)
@@ -1071,8 +1091,6 @@ async def whereis(update, context):
     await send("I don't know ! :)" if not results else "→ " + only_one(results)[0])
 
 async def thereis(update:Update, context:CallbackContext):
-    send = make_send(update, context)
-
     if reply := get_reply(update.message):
         if reply.text.startswith('/whereis') or reply.text.startswith("/whereis@" + context.bot.username):
             value = ' '.join(context.args)
@@ -1100,13 +1118,19 @@ async def thereis(update:Update, context:CallbackContext):
                 continue
         else:
             return await send("Usage: /thereis place location")
+    
+    await save_thereis(key, value, update=update, context=context)
 
+async def save_thereis(key, value, *, update, context):
+    send = make_send(update, context)
+    chat_id = update.effective_chat.id
+    
     assert_true(key and value, UserError("Key and Values must be non null"))
-
+    
     with sqlite3.connect("db.sqlite") as conn:
         my_simple_sql = partial(simple_sql, connection=conn)
         conn.execute('begin transaction')
-        chat_id = update.effective_chat.id
+        
         if my_simple_sql(('select * from EventLocation where chat_id=? and key=?', (chat_id, key))):
             my_simple_sql(('update EventLocation set value=? where chat_id=? and key=?', (value, chat_id, key)))
         else:
