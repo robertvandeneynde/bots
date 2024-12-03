@@ -1387,7 +1387,7 @@ async def do_delete_event(update, context):
     if rowid == "null":
         await send("Cancelled: No event deleted")
     else:
-        await db_delete_event(send, chat_id=update.effective_chat.id, event_id=rowid)
+        await db_delete_event(update, context, send, chat_id=update.effective_chat.id, event_id=rowid)
 
     # await query.edit_message_text
     # await query.edit_message_reply_markup()
@@ -1395,9 +1395,17 @@ async def do_delete_event(update, context):
         
     return ConversationHandler.END
 
-async def db_delete_event(send, *, chat_id, event_id):
+async def db_delete_event(update, context, send, *, chat_id, event_id):
+    read_chat_settings = make_read_chat_settings(update, context)
+
+    if read_chat_settings('event.delevent.display'):
+        infos = dict(only_one(simple_sql_dict(('select date, name from Events where chat_id = ? and rowid = ?', (chat_id, event_id, )))))
+    else:
+        infos = None
+
     simple_sql(('delete from Events where chat_id = ? and rowid = ?', (chat_id, event_id)))
-    await send(f"Event deleted")
+    
+    await send(f"Event deleted" if infos is None else f"Event deleted: {infos}")
 
 from typing import Iterable
 def n_to_1_dict(x:dict|Iterable):
@@ -1555,6 +1563,7 @@ ACCEPTED_SETTINGS_CHAT = (
     'event.addevent.help_file',
     'event.addevent.display_file',
     'event.listtoday.display_time_marker',
+    'event.delevent.display',
 ) + tuple(
     remove_dup_keep_order(setting + '.active' for _, setting, _ in RESPONDERS)
 )
@@ -1608,6 +1617,7 @@ def CONVERSION_SETTINGS_BUILDER():
         'money.currencies': list_of_currencies_serializer,
         'event.timezones': list_of_timezone_serializer,
         'event.addevent.display_file': on_off_serializer,
+        'event.delevent.display': on_off_serializer,
     }
     mapping_user = {
         'event.timezone': timezone_serializer,

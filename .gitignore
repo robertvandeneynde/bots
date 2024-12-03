@@ -1,2 +1,4 @@
 *local.py
 db.sqlite
+token.json
+credentials.json
