@@ -1070,12 +1070,16 @@ async def whereis(update, context):
     results = simple_sql(('select value from EventLocation where chat_id=? and LOWER(key)=LOWER(?)', (chat_id := update.effective_chat.id, key,)))
     await send("I don't know ! :)" if not results else "→ " + only_one(results)[0])
 
-async def thereis(update, context):
+async def thereis(update:Update, context:CallbackContext):
     send = make_send(update, context)
 
     if reply := get_reply(update.message):
-        value = reply.text
-        key = ' '.join(context.args)
+        if reply.text.startswith('/whereis') or reply.text.startswith("/whereis@" + context.bot.username):
+            value = ' '.join(context.args)
+            key = GetOrEmpty(reply.text.split(maxsplit=1))[1]
+        else:
+            value = reply.text
+            key = ' '.join(context.args)
 
     else:
         try:
