@@ -132,7 +132,6 @@ async def money_responder(msg:str, send: AsyncSend, *, update, context):
                 await send(format_currency(currency_list=[currency] + currencies_to_convert, amount_list=[amount_base] + amounts_converted))
 
 async def whereisanswer_responder(msg:str, send: AsyncSend, *, update, context):
-    print(f"{update=} {context=}")
     reply = get_reply(update.message)
     if not reply:
         return
