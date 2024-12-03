@@ -136,6 +136,8 @@ async def whereisanswer_responder(msg:str, send: AsyncSend, *, update, context):
     reply = get_reply(update.message)
     if not reply:
         return
+    if not reply.text:
+        return
     if not(reply.text.startswith('/whereis') or reply.text.startswith('/whereis@' + context.bot.username)):
         return
     
