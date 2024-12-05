@@ -133,11 +133,14 @@ async def money_responder(msg:str, send: AsyncSend, *, update, context):
 
 async def whereisanswer_responder(msg:str, send: AsyncSend, *, update, context):
     reply = get_reply(update.message)
-    if not reply:
-        return
-    if not reply.text:
-        return
-    if not(reply.text.startswith('/whereis') or reply.text.startswith('/whereis@' + context.bot.username)):
+
+    class DoNotAnswer(Exception):
+        pass
+
+    try:
+        assert_true(reply and reply.text, DoNotAnswer)
+        assert_true(reply.text.startswith('/whereis') or reply.text.startswith('/whereis@' + context.bot.username), DoNotAnswer)
+    except DoNotAnswer:
         return
     
     key = ' '.join(InfiniteEmptyList(reply.text.split())[1:])
