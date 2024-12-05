@@ -1121,6 +1121,8 @@ async def whereto(update:Update, context:CallbackContext):
     return await whereisto(update:=update, context=context, command='whereto') 
 
 async def thereis(update:Update, context:CallbackContext):
+    send = make_send(update, context)
+
     if reply := get_reply(update.message):
         if reply.text.startswith('/whereis') or reply.text.startswith("/whereis@" + context.bot.username):
             value = ' '.join(context.args)
@@ -1134,20 +1136,31 @@ async def thereis(update:Update, context:CallbackContext):
             try:
                 match tries:
                     case 1:
+                        # length 2
                         key, value = context.args
+                        keys = [key]
                     case 2:
-                        i = context.args.index('=')
-                        keys, values = context.args[:i], context.args[i+1:]
-                        key = ' '.join(keys)
-                        value = ' '.join(values)
+                        # = assignation
+                        # example: args = ["A", "B", "=", "C", "D", "=", "F"]
+                        Is = [i for i in range(len(context.args)) if context.args[i] == '=']
+                        assert_true(Is, ValueError('Must have at least one "=" for assignation expression'))
+                        # Is = [2, 5]
+                        breaks = [' '.join(context.args[a+1:b]) for a, b in zip([-1] + Is, Is + [len(context.args)])]
+                        # breaks = ["A B", "C D", "F"]
+                        keys = breaks[:-1]
+                        # keys = ["A B", "C D"]
+                        value = breaks[-1]
+                        # vcalue = "F"
+                        assert_true(value, ValueError)
                     case 3:
+                        # no equal
                         key, *values = context.args
                         value = ' '.join(values)
                 break
             except ValueError:
                 continue
         else:
-            return await send("Usage: /thereis place location")
+            return await send("Usage:\n/thereis place location\n/thereis place = location")
     
     for key in keys:
         await save_thereis(key, value, update=update, context=context)
