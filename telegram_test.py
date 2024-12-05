@@ -1123,40 +1123,44 @@ async def whereto(update:Update, context:CallbackContext):
 async def thereis(update:Update, context:CallbackContext):
     send = make_send(update, context)
 
+    def split_by_equals(List):
+        # example: List = ["A", "B", "=", "C", "D", "=", "F"]
+        Is = [i for i in range(len(List)) if List[i] == "="]
+        # Is = [2, 5]
+        breaks = [' '.join(context.args[a+1:b]) for a, b in zip([-1] + Is, Is + [len(context.args)])]
+        # breaks = ["A B", "C D", "F"]
+        return breaks
+
     if reply := get_reply(update.message):
         if reply.text.startswith('/whereis') or reply.text.startswith("/whereis@" + context.bot.username):
             value = ' '.join(context.args)
             keys = [GetOrEmpty(reply.text.split(maxsplit=1))[1]]
         else:
             value = reply.text
-            keys = [' '.join(context.args)]
+            keys = split_by_equals(context.args)
 
     else:
         for tries in (1, 2, 3):
             try:
                 match tries:
                     case 1:
+                        assert_true("=" in context.args, ValueError('Must have at least one "=" for assignation expression'))
+                        # = assignation
+                        breaks = split_by_equals(context.args)
+                        keys = breaks[:-1]
+                        value = breaks[-1]
+                        assert_true(value, UserError("Must be something after the ="))
+                    case 2:
                         # length 2
                         key, value = context.args
                         keys = [key]
-                    case 2:
-                        # = assignation
-                        # example: args = ["A", "B", "=", "C", "D", "=", "F"]
-                        Is = [i for i in range(len(context.args)) if context.args[i] == '=']
-                        assert_true(Is, ValueError('Must have at least one "=" for assignation expression'))
-                        # Is = [2, 5]
-                        breaks = [' '.join(context.args[a+1:b]) for a, b in zip([-1] + Is, Is + [len(context.args)])]
-                        # breaks = ["A B", "C D", "F"]
-                        keys = breaks[:-1]
-                        # keys = ["A B", "C D"]
-                        value = breaks[-1]
-                        # vcalue = "F"
-                        assert_true(value, ValueError)
                     case 3:
                         # no equal
                         key, *values = context.args
                         value = ' '.join(values)
                 break
+            except UserError:
+                raise
             except ValueError:
                 continue
         else:
