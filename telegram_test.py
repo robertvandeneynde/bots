@@ -1124,10 +1124,10 @@ async def thereis(update:Update, context:CallbackContext):
     if reply := get_reply(update.message):
         if reply.text.startswith('/whereis') or reply.text.startswith("/whereis@" + context.bot.username):
             value = ' '.join(context.args)
-            key = GetOrEmpty(reply.text.split(maxsplit=1))[1]
+            keys = [GetOrEmpty(reply.text.split(maxsplit=1))[1]]
         else:
             value = reply.text
-            key = ' '.join(context.args)
+            keys = [' '.join(context.args)]
 
     else:
         for tries in (1, 2, 3):
@@ -1149,7 +1149,8 @@ async def thereis(update:Update, context:CallbackContext):
         else:
             return await send("Usage: /thereis place location")
     
-    await save_thereis(key, value, update=update, context=context)
+    for key in keys:
+        await save_thereis(key, value, update=update, context=context)
 
 async def save_thereis(key, value, *, update, context):
     send = make_send(update, context)
