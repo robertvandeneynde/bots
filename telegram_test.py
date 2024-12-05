@@ -1068,7 +1068,7 @@ def addevent_analyse(update, context):
     else:
         raise EventAnalyseError("I cannot interpret this message as an event")
 
-async def whereis(update, context):
+async def whereisto(update, context, *, command: Literal['whereis', 'whereto']):
     send = make_send(update, context)
 
     key = None
@@ -1091,8 +1091,34 @@ async def whereis(update, context):
     
     key: str
 
-    results = simple_sql(('select value from EventLocation where chat_id=? and LOWER(key)=LOWER(?)', (chat_id := update.effective_chat.id, key,)))
-    await send("I don't know ! :)" if not results else "→ " + only_one(results)[0])
+    if command == 'whereis':
+        results = simple_sql(('select value from EventLocation where chat_id=? and LOWER(key)=LOWER(?)', (chat_id := update.effective_chat.id, key,)))
+        await send("I don't know ! :)" if not results else "→ " + only_one(results)[0])
+    
+    elif command == 'whereto':
+        current_key = key
+        results = []
+        while True:
+            current_result = simple_sql(('select value from EventLocation where chat_id=? and LOWER(key)=LOWER(?)', (chat_id := update.effective_chat.id, current_key, )))
+            if not current_result:
+                break
+            current_key = current_result[0][0]
+            if current_key in results:
+                results.append(current_key)
+                break  # we stop because there is a loop
+            else:
+                results.append(current_key)
+                continue
+        await send("I don't know ! :)" if not results else '\n'.join(map("→ {}".format, results)))
+
+    else:
+        raise AssertionError
+
+async def whereis(update:Update, context:CallbackContext):
+    return await whereisto(update:=update, context=context, command='whereis') 
+
+async def whereto(update:Update, context:CallbackContext):
+    return await whereisto(update:=update, context=context, command='whereto') 
 
 async def thereis(update:Update, context:CallbackContext):
     if reply := get_reply(update.message):
@@ -2172,6 +2198,7 @@ COMMAND_DESC = {
     "today": "Shortcut for /listtoday",
     "whereis": "Remember a place/directions for events",
     "thereis": "Set a place a place/directions for events",
+    "whereto": "Remember a place/directions for events in cascade mode",
     "delevent": "Delete event",
     "ru": "Latin alphabet to Cyrillic using Russian convention",
     "dict": "Shows definition of each word using dictionary and settings engine",
@@ -2242,6 +2269,7 @@ if __name__ == '__main__':
     application.add_handler(CommandHandler('today', list_today))
     application.add_handler(CommandHandler('lastevent', last_event))
     application.add_handler(CommandHandler('whereis', whereis))
+    application.add_handler(CommandHandler('whereto', whereto))
     application.add_handler(CommandHandler('thereis', thereis))
     application.add_handler(ConversationHandler(
         entry_points=[CommandHandler("delevent", delevent)],
