@@ -1161,10 +1161,9 @@ async def save_thereis(key, value, *, update, context):
         my_simple_sql = partial(simple_sql, connection=conn)
         conn.execute('begin transaction')
         
-        if my_simple_sql(('select * from EventLocation where chat_id=? and key=?', (chat_id, key))):
-            my_simple_sql(('update EventLocation set value=? where chat_id=? and key=?', (value, chat_id, key)))
-        else:
-            my_simple_sql(('insert into EventLocation(key, value, chat_id) VALUES (?,?,?)', (key, value, chat_id)))
+        if my_simple_sql(('select * from EventLocation where chat_id=? and LOWER(key)=LOWER(?)', (chat_id, key))):
+            my_simple_sql(('delete from EventLocation where chat_id=? and LOWER(key)=LOWER(?)', (chat_id, key)))
+        my_simple_sql(('insert into EventLocation(key, value, chat_id) VALUES (?,?,?)', (key, value, chat_id)))
         conn.execute('end transaction')
 
     await send(f"Elephant remembers location:\n{key!r}\n→ {value!r}")
