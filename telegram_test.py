@@ -1157,7 +1157,7 @@ async def thereis(update:Update, context:CallbackContext):
                         breaks = split_by_equals(context.args)
                         keys = breaks[:-1]
                         values = [breaks[-1]]
-                        assert_true(value, UserError("Must be something after the ="))
+                        assert_true(values[0], UserError("Must be something after the ="))
                     case 2:
                         breaks = split_by_arrows(context.args)
                         keys, values = [], []
