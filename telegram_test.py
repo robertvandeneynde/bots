@@ -1123,6 +1123,8 @@ async def whereto(update:Update, context:CallbackContext):
 async def thereis(update:Update, context:CallbackContext):
     send = make_send(update, context)
 
+    arrows_symbols = ("->", "<-", "-", "--", "→", "←")
+
     def split_by_equals(List):
         # example: List = ["A", "B", "=", "C", "D", "=", "F"]
         Is = [i for i in range(len(List)) if List[i] == "="]
@@ -1130,34 +1132,48 @@ async def thereis(update:Update, context:CallbackContext):
         breaks = [' '.join(context.args[a+1:b]) for a, b in zip([-1] + Is, Is + [len(context.args)])]
         # breaks = ["A B", "C D", "F"]
         return breaks
+    
+    def split_by_arrows(List):
+        Is = [i for i in range(len(List)) if List[i] in arrows_symbols]
+        breaks_symbols = [' '.join(context.args[a+1:b]) for a, b in zip([-1] + Is, Is + [len(context.args)])]
+        return breaks_symbols
 
     if reply := get_reply(update.message):
         if reply.text.startswith('/whereis') or reply.text.startswith("/whereis@" + context.bot.username):
-            value = ' '.join(context.args)
+            values = [' '.join(context.args)]
             keys = [GetOrEmpty(reply.text.split(maxsplit=1))[1]]
         else:
-            value = reply.text
+            values = [reply.text]
             keys = split_by_equals(context.args)
 
     else:
-        for tries in (1, 2, 3):
+        for tries in (1, 2, 3, 4):
             try:
                 match tries:
                     case 1:
                         assert_true("=" in context.args, ValueError('Must have at least one "=" for assignation expression'))
+                        assert_true(len(set(arrows_symbols) & set(context.args)) == 0, ValueError("Pure assignation in that block"))
                         # = assignation
                         breaks = split_by_equals(context.args)
                         keys = breaks[:-1]
-                        value = breaks[-1]
+                        values = [breaks[-1]]
                         assert_true(value, UserError("Must be something after the ="))
                     case 2:
+                        breaks = split_by_arrows(context.args)
+                        keys, values = [], []
+                        for i in range(len(breaks) - 1):
+                            keys.append(breaks[i])
+                            values.append(breaks[i+1])
+                    case 3:
                         # length 2
                         key, value = context.args
+                        values = [value]
                         keys = [key]
-                    case 3:
+                    case 4:
                         # no equal
                         key, *values = context.args
                         value = ' '.join(values)
+                        values = [value]
                 break
             except UserError:
                 raise
@@ -1166,8 +1182,8 @@ async def thereis(update:Update, context:CallbackContext):
         else:
             return await send("Usage:\n/thereis place location\n/thereis place = location")
     
-    for key in keys:
-        await save_thereis(key, value, update=update, context=context)
+    for i, key in enumerate(keys):
+        await save_thereis(key, values[0] if len(values) == 1 else values[i], update=update, context=context)
 
 async def save_thereis(key, value, *, update, context):
     send = make_send(update, context)
@@ -2246,7 +2262,7 @@ COMMAND_DESC = {
 COMMAND_LIST = (
     'caps',
     'addevent', 'nextevent', 'lastevent', 'listevents', 'listdays', 'listtoday', 'today', 'delevent',
-    'whereis', 'thereis',
+    'whereis', 'thereis', 'whereto',
     'ru',
     'dict', 'wikt', 'larousse',
     'convertmoney', 'eur', 'brl', 'rub',
