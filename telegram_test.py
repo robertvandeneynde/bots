@@ -717,7 +717,7 @@ class DatetimeText:
             day = date(y, m, d)
             return day, day + timedelta(days=1)
         
-        if name in ("today", "auj", "aujourdhui", "aujourd'hui"):
+        if name in ("today", "auj", "aujourdhui", "aujourd'hui", "aujourd’hui"):
             return today, today + timedelta(days=1)
         
         if name in ("week", "semaine"):
