@@ -1125,11 +1125,11 @@ async def thereis(update:Update, context:CallbackContext):
 
     arrows_symbols = ("->", "<-", "--", "→", "←")
 
-    def split_leading_arrow(text):
+    def strip_leading_arrow(text):
         """
-        >>> split_leading_arrow('Hello')
+        >>> strip_leading_arrow('Hello')
         'Hello'
-        >>> split_leading_arrow('→ Hello')
+        >>> strip_leading_arrow('→ Hello')
         'Hello'
         """
         Re = re.compile("^(→ |-> )")
@@ -1197,7 +1197,7 @@ async def thereis(update:Update, context:CallbackContext):
             values = [' '.join(context.args)]
         else:
             keys = split_by_equals(context.args)
-            values = [split_leading_arrow(reply.text)]
+            values = [strip_leading_arrow(reply.text)]
     else:
         try:
             keys, values = try_parse_args()
