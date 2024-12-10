@@ -1125,6 +1125,16 @@ async def thereis(update:Update, context:CallbackContext):
 
     arrows_symbols = ("->", "<-", "--", "→", "←")
 
+    def split_leading_arrow(text):
+        """
+        >>> split_leading_arrow('Hello')
+        'Hello'
+        >>> split_leading_arrow('→ Hello')
+        'Hello'
+        """
+        Re = re.compile("^(→ |-> )")
+        return Re.sub('', text)
+
     def split_by_equals(List):
         # example: List = ["A", "B", "=", "C", "D", "=", "F"]
         Is = [i for i in range(len(List)) if List[i] == "="]
@@ -1143,7 +1153,7 @@ async def thereis(update:Update, context:CallbackContext):
             values = [' '.join(context.args)]
             keys = [GetOrEmpty(reply.text.split(maxsplit=1))[1]]
         else:
-            values = [reply.text]
+            values = [split_leading_arrow(reply.text)]
             keys = split_by_equals(context.args)
 
     else:
