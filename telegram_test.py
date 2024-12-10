@@ -506,9 +506,15 @@ def simple_sql(query, *, connection=None):
     with sqlite3.connect("db.sqlite") as conn:
         return conn.execute(*query).fetchall()
 
-def simple_sql_dict(query):
+def simple_sql_dict(query, *, connection=None):
     assert isinstance(query, (tuple, list))
     assert isinstance(query[1], (tuple, list))
+    if conn:
+        saved = conn.row_factory
+        conn.row_factory = sqlite3.Row
+        ret = conn.execute(*query).fetchall()
+        conn.row_factory = saved
+        return ret
     with sqlite3.connect("db.sqlite") as conn:
         conn.row_factory = sqlite3.Row
         return conn.execute(*query).fetchall()
