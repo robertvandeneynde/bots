@@ -1151,6 +1151,7 @@ async def thereis(update:Update, context:CallbackContext):
     def parse_args(tries):
         match tries:
             case 1:
+                # at least one equal
                 assert_true("=" in context.args, ValueError('Must have at least one "=" for assignation expression'))
                 assert_true(len(set(arrows_symbols) & set(context.args)) == 0, ValueError("Pure assignation in that block"))
                 # = assignation
@@ -1159,7 +1160,9 @@ async def thereis(update:Update, context:CallbackContext):
                 values = [breaks[-1]]
                 assert_true(values[0], UserError("Must be something after the ="))
             case 2:
+                # at least one arrow symbol
                 breaks = split_by_arrows(context.args)
+                assert_true(len(breaks) > 1, ValueError)
                 keys, values = [], []
                 for i in range(len(breaks) - 1):
                     keys.append(breaks[i])
@@ -1170,10 +1173,11 @@ async def thereis(update:Update, context:CallbackContext):
                 values = [value]
                 keys = [key]
             case 4:
-                # no equal
+                # no equal and no arrows
                 key, *values = context.args
                 value = ' '.join(values)
                 values = [value]
+                keys = [key]
         return keys, values
 
     def try_parse_args():
