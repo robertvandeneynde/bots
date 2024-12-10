@@ -1144,14 +1144,17 @@ async def thereis(update:Update, context:CallbackContext):
         return breaks
     
     def split_by_arrows(List):
+        # example: List = ["A", "B", "->", "C", "D", "--", "E"]
         Is = [i for i in range(len(List)) if List[i] in arrows_symbols]
-        breaks_symbols = [' '.join(context.args[a+1:b]) for a, b in zip([-1] + Is, Is + [len(context.args)])]
-        return breaks_symbols
+        # Is = [2, 4]
+        breaks_values = [' '.join(context.args[a+1:b]) for a, b in zip([-1] + Is, Is + [len(context.args)])]
+        # break_values = ["A B", "C D", "E"]
+        return breaks_values
 
     def parse_args(tries):
         match tries:
             case 1:
-                # at least one equal
+                # at least one equal: A = B = C means ((A -> C), (B -> C))
                 assert_true("=" in context.args, ValueError('Must have at least one "=" for assignation expression'))
                 assert_true(len(set(arrows_symbols) & set(context.args)) == 0, ValueError("Pure assignation in that block"))
                 # = assignation
@@ -1160,7 +1163,7 @@ async def thereis(update:Update, context:CallbackContext):
                 values = [breaks[-1]]
                 assert_true(values[0], UserError("Must be something after the ="))
             case 2:
-                # at least one arrow symbol
+                # at least one arrow symbol: A -> B -> C means ((A -> B), (B -> C))
                 breaks = split_by_arrows(context.args)
                 assert_true(len(breaks) > 1, ValueError)
                 keys, values = [], []
