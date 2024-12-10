@@ -1123,7 +1123,7 @@ async def whereto(update:Update, context:CallbackContext):
 async def thereis(update:Update, context:CallbackContext):
     send = make_send(update, context)
 
-    arrows_symbols = ("->", "<-", "-", "--", "→", "←")
+    arrows_symbols = ("->", "<-", "--", "→", "←")
 
     def split_by_equals(List):
         # example: List = ["A", "B", "=", "C", "D", "=", "F"]
