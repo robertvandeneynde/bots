@@ -995,8 +995,8 @@ async def add_event(update: Update, context: CallbackContext):
             # message_thread_id=save_info.thread_id)
 
     if forward_ids:
-        # if do_if_setting_on(read_chat_settings('event.addevent.display_forwarded_infos')):
-        await send(f'Forwarded to {len(forward_ids)} chats')
+        if do_unless_setting_off(read_chat_settings('event.addevent.display_forwarded_infos')):
+            await send(f'Forwarded to {len(forward_ids)} chats')
 
 def list_del(li, i):
     copy = list(li)
@@ -1780,6 +1780,7 @@ ACCEPTED_SETTINGS_CHAT = (
     'event.timezones',
     'event.addevent.help_file',
     'event.addevent.display_file',
+    'event.addevent.display_forwarded_infos',
     'event.listtoday.display_time_marker',
     'event.delevent.display',
 ) + tuple(
@@ -1836,6 +1837,7 @@ def CONVERSION_SETTINGS_BUILDER():
         'event.timezones': list_of_timezone_serializer,
         'event.addevent.display_file': on_off_serializer,
         'event.delevent.display': on_off_serializer,
+        'event.addevent.display_forwarded_infos': on_off_serializer,
     }
     mapping_user = {
         'event.timezone': timezone_serializer,
