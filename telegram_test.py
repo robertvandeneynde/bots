@@ -851,6 +851,66 @@ def parse_datetime_point(update, context, when_infos=None, what_infos=None):
 def is_correct_day_of_week(date, day_of_week):
     return date.weekday() == (DatetimeText.days_english + DatetimeText.days_french).index(day_of_week.lower()) % 7
 
+async def eventfollow(update, context):
+    send = make_send(update, context)
+
+    chat_id = update.effective_chat.id
+
+    if not context.args:
+        return await send(f'Your chat id: {chat_id}\nUse it so that other people can follow you!\nUsage: /eventfollow chat_id')
+    
+    target_chat_id = str(int(context.args[0]))
+
+    simple_sql(('insert into EventFollowPending(a_chat_id, b_chat_id) VALUES (?,?)', (str(chat_id), str(target_chat_id))))
+
+    if True:  # do_unless_setting_off(the_target_chat . event.follow.notify_my_followers):
+        await context.bot.send_message(
+            text=f'Event follow request received!\nTo accept, type: /eventacceptfollow {chat_id}',
+            chat_id=target_chat_id)
+
+    await send(f'Pending follow request sent to {target_chat_id}.')
+
+    # if receiving chat has the setting "automatically accept event following request"
+    #   do it
+
+async def eventacceptfollow(update, context):
+    send = make_send(update, context)
+
+    chat_id = update.effective_chat.id
+
+    if not context.args:
+        followers_pending = simple_sql(('select a_chat_id where b_chat_id = ?', (chat_id, )))
+        return await send('No chats want to be your follower, keep rolling!' if not followers_pending else
+            'These chats want to be your follower:\n{}'.format('\n'.format(map("-> {}".format, (
+                x for x, in followers_pending
+            )))))
+
+    source_chat_id = str(int(context.args[0]))
+
+    with sqlite3.connect("db.sqlite") as conn:
+        my_simple_sql = partial(simple_sql, connection=conn)
+
+        if not my_simple_sql(('select * from EventFollowPending where a_chat_id = ? and b_chat_id = ?', (str(source_chat_id), str(chat_id)))):
+            return await send(f"Cannot be followed by this chat ({source_chat_id}) because it didn't send a request")
+        
+        my_simple_sql(('delete from EventFollowPending where a_chat_id = ? and b_chat_id = ?', (str(source_chat_id), str(chat_id))))
+        my_simple_sql(('insert into EventFollow(a_chat_id, b_chat_id) VALUES (?, ?)', (str(source_chat_id), str(chat_id))))
+        
+        return await send('You are now followed by this chat! Every event you add will be forwarded to them.')
+
+async def deleventfollow(update, context):
+    send = make_send(update, context)
+
+    chat_id = update.effective_chat.id
+    target_chat_id = str(int(context.args[0]))
+
+    with sqlite3.connect("db.sqlite") as conn:
+        my_simple_sql = partial(simple_sql, connection=conn)
+        my_simple_sql('delete from EventFollowPending where a_chat_id = ? and b_chat_id = ?', (str(chat_id), str(target_chat_id)))
+        my_simple_sql('delete from EventFollow where a_chat_id = ? and b_chat_id = ?', (str(chat_id), str(target_chat_id)))
+
+    return await send("Done! You don't follow this chat anymore")
+
 import sqlite3
 async def add_event(update: Update, context: CallbackContext):
     send = make_send(update, context)
@@ -2317,6 +2377,7 @@ COMMAND_DESC = {
 COMMAND_LIST = (
     'caps',
     'addevent', 'nextevent', 'lastevent', 'listevents', 'listdays', 'listtoday', 'today', 'delevent',
+    'eventfollow', 'eventacceptfollow',
     'whereis', 'thereis', 'whereto',
     'ru',
     'dict', 'wikt', 'larousse',
@@ -2349,6 +2410,9 @@ if __name__ == '__main__':
     ))
     application.add_handler(CommandHandler('caps', caps))
     application.add_handler(CommandHandler('addevent', add_event))
+    application.add_handler(CommandHandler('eventfollow', eventfollow))
+    application.add_handler(CommandHandler('eventacceptfollow', eventacceptfollow))
+    application.add_handler(CommandHandler('deleventfollow', deleventfollow))
     application.add_handler(CommandHandler('nextevent', next_event))
     application.add_handler(CommandHandler('listevents', list_events))
     application.add_handler(CommandHandler('listdays', list_days))
