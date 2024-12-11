@@ -507,6 +507,7 @@ def simple_sql(query, *, connection=None):
         return conn.execute(*query).fetchall()
 
 def simple_sql_dict(query, *, connection=None):
+    conn = connection
     assert isinstance(query, (tuple, list))
     assert isinstance(query[1], (tuple, list))
     if conn:
