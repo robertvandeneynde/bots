@@ -911,6 +911,19 @@ async def deleventfollow(update, context):
 
     return await send("Done! You don't follow this chat anymore")
 
+async def deleventacceptfollow(update, context):
+    send = make_send(update, context)
+
+    chat_id = update.effective_chat.id
+    target_chat_id = str(int(context.args[0]))
+
+    with sqlite3.connect("db.sqlite") as conn:
+        my_simple_sql = partial(simple_sql, connection=conn)
+        my_simple_sql('delete from EventFollowPending where a_chat_id = ? and b_chat_id = ?', (str(target_chat_id), str(chat_id)))
+        my_simple_sql('delete from EventFollow where a_chat_id = ? and b_chat_id = ?', (str(target_chat_id), str(chat_id)))
+
+    return await send("Done! This chat doesn't follow you anymore")
+
 import sqlite3
 async def add_event(update: Update, context: CallbackContext):
     send = make_send(update, context)
@@ -2340,6 +2353,10 @@ COMMAND_DESC = {
     "help": "Help !",
     "caps": "Returns the list of parameters in capital letters",
     "addevent": "Add event",
+    'eventfollow': "Follow another chat to receive their events",
+    'eventacceptfollow': "Accept an event follow request",
+    'deleventfollow': "Stop to event follow some chat",
+    'deleventacceptfollow': "Stop some chat from event following you",
     "nextevent": "Display the next event in emoji row format",
     "lastevent": "Display the last event in emoji row format",
     "listevents": "List events",
@@ -2379,7 +2396,7 @@ COMMAND_DESC = {
 COMMAND_LIST = (
     'caps',
     'addevent', 'nextevent', 'lastevent', 'listevents', 'listdays', 'listtoday', 'today', 'delevent',
-    'eventfollow', 'eventacceptfollow',
+    'eventfollow', 'eventacceptfollow', 'deleventfollow', 'deleventacceptfollow',
     'whereis', 'thereis', 'whereto',
     'ru',
     'dict', 'wikt', 'larousse',
@@ -2415,6 +2432,7 @@ if __name__ == '__main__':
     application.add_handler(CommandHandler('eventfollow', eventfollow))
     application.add_handler(CommandHandler('eventacceptfollow', eventacceptfollow))
     application.add_handler(CommandHandler('deleventfollow', deleventfollow))
+    application.add_handler(CommandHandler('deleventacceptfollow', deleventacceptfollow))
     application.add_handler(CommandHandler('nextevent', next_event))
     application.add_handler(CommandHandler('listevents', list_events))
     application.add_handler(CommandHandler('listdays', list_days))
