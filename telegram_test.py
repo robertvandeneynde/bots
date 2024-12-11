@@ -868,7 +868,7 @@ async def add_event(update: Update, context: CallbackContext):
     if infos_event is not None:
         other_infos = {k: infos_event[k] for k in infos_event.keys() - {'when', 'what', 'where'}}        
         when_infos = infos_event.get('when') or ''
-        what_infos = ' '.join(filter(None, [
+        what_infos = ' '.join(natural_filter([
             infos_event.get('what') or '',
         ] + [
             '{%s: %s}' % (item[0].capitalize(), item[1])
