@@ -905,7 +905,7 @@ async def add_event(update: Update, context: CallbackContext):
 
     # 1. Send info in text
 
-    await send('\n'.join(filter(None, [
+    await send(event_text := '\n'.join(filter(None, [
         f"Event added:",
         f"{emojis.Name} {name}",
         f"{emojis.Date} {datetime:%A} {datetime.date():%d/%m/%Y} ({date_str})",
@@ -924,6 +924,24 @@ async def add_event(update: Update, context: CallbackContext):
         if do_unless_setting_off(read_chat_settings('event.addevent.help_file')):
             await send('Click the file below to add the event to your calendar:')
         await export_event(update, context, name=name, datetime_utc=datetime_utc)
+    
+    # 3. Forward it to other chats
+    forward_ids = simple_sql(('select a_chat_id from EventFollow where b_chat_id = ?', (str(chat_id), )))
+    event_text_without_first_line = '\n'.join(list_del(event_text.splitlines(), 0))
+    for forward_id, in forward_ids:
+        await context.bot.send_message(
+            text=f'Event from {chat_id}:' + '\n' + event_text_without_first_line,
+            chat_id=forward_id)
+            # message_thread_id=save_info.thread_id)
+
+    if forward_ids:
+        # if do_if_setting_on(read_chat_settings('event.addevent.display_forwarded_infos')):
+        await send(f'Forwarded to {len(forward_ids)} chats')
+
+def list_del(li, i):
+    copy = list(li)
+    del copy[i]
+    return copy
 
 def natural_filter(x):
     return filter(None, x)
@@ -970,7 +988,7 @@ def addevent_analyse_from_bot(update, context, text:str) -> {'what': str, 'when'
     my_timezone = induce_my_timezone(user_id=update.message.from_user.id, chat_id=update.effective_chat.id)
 
     lines = GetOrEmpty(text.splitlines())
-    if lines[0] in ("Event!", "Event added:"):
+    if lines[0] in ("Event!", "Event added:") or re.match('^Event from.*[:]', lines[0]):
         del lines[0]
         
     re_pattern = (
@@ -1946,6 +1964,13 @@ def migration9():
         conn.execute('create table EventLocation(key, value, chat_id)')
         conn.execute('end transaction')
 
+def migration10():
+    with sqlite3.connect('db.sqlite') as conn:
+        conn.execute('begin transaction')
+        # EventFollow(a,b) exists <=> a Follows b (Event wise)
+        conn.execute('create table EventFollowPending(a_chat_id NOT NULL, b_chat_id NOT NULL)')
+        conn.execute('create table EventFollow(a_chat_id NOT NULL, b_chat_id NOT NULL)')
+        conn.execute('end transaction')
 
 def get_latest_euro_rates_from_api() -> json:
     import requests
