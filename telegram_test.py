@@ -858,18 +858,19 @@ async def eventfollow(update, context):
     chat_id = update.effective_chat.id
 
     if not context.args:
-        return await send(f'Your chat id: {chat_id}\nUse it so that other people can follow you!\nUsage: /eventfollow chat_id')
+        return await send(f'Your chat id: {chat_id}\nUse it so that other people can follow you!\nUsage: /eventfollow chat_id [other_chat_name]')
     
     target_chat_id = str(int(context.args[0]))
+    my_relation_name = ' '.join(context.args[1:])
 
-    simple_sql(('insert into EventFollowPending(a_chat_id, b_chat_id) VALUES (?,?)', (str(chat_id), str(target_chat_id))))
+    simple_sql(('insert into EventFollowPending(a_chat_id, b_chat_id, a_name, b_name) VALUES (?,?,?,?)', (str(chat_id), str(target_chat_id), my_relation_name or str(chat_id), str(target_chat_id))))
 
     if True:  # do_unless_setting_off(the_target_chat . event.follow.notify_my_followers):
         await context.bot.send_message(
-            text=f'Event follow request received!\nTo accept, type: /eventacceptfollow {chat_id}',
+            text=f'Event follow request received!\nTo accept, type:\n/eventacceptfollow {chat_id}\nOr: /eventacceptfollow {chat_id} Custom Name',
             chat_id=target_chat_id)
 
-    await send(f'Pending follow request sent to {target_chat_id}.')
+    await send(f'Pending follow request sent to' + f'{target_chat_id}' if target_chat_id == my_relation_name else f'{target_chat_id} ({my_relation_name})')
 
     # if receiving chat has the setting "automatically accept event following request"
     #   do it
@@ -880,23 +881,26 @@ async def eventacceptfollow(update, context):
     chat_id = update.effective_chat.id
 
     if not context.args:
-        followers_pending = simple_sql(('select a_chat_id where b_chat_id = ?', (chat_id, )))
+        followers_pending = simple_sql(('select a_name from EventFollowPending where b_chat_id = ?', (str(chat_id), )))
         return await send('No chats want to be your follower, keep rolling!' if not followers_pending else
-            'These chats want to be your follower:\n{}'.format('\n'.format(map("-> {}".format, (
+            'These chats want to be your follower:\n{}'.format('\n'.join(map("-> {}".format, (
                 x for x, in followers_pending
             )))))
 
     source_chat_id = str(int(context.args[0]))
+    my_relation_name = ' '.join(context.args[1:])
 
     with sqlite3.connect("db.sqlite") as conn:
         my_simple_sql = partial(simple_sql, connection=conn)
 
-        if not my_simple_sql(('select * from EventFollowPending where a_chat_id = ? and b_chat_id = ?', (str(source_chat_id), str(chat_id)))):
+        if not (data := my_simple_sql(('select rowid, a_name, b_name from EventFollowPending where a_chat_id = ? and b_chat_id = ?', (str(source_chat_id), str(chat_id))))):
             return await send(f"Cannot be followed by this chat ({source_chat_id}) because it didn't send a request")
         
+        _, a_name, b_name = data[0]
         my_simple_sql(('delete from EventFollowPending where a_chat_id = ? and b_chat_id = ?', (str(source_chat_id), str(chat_id))))
-        my_simple_sql(('insert into EventFollow(a_chat_id, b_chat_id) VALUES (?, ?)', (str(source_chat_id), str(chat_id))))
+        my_simple_sql(('insert into EventFollow(a_chat_id, b_chat_id, a_name, b_name) VALUES (?, ?, ?, ?)', (str(source_chat_id), str(chat_id), a_name, my_relation_name or b_name)))
         
+        # todo: send them some notif
         return await send('You are now followed by this chat! Every event you add will be forwarded to them.')
 
 async def deleventfollow(update, context):
@@ -916,12 +920,20 @@ async def deleventacceptfollow(update, context):
     send = make_send(update, context)
 
     chat_id = update.effective_chat.id
+
+    if not context.args:
+        followers = simple_sql(('select a_chat_id, b_name from EventFollow where b_chat_id = ?', (str(chat_id), )))
+        return await send('No chats is following you' if not followers else
+            'These chats are following you:\n{}'.format('\n'.join(map("-> {}".format, (
+                f"{x} ({y})" if x != y else str(x) for x, y in followers
+            )))))
+
     target_chat_id = str(int(context.args[0]))
 
     with sqlite3.connect("db.sqlite") as conn:
         my_simple_sql = partial(simple_sql, connection=conn)
-        my_simple_sql('delete from EventFollowPending where a_chat_id = ? and b_chat_id = ?', (str(target_chat_id), str(chat_id)))
-        my_simple_sql('delete from EventFollow where a_chat_id = ? and b_chat_id = ?', (str(target_chat_id), str(chat_id)))
+        my_simple_sql(('delete from EventFollowPending where a_chat_id = ? and b_chat_id = ?', (str(target_chat_id), str(chat_id))))
+        my_simple_sql(('delete from EventFollow where a_chat_id = ? and b_chat_id = ?', (str(target_chat_id), str(chat_id))))
 
     return await send("Done! This chat doesn't follow you anymore")
 
@@ -1000,11 +1012,11 @@ async def add_event(update: Update, context: CallbackContext):
         await export_event(update, context, name=name, datetime_utc=datetime_utc)
     
     # 3. Forward it to other chats
-    forward_ids = simple_sql(('select a_chat_id from EventFollow where b_chat_id = ?', (str(chat_id), )))
+    forward_ids = simple_sql(('select a_chat_id, b_name from EventFollow where b_chat_id = ?', (str(chat_id), )))
     event_text_without_first_line = '\n'.join(list_del(event_text.splitlines(), 0))
-    for forward_id, in forward_ids:
+    for forward_id, forward_my_chat_name in forward_ids:
         await context.bot.send_message(
-            text=f'Event from {chat_id}:' + '\n' + event_text_without_first_line,
+            text=f'Event from {forward_my_chat_name}:' + '\n' + event_text_without_first_line,
             chat_id=forward_id)
             # message_thread_id=save_info.thread_id)
 
@@ -2046,6 +2058,17 @@ def migration10():
         # EventFollow(a,b) exists <=> a Follows b (Event wise)
         conn.execute('create table EventFollowPending(a_chat_id NOT NULL, b_chat_id NOT NULL)')
         conn.execute('create table EventFollow(a_chat_id NOT NULL, b_chat_id NOT NULL)')
+        conn.execute('end transaction')
+
+def migration11():
+    with sqlite3.connect('db.sqlite') as conn:
+        conn.execute('begin transaction')
+        conn.execute('alter table EventFollowPending add column a_name')
+        conn.execute('alter table EventFollowPending add column b_name')
+        conn.execute('alter table EventFollow add column a_name')
+        conn.execute('alter table EventFollow add column b_name')
+        conn.execute('update EventFollowPending set a_name = a_chat_id, b_name = b_chat_id')
+        conn.execute('update EventFollow set a_name = a_chat_id, b_name = b_chat_id')
         conn.execute('end transaction')
 
 def get_latest_euro_rates_from_api() -> json:
