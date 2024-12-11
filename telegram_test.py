@@ -911,8 +911,8 @@ async def deleventfollow(update, context):
 
     with sqlite3.connect("db.sqlite") as conn:
         my_simple_sql = partial(simple_sql, connection=conn)
-        my_simple_sql('delete from EventFollowPending where a_chat_id = ? and b_chat_id = ?', (str(chat_id), str(target_chat_id)))
-        my_simple_sql('delete from EventFollow where a_chat_id = ? and b_chat_id = ?', (str(chat_id), str(target_chat_id)))
+        my_simple_sql(('delete from EventFollowPending where a_chat_id = ? and b_chat_id = ?', (str(chat_id), str(target_chat_id))))
+        my_simple_sql(('delete from EventFollow where a_chat_id = ? and b_chat_id = ?', (str(chat_id), str(target_chat_id))))
 
     return await send("Done! You don't follow this chat anymore")
 
