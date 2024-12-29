@@ -360,6 +360,8 @@ async def ipa_display(update:Update, context: ContextTypes.DEFAULT_TYPE, *, mode
             'a b d e f g i j k l m n o p r s t u v w x y z ø ŋ œ ɑ ɔ ə ɛ ɡ ɥ ɪ ɲ ʁ ʃ ʊ ʒ',
             'а б д е ф г и й к л м н о п р с т у в у х ю з ё н ё а о ё э г ю и н р ш у ж')
         
+        # todo: do not touch the quoted symbols
+        
         mapping_ipa_ru_dict = dict(zip(*mapping_ipa_ru))
 
         t = tr(words, mode=mode)
