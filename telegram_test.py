@@ -366,7 +366,7 @@ async def ipa_display(update:Update, context: ContextTypes.DEFAULT_TYPE, *, mode
 
     if mode == 'pron':
         def func(words):
-            "{}\n{}".format(tr(words, mode='ipa'), trru(words, mode='ru'))
+            return "{}\n{}".format(tr(words, mode='ipa'), trru(words, mode='ru'))
     else:
         func = {'ipa': tr, 'ru': trru}[mode]
     return await send(func(words))
