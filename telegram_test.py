@@ -1016,10 +1016,11 @@ async def deleventacceptfollow(update, context):
 
     if not context.args:
         followers = simple_sql(('select a_chat_id, b_name from EventFollow where b_chat_id = ?', (str(chat_id), )))
-        return await send('No chats is following you' if not followers else
+        await send('No chats is following you' if not followers else
             'These chats are following you:\n{}'.format('\n'.join(map("-> {}".format, (
                 f"{x} ({y})" if x != y else str(x) for x, y in followers
             )))))
+        await send('Usage: /deleventacceptfollow [chat_id]') 
 
     target_chat_id = str(int(context.args[0]))
 
@@ -1054,8 +1055,8 @@ async def eventanyfollowrename(update, context, *, direction: Literal['follow', 
 
     return await send('You now follow the chat {} as {!r}'.format(target_chat_id, my_relation_name))
 
-eventfollowrename = partial(eventanyfollowrename, direction='follow')
-eventacceptfollowrename = partial(eventanyfollowrename, direction='accept')
+renameeventfollow = partial(eventanyfollowrename, direction='follow')
+renameeventacceptfollow = partial(eventanyfollowrename, direction='accept')
 
 import sqlite3
 async def add_event(update: Update, context: CallbackContext):
@@ -2507,8 +2508,8 @@ COMMAND_DESC = {
     'eventfollow': "Follow another chat to receive their events",
     'eventacceptfollow': "Accept an event follow request",
     'deleventfollow': "Stop to event follow some chat",
-    'eventfollowrename': "Rename a follow relation",
-    'eventacceptfollowrename': "Rename an accepted follow relation",
+    'renameeventfollow': "Rename a follow relation",
+    'renameeventacceptfollow': "Rename an accepted follow relation",
     'deleventacceptfollow': "Stop some chat from event following you",
     "nextevent": "Display the next event in emoji row format",
     "lastevent": "Display the last event in emoji row format",
@@ -2586,8 +2587,8 @@ if __name__ == '__main__':
     application.add_handler(CommandHandler('eventacceptfollow', eventacceptfollow))
     application.add_handler(CommandHandler('deleventfollow', deleventfollow))
     application.add_handler(CommandHandler('deleventacceptfollow', deleventacceptfollow))
-    application.add_handler(CommandHandler('eventfollowrename', eventfollowrename))
-    application.add_handler(CommandHandler('eventacceptfollowrename', eventacceptfollowrename))
+    application.add_handler(CommandHandler('renameeventfollow', renameeventfollow))
+    application.add_handler(CommandHandler('renameeventacceptfollow', renameeventacceptfollow))
     application.add_handler(CommandHandler('nextevent', next_event))
     application.add_handler(CommandHandler('listevents', list_events))
     application.add_handler(CommandHandler('listdays', list_days))
