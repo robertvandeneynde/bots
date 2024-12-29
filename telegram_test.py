@@ -347,7 +347,7 @@ async def ipa_display(update:Update, context: ContextTypes.DEFAULT_TYPE, *, mode
         ipa_dict = IPA_DATA_FR['fr_FR'][0]
         to_ipa = lambda x: ipa_dict.get(x.lower(), x.lower())
         strip_bars = lambda x: x.replace('/', '')
-        return '/' + ' '.join(map(strip_bars, map(to_ipa, words))) + '/'
+        return {'ipa': '/', 'iparu': '['}[mode] + ' '.join(map(strip_bars, map(to_ipa, words))) + {'ipa': '/', 'iparu': ']'}[mode]
     
     def trru(words):
         """
