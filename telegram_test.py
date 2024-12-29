@@ -939,11 +939,16 @@ async def eventfollow(update, context):
     target_chat_id = str(int(context.args[0]))
     my_relation_name = ' '.join(context.args[1:])
 
+    # a follows b
+    # a_chat_id = a.chat_id (immutable)
+    # b_chat_id = b.chat_id (immutable)
+    # a_name = the name a gave to b
+    # b_name = the name b gave to a
     simple_sql(('insert into EventFollowPending(a_chat_id, b_chat_id, a_name, b_name, a_thread_id) VALUES (?,?,?,?,?)', (
         str(chat_id),
         str(target_chat_id),
-        my_relation_name or str(chat_id),
-        str(target_chat_id),
+        my_relation_name or str(target_chat_id),
+        str(chat_id),
         str(thread_id) if thread_id is not None else '')))
 
     if True:  # do_unless_setting_off(the_target_chat . event.follow.notify_my_followers):
