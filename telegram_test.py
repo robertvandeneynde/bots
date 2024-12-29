@@ -339,7 +339,7 @@ async def ipa_display(update:Update, context: ContextTypes.DEFAULT_TYPE, *, mode
 
     *words, = context.args
 
-    def tr(words):
+    def tr(words, mode=mode):
         """
         >>> tr('je mange une pizza'.split())
         '/ʒə mɑ̃ʒ yn pidza/'
@@ -349,7 +349,7 @@ async def ipa_display(update:Update, context: ContextTypes.DEFAULT_TYPE, *, mode
         strip_bars = lambda x: x.replace('/', '')
         return {'ipa': '/', 'ru': '['}[mode] + ' '.join(map(strip_bars, map(to_ipa, words))) + {'ipa': '/', 'ru': ']'}[mode]
     
-    def trru(words):
+    def trru(words, mode=mode):
         """
         >>> trru('je mange une pizza'.split())
         '/жё ма̃ж юн пидза/'
@@ -360,11 +360,15 @@ async def ipa_display(update:Update, context: ContextTypes.DEFAULT_TYPE, *, mode
         
         mapping_ipa_ru_dict = dict(zip(*mapping_ipa_ru))
 
-        t = tr(words)
+        t = tr(words, mode=mode)
         mapping = lambda x: mapping_ipa_ru_dict.get(x,x)
         return ''.join(map(mapping, t))
 
-    func = {'ipa': tr, 'ru': trru}[mode]
+    if mode == 'pron':
+        def func(words):
+            "{}\n{}".format(tr(words, mode='ipa'), trru(words, mode='ru'))
+    else:
+        func = {'ipa': tr, 'ru': trru}[mode]
     return await send(func(words))
 
 async def ipa(update:Update, context: ContextTypes.DEFAULT_TYPE):
@@ -380,7 +384,14 @@ async def iparu(update:Update, context: ContextTypes.DEFAULT_TYPE):
     except UsageError as e:
         send = make_send(update, context)
         return await send(e.format(command="iparu"))
-    
+
+async def pron(update:Update, context: ContextTypes.DEFAULT_TYPE):
+    try:
+        return await ipa_display(update, context, mode='pron')
+    except UsageError as e:
+        send = make_send(update, context)
+        return await send(e.format(command="pron"))
+
 def get_or_empty(L: list, i:int) -> str | object:
     try:
         return L[i]
@@ -2561,6 +2572,7 @@ if __name__ == '__main__':
     application.add_handler(CommandHandler('ru', ru))
     application.add_handler(CommandHandler('ipa', ipa))
     application.add_handler(CommandHandler('iparu', iparu))
+    application.add_handler(CommandHandler('pron', pron))
     application.add_handler(CommandHandler('dict', dict_))
     application.add_handler(CommandHandler('wikt', wikt))
     application.add_handler(CommandHandler('larousse', larousse))
