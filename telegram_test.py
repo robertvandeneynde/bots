@@ -357,16 +357,19 @@ async def ipa_display(update:Update, context: ContextTypes.DEFAULT_TYPE, *, mode
         '/жё ма̃ж юн пидза/'
         """
         mapping_ipa_ru = (
-            'a b d e f g i j k l m n o p r s t u v w x y z ø ŋ œ ɑ ɔ ə ɛ ɡ ɥ ɪ ɲ ʁ ʃ ʊ ʒ',
-            'а б д е ф г и й к л м н о п р с т у в у х ю з ё н ё а о ё э г ю и н р ш у ж')
+            'a b d e f g i j k l m n o p r s t u v w x y z ø ŋ œ ɑ ɔ ə ɛ ɡ ɥ ɪ ɲ ʁ ʃ ʊ ʒ œ\u0303'.split(),
+            'а б д е ф г и й к л м н о п р с т у в у х ю з ё н ё а о ё э г ю и н р ш у ж у\u0303'.split())
         
         # todo: do not touch the quoted symbols
-        
+
         mapping_ipa_ru_dict = dict(zip(*mapping_ipa_ru))
+
+        import re
+        Re = re.compile('|'.join(map(re.escape, sorted(mapping_ipa_ru_dict, key=len, reverse=True))))
 
         t = tr(words, mode=mode)
         mapping = lambda x: mapping_ipa_ru_dict.get(x,x)
-        return ''.join(map(mapping, t))
+        return Re.sub(lambda m: mapping(m.group(0)), t)
 
     if mode == 'pron':
         def func(words):
