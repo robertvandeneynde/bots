@@ -969,10 +969,10 @@ async def eventacceptfollow(update, context):
     chat_id = update.effective_chat.id
 
     if not context.args:
-        followers_pending = simple_sql(('select a_name from EventFollowPending where b_chat_id = ?', (str(chat_id), )))
+        followers_pending = simple_sql(('select a_chat_id from EventFollowPending where b_chat_id = ?', (str(chat_id), )))
         return await send('No chats want to be your follower, keep rolling!' if not followers_pending else
             'These chats want to be your follower:\n{}'.format('\n'.join(map("-> {}".format, (
-                x for x, in followers_pending
+                str(x) for x, in followers_pending
             )))))
 
     source_chat_id = str(int(context.args[0]))
