@@ -1029,7 +1029,7 @@ async def deleventacceptfollow(update, context):
             'These chats are following you:\n{}'.format('\n'.join(map("-> {}".format, (
                 f"{x} ({y})" if x != y else str(x) for x, y in followers
             )))))
-        await send('Usage: /deleventacceptfollow [chat_id]') 
+        return await send('Usage: /deleventacceptfollow [chat_id]') 
 
     target_chat_id = str(int(context.args[0]))
 
@@ -1049,7 +1049,9 @@ async def eventanyfollowrename(update, context, *, direction: Literal['follow', 
         target_chat_id = str(int(context.args[0]))
         my_relation_name = ' '.join(context.args[1:])
     except IndexError:
-        return await send("Usage: /{command} chat_id new name".format(command={'follow': 'renameeventfollow', 'accept': 'renameeventacceptfollow'}[direction]))
+        return await send(
+            "Usage: /{command} chat_id new name".format(command={'follow': 'renameeventfollow', 'accept': 'renameeventacceptfollow'}[direction]) + "\n\n"
+            "To see all groups you follow, type this with no parameters:\n/deleventfollow")
 
     if direction == 'follow':
         base_query = 'update %s set a_name = ? where a_chat_id = ? and b_chat_id = ?'
