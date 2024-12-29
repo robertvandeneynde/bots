@@ -996,17 +996,35 @@ async def eventacceptfollow(update, context):
         
         await send('To see and manage all your followers, see:\n/deleventacceptfollow')
 
+async def send_you_are_following_these_chats(update, context):
+    send = make_send(update, context)
+
+    chat_id = update.effective_chat.id
+
+    followings = simple_sql(('select b_chat_id, a_name from EventFollow where a_chat_id = ?', (str(chat_id), )))
+    await send('You are not following any chats' if not followings else
+        'You are following these chats:\n{}'.format('\n'.join(map("-> {}".format, (
+            f"{x} ({y})" if x != y else str(x) for x, y in followings
+        )))))
+
+async def send_these_chats_are_following_you(update, context):
+    send = make_send(update, context)
+
+    chat_id = update.effective_chat.id
+
+    followers = simple_sql(('select a_chat_id, b_name from EventFollow where b_chat_id = ?', (str(chat_id), )))
+    await send('No chats is following you' if not followers else
+        'These chats are following you:\n{}'.format('\n'.join(map("-> {}".format, (
+            f"{x} ({y})" if x != y else str(x) for x, y in followers
+        )))))
+
 async def deleventfollow(update, context):
     send = make_send(update, context)
 
     chat_id = update.effective_chat.id
 
     if not context.args:
-        followings = simple_sql(('select b_chat_id, a_name from EventFollow where a_chat_id = ?', (str(chat_id), )))
-        await send('You are not following any chats' if not followings else
-            'You are following these chats:\n{}'.format('\n'.join(map("-> {}".format, (
-                f"{x} ({y})" if x != y else str(x) for x, y in followings
-            )))))
+        await send_you_are_following_these_chats(update, context)
         return await send('Usage: /deleventfollow [chat_id]')
 
     target_chat_id = str(int(context.args[0]))
@@ -1024,12 +1042,8 @@ async def deleventacceptfollow(update, context):
     chat_id = update.effective_chat.id
 
     if not context.args:
-        followers = simple_sql(('select a_chat_id, b_name from EventFollow where b_chat_id = ?', (str(chat_id), )))
-        await send('No chats is following you' if not followers else
-            'These chats are following you:\n{}'.format('\n'.join(map("-> {}".format, (
-                f"{x} ({y})" if x != y else str(x) for x, y in followers
-            )))))
-        return await send('Usage: /deleventacceptfollow [chat_id]') 
+        await send_these_chats_are_following_you(update, context)
+        return await send('Usage: /deleventacceptfollow [chat_id]')
 
     target_chat_id = str(int(context.args[0]))
 
@@ -1049,9 +1063,9 @@ async def eventanyfollowrename(update, context, *, direction: Literal['follow', 
         target_chat_id = str(int(context.args[0]))
         my_relation_name = ' '.join(context.args[1:])
     except IndexError:
-        return await send(
-            "Usage: /{command} chat_id new name".format(command={'follow': 'renameeventfollow', 'accept': 'renameeventacceptfollow'}[direction]) + "\n\n"
-            "To see all groups you follow, type this with no parameters:\n/deleventfollow")
+        listing = {'follow': send_you_are_following_these_chats, 'accept': send_these_chats_are_following_you}[direction]
+        await listing(update, context)
+        return await send("Usage: /{command} chat_id new name".format(command={'follow': 'renameeventfollow', 'accept': 'renameeventacceptfollow'}[direction]))
 
     if direction == 'follow':
         base_query = 'update %s set a_name = ? where a_chat_id = ? and b_chat_id = ?'
