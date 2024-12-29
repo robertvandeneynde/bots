@@ -328,6 +328,59 @@ async def ru(update: Update, context: CallbackContext):
         return R.sub(lambda m: (lambda x: D.get(x,x))(m.group(0)), word)
     await send(' '.join(to_cyrilic(word) for word in context.args))
 
+with open("json/ipa/fr_FR.json") as IPA_DATA_FR:
+    IPA_DATA_FR = json.load(IPA_DATA_FR)
+
+async def ipa_display(update:Update, context: ContextTypes.DEFAULT_TYPE, *, mode:Literal['ipa', 'ru']):
+    send = make_send(update, context)
+
+    if not context.args:
+        raise UsageError("/{command} word+")
+
+    *words, = context.args
+
+    def tr(words):
+        """
+        >>> tr('je mange une pizza'.split())
+        '/ʒə mɑ̃ʒ yn pidza/'
+        """
+        ipa_dict = IPA_DATA_FR['fr_FR'][0]
+        to_ipa = lambda x: ipa_dict.get(x.lower(), x.lower())
+        strip_bars = lambda x: x.replace('/', '')
+        return '/' + ' '.join(map(strip_bars, map(to_ipa, words))) + '/'
+    
+    def trru(words):
+        """
+        >>> trru('je mange une pizza'.split())
+        '/жё ма̃ж юн пидза/'
+        """
+        mapping_ipa_ru = (
+            'a b d e f g i j k l m n o p r s t u v w x y z ø ŋ œ ɑ ɔ ə ɛ ɡ ɥ ɪ ɲ ʁ ʃ ʊ ʒ',
+            'а б д ё ф г и й к л м н о п р с т у в у х ю з ё н ё а о ё э г ю и н р ш у ж')
+        
+        mapping_ipa_ru_dict = dict(zip(*mapping_ipa_ru))
+
+        t = tr(words)
+        mapping = lambda x: mapping_ipa_ru_dict.get(x,x)
+        return ''.join(map(mapping, t))
+
+    func = {'ipa': tr, 'ru': trru}[mode]
+    return await send(func(words))
+
+async def ipa(update:Update, context: ContextTypes.DEFAULT_TYPE):
+    try:
+        return await ipa_display(update, context, mode='ipa')
+    except UsageError as e:
+        send = make_send(update, context)
+        return await send(e.format(command="ipa"))
+    
+async def iparu(update:Update, context: ContextTypes.DEFAULT_TYPE):
+    try:
+        return await ipa_display(update, context, mode='ru')
+    except UsageError as e:
+        send = make_send(update, context)
+        return await send(e.format(command="iparu"))
+    
 def get_or_empty(L: list, i:int) -> str | object:
     try:
         return L[i]
@@ -2506,6 +2559,8 @@ if __name__ == '__main__':
         fallbacks=[],
     ), group=2)
     application.add_handler(CommandHandler('ru', ru))
+    application.add_handler(CommandHandler('ipa', ipa))
+    application.add_handler(CommandHandler('iparu', iparu))
     application.add_handler(CommandHandler('dict', dict_))
     application.add_handler(CommandHandler('wikt', wikt))
     application.add_handler(CommandHandler('larousse', larousse))
