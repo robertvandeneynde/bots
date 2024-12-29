@@ -1036,8 +1036,11 @@ async def eventanyfollowrename(update, context, *, direction: Literal['follow', 
 
     chat_id = update.effective_chat.id
 
-    target_chat_id = str(int(context.args[0]))
-    my_relation_name = ' '.join(context.args[1:])
+    try:
+        target_chat_id = str(int(context.args[0]))
+        my_relation_name = ' '.join(context.args[1:])
+    except IndexError:
+        return await send("Usage: /{command} chat_id new name".format(command={'follow': 'renameeventfollow', 'accept': 'renameeventacceptfollow'}[direction]))
 
     if direction == 'follow':
         base_query = 'update %s set a_name = ? where a_chat_id = ? and b_chat_id = ?'
