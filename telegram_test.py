@@ -944,6 +944,7 @@ async def eventfollow(update, context):
     # b_chat_id = b.chat_id (immutable)
     # a_name = the name a gave to b
     # b_name = the name b gave to a
+    # a_thread_id = the thread id where a wants to receive events
     simple_sql(('insert into EventFollowPending(a_chat_id, b_chat_id, a_name, b_name, a_thread_id) VALUES (?,?,?,?,?)', (
         str(chat_id),
         str(target_chat_id),
@@ -1086,7 +1087,7 @@ async def eventanyfollowrename(update, context, *, direction: Literal['follow', 
             my_simple_sql((base_query % table_name, (my_relation_name, str(chat_id), str(target_chat_id))))
         conn.execute('end transaction')
 
-    return await send('You now follow the chat {} as {!r}'.format(target_chat_id, my_relation_name))
+    return await send({'follow': 'You now follow the chat {} as {!r}', 'accept': 'The chat following you {}, you call it {!r}'}[direction].format(target_chat_id, my_relation_name))
 
 renameeventfollow = partial(eventanyfollowrename, direction='follow')
 renameeventacceptfollow = partial(eventanyfollowrename, direction='accept')
