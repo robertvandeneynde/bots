@@ -1000,6 +1000,15 @@ async def deleventfollow(update, context):
     send = make_send(update, context)
 
     chat_id = update.effective_chat.id
+
+    if not context.args:
+        followings = simple_sql(('select b_chat_id, a_name from EventFollow where a_chat_id = ?', (str(chat_id), )))
+        await send('You are not following any chats' if not followings else
+            'You are following these chats:\n{}'.format('\n'.join(map("-> {}".format, (
+                f"{x} ({y})" if x != y else str(x) for x, y in followings
+            )))))
+        return await send('Usage: /deleventfollow [chat_id]')
+
     target_chat_id = str(int(context.args[0]))
 
     with sqlite3.connect("db.sqlite") as conn:
