@@ -995,12 +995,12 @@ async def eventacceptfollow(update, context):
             my_relation_name or b_name,
             a_thread_id)))
         
-        # todo: send them some notif
-        await send(
-            'You are now followed by this chat{}!'.format(" (that you named {})".format(my_relation_name) if my_relation_name else '') + " " +
-            'Every event you add will be forwarded to them.')
+    # todo: send them some notif
+    await send(
+        'You are now followed by this chat{}!'.format(" (that you named {})".format(my_relation_name) if my_relation_name else '') + " " +
+        'Every event you add will be forwarded to them.')
         
-        await send('To see and manage all your followers, see:\n/deleventacceptfollow')
+    await send('To see and manage all your followers, see:\n/deleventacceptfollow')
 
 async def send_you_are_following_these_chats(update, context):
     send = make_send(update, context)
