@@ -2660,6 +2660,7 @@ COMMAND_DESC = {
     "help": "Help !",
     "caps": "Returns the list of parameters in capital letters",
     "addevent": "Add event",
+    "addschedule": "Add multiple events",
     'eventfollow': "Follow another chat to receive their events",
     'eventacceptfollow': "Accept an event follow request",
     'deleventfollow': "Stop to event follow some chat",
@@ -2704,7 +2705,7 @@ COMMAND_DESC = {
 
 COMMAND_LIST = (
     'caps',
-    'addevent', 'nextevent', 'lastevent', 'listevents', 'listdays', 'listtoday', 'today', 'delevent',
+    'addevent', 'addschedule', 'nextevent', 'lastevent', 'listevents', 'listdays', 'listtoday', 'today', 'delevent',
     'eventfollow', 'eventacceptfollow', 'deleventfollow', 'deleventacceptfollow',
     'whereis', 'thereis', 'whereto',
     'ru',
