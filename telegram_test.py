@@ -770,7 +770,7 @@ class DatetimeText:
         return datetime, date_end
 
     @classmethod
-    def to_date_range(self, name, *, reference=None, tz=None) -> datetime.date:
+    def to_date_range(self, name, *, reference=None, tz=None) -> tuple[Date, Date]:
         from datetime import datetime, timedelta, date, date as Date
         reference = reference or datetime.now().astimezone(tz).replace(tzinfo=None)
         today = reference.date()
@@ -817,7 +817,7 @@ class DatetimeText:
         elif name in self.days_english:
             i = self.days_english.index(name)
         else:
-            raise UserError(f"Unknown date {name}")
+            raise UnknownDateError(f"Unknown date {name}")
         
         the_day = today + timedelta(days=1)
         while the_day.weekday() != i:
@@ -850,7 +850,7 @@ class ParsedEventMiddle(NamedTuple):
 
 class ParsedEventFinal(NamedTuple):
     date_str: str
-    time: Time
+    time: Optional[Time]
     name: str 
     date: Datetime
     date_end: Datetime 
@@ -925,12 +925,16 @@ class ParseEvents:
     def parse_schedule(cls, args) -> list[ParsedEventMiddle]:
         out: list[ParsedEventMiddleNoName] = []
         it = args
-        first = True
-        while it or first:
+        while it:
+            bit = it[0]
             event, it = cls.parse_event_timed(it)
+            try:
+                DatetimeText.to_date_range(event.date)
+            except UnknownDateError:
+                it = [bit] + it
+                break
             out.append(event)
-            first = False
-        name_fmt = " ".join(it)
+        name_fmt = ' '.join(it)
         return [ParsedEventMiddle.from_no_name(event, name=safe_format(name_fmt, n=n)) for event, n in zip(out, irange(1, len(out)))]
 
 def safe_format(fmt, **kwargs):
@@ -942,7 +946,6 @@ def safe_format(fmt, **kwargs):
     return Re.sub(lambda m: str(kwargs.get(m.group(0)[1:-1], m.group(0))), fmt)
 
 parse_event = ParseEvents.parse_event
-parse_schedule = ParseEvents.parse_schedule
 
 def raise_error(error):
     raise error
@@ -980,7 +983,7 @@ def parse_datetime_point(update, context, when_infos=None, what_infos=None) -> P
 
     date, date_end = DatetimeText.to_date_range(date_str, tz=tz)
     datetime = Datetime.combine(date, time or Time(0,0)).replace(tzinfo=tz)
-    datetime_utc = datetime.astimezone(ZoneInfo('UTC'))
+    datetime_utc = datetime.astimezone(UTC)
     Loc = locals()
 
     if day_of_week:
@@ -990,10 +993,23 @@ def parse_datetime_point(update, context, when_infos=None, what_infos=None) -> P
     return ParsedEventFinal(**{x: Loc[x] for x in ParsedEventFinal._fields})
 
 def parse_datetime_schedule(*, tz, args) -> list[ParsedEventFinal]:
-    for date_str, time, name, day_of_week in parse_schedule(args):
-        pass
+    out = []
+    event: ParsedEventMiddle
+    date: datetime
+    for event in ParseEvents.parse_schedule(args):
+        time, name = event.time, event.name
+        date, date_end = DatetimeText.to_date_range(event.date, tz=tz)
+        datetime = Datetime.combine(date, time or Time(0, 0)).replace(tzinfo=tz)
+        datetime_utc = datetime.astimezone(UTC)
 
-    return ParsedEventFinal()
+        if day_of_week := event.day_of_week:
+            if not is_correct_day_of_week(date, day_of_week):
+                raise UserError(f"{date!r} is not a {day_of_week!r}")
+        
+        final = ParsedEventFinal(date_str=event.date, time=time, name=name, date=date, date_end=date_end, datetime=datetime, datetime_utc=datetime_utc, tz=tz)
+        out.append(final)
+
+    return out 
 
 def is_correct_day_of_week(date, day_of_week):
     return date.weekday() == (DatetimeText.days_english + DatetimeText.days_french).index(day_of_week.lower()) % 7
@@ -1167,6 +1183,11 @@ async def eventanyfollowrename(update, context, *, direction: Literal['follow', 
 renameeventfollow = partial(eventanyfollowrename, direction='follow')
 renameeventacceptfollow = partial(eventanyfollowrename, direction='accept')
 
+def irange(a, b=None):
+    if b is None:
+        return irange(1, a)
+    return range(a, b+1)
+
 async def addschedule(update: Update, context: ContextTypes.DEFAULT_TYPE):
     send = make_send(update, context)
     if not context.args:
@@ -1176,11 +1197,16 @@ async def addschedule(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     chat_timezones = read_chat_settings("event.timezones")
 
-    tz = induce_my_timezone(user_id=update.message.from_user.id, chat_id=update.effective_chat.id)
+    source_user_id = update.message.from_user.id
+    chat_id = update.effective_chat.id
+    tz = induce_my_timezone(user_id=source_user_id, chat_id=chat_id)
 
-    event: ParsedEventFinal = parse_datetime_schedule()
+    events: list[ParsedEventFinal] = parse_datetime_schedule(tz=tz, args=context.args)
 
-    add_event_to_db(chat_timezones=chat_timezones, tz=tz)
+    for event in events:
+        add_event_to_db(chat_timezones=chat_timezones, tz=tz, name=event.name, chat_id=chat_id, source_user_id=source_user_id, datetime_utc=event.datetime_utc)
+
+    return await send(f"{len(events)} event(s) added")
     
 def add_event_to_db(*, chat_timezones, tz, datetime_utc, name, chat_id, source_user_id):
     if chat_timezones and tz and tz not in chat_timezones:
@@ -2506,6 +2532,9 @@ async def help(update, context):
     return await send('\n'.join(fmt.format(command, COMMAND_DESC.get(command, command)) for command in COMMAND_LIST))
 
 class UserError(ValueError):
+    pass
+
+class UnknownDateError(UserError):
     pass
 
 class DictJsLike(dict):
