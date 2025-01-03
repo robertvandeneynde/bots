@@ -828,10 +828,41 @@ class DatetimeText:
         return beg, end
 
 from collections import namedtuple
-ParsedEventMiddle = namedtuple('ParsedEventMiddle', 'date time name day_of_week')
-ParsedEventFinal = namedtuple('ParsedEventFinal', 'date_str, time, name, date, date_end, datetime, datetime_utc, tz')
+from typing import NamedTuple
 
-def parse_event_date(args):
+from datetime import date as Date, time as Time, datetime as Datetime, timedelta as Timedelta
+from typing import Optional
+
+class ParsedEventMiddleNoName(NamedTuple):
+    date: str
+    time: Optional[Time]
+    day_of_week: str
+
+class ParsedEventMiddle(NamedTuple):
+    date: str
+    time: Optional[Time]
+    name: str 
+    day_of_week: str
+
+    @staticmethod
+    def from_no_name(event: ParsedEventMiddleNoName, name:str):
+        return ParsedEventMiddle(**event._asdict(), name=name)
+
+class ParsedEventFinal(NamedTuple):
+    date_str: str
+    time: Time
+    name: str 
+    date: Datetime
+    date_end: Datetime 
+    datetime: Datetime 
+    datetime_utc: Datetime 
+    tz: ZoneInfo
+
+class ParsedEventDate(NamedTuple):
+    day_of_week: str
+    date_str: str
+
+def parse_event_date(args) -> tuple[str, str, list]:
     """
     ['Something', 'A', 'B', 'C'] -> 'Something', ['A', 'B', 'C']  # n = 1
     ['25', 'November', 'A', 'B', 'C'] -> '25 November', ['A', 'B', 'C']  # n = 2
@@ -857,23 +888,61 @@ def parse_event_date(args):
         else:
             n = 1
     
-    return day_of_week, ' '.join(args[:n]) if n > 0 else day_of_week, args[n:]
+    return ParsedEventDate(day_of_week=day_of_week, date_str=' '.join(args[:n]) if n > 0 else day_of_week), args[n:]
 
-def parse_event(args) -> tuple[str, datetime.time | None, str]:
-    from datetime import date as Date, time as Time, timedelta as Timedelta
 
-    date: str
-    rest: list
-    day_of_week, date, rest = parse_event_date(args)
-    if match := re.compile('(\\d{1,2})[:hH](\\d{2})?').fullmatch(get_or_empty(rest, 0)):
-        hours, minutes = match.group(1), match.group(2)
-        time = Time(int(hours), int(minutes or '0'))
-        rest = rest[1:]
-    else:
-        time = None
-    name = " ".join(rest)
+class ParseEvents:
 
-    return ParsedEventMiddle(date=date, time=time, name=name, day_of_week=day_of_week)
+    @classmethod
+    def parse_time(cls, args: list) -> tuple[Optional[Time], list]:
+        Args = InfiniteEmptyList(args)
+        if match := re.compile('(\\d{1,2})[:hH](\\d{2})?').fullmatch(Args[0]):
+            hours, minutes = match.group(1), match.group(2)
+            time = Time(int(hours), int(minutes or '0'))
+            args = args[1:]
+        else:
+            time = None
+        return time, args
+    
+    @classmethod
+    def parse_event_timed(cls, args: list):
+        date: str
+        rest: list
+        time: Optional[Time]
+        
+        (day_of_week, date), rest = parse_event_date(args)
+        time, rest = cls.parse_time(rest)
+
+        return ParsedEventMiddleNoName(date=date, time=time, day_of_week=day_of_week), rest
+    
+    @classmethod
+    def parse_event(cls, args) -> ParsedEventMiddle:
+        event_no_name: ParsedEventMiddleNoName
+        event_no_name, rest = cls.parse_event_timed(args)
+        return ParsedEventMiddle.from_no_name(event_no_name, name=" ".join(rest))
+
+    @classmethod
+    def parse_schedule(cls, args) -> list[ParsedEventMiddle]:
+        out: list[ParsedEventMiddleNoName] = []
+        it = args
+        first = True
+        while it or first:
+            event, it = cls.parse_event_timed(it)
+            out.append(event)
+            first = False
+        name_fmt = " ".join(it)
+        return [ParsedEventMiddle.from_no_name(event, name=safe_format(name_fmt, n=n)) for event, n in zip(out, irange(1, len(out)))]
+
+def safe_format(fmt, **kwargs):
+    """
+    safe_format("Hello {n}", n=5) -> "Hello 5"
+    safe_format("Hello {a}", n=5) -> "Hello {a}"
+    """
+    Re = re.compile(re.escape('{') + '[a-zA-Z_][a-zA-Z_[0-9]*' + re.escape('}'))
+    return Re.sub(lambda m: str(kwargs.get(m.group(0)[1:-1], m.group(0))), fmt)
+
+parse_event = ParseEvents.parse_event
+parse_schedule = ParseEvents.parse_schedule
 
 def raise_error(error):
     raise error
@@ -897,7 +966,7 @@ def induce_my_timezone(*, user_id, chat_id):
         "- This: /chatsettings event.timezones TIMEZONE\n"
         "- Example: /chatsettings event.timezones Europe/Brussels\n")
 
-def parse_datetime_point(update, context, when_infos=None, what_infos=None):
+def parse_datetime_point(update, context, when_infos=None, what_infos=None) -> ParsedEventFinal:
     from datetime import datetime as Datetime, time as Time, date as Date, timedelta
     tz = induce_my_timezone(user_id=update.message.from_user.id, chat_id=update.effective_chat.id)
     
@@ -919,6 +988,12 @@ def parse_datetime_point(update, context, when_infos=None, what_infos=None):
             raise UserError(f"{date_str!r} is not a {day_of_week!r}")
 
     return ParsedEventFinal(**{x: Loc[x] for x in ParsedEventFinal._fields})
+
+def parse_datetime_schedule(*, tz, args) -> list[ParsedEventFinal]:
+    for date_str, time, name, day_of_week in parse_schedule(args):
+        pass
+
+    return ParsedEventFinal()
 
 def is_correct_day_of_week(date, day_of_week):
     return date.weekday() == (DatetimeText.days_english + DatetimeText.days_french).index(day_of_week.lower()) % 7
@@ -1092,6 +1167,36 @@ async def eventanyfollowrename(update, context, *, direction: Literal['follow', 
 renameeventfollow = partial(eventanyfollowrename, direction='follow')
 renameeventacceptfollow = partial(eventanyfollowrename, direction='accept')
 
+async def addschedule(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    send = make_send(update, context)
+    if not context.args:
+        return await send("Usage: /addschedule datetime+ name")
+    
+    read_chat_settings = make_read_chat_settings(update, context)
+
+    chat_timezones = read_chat_settings("event.timezones")
+
+    tz = induce_my_timezone(user_id=update.message.from_user.id, chat_id=update.effective_chat.id)
+
+    event: ParsedEventFinal = parse_datetime_schedule()
+
+    add_event_to_db(chat_timezones=chat_timezones, tz=tz)
+    
+def add_event_to_db(*, chat_timezones, tz, datetime_utc, name, chat_id, source_user_id):
+    if chat_timezones and tz and tz not in chat_timezones:
+        raise UserError('\n'.join([
+            'Your timezone is not in chat timezones, this can be confusing, change your timezone or add your timezone to the chat timezones.',
+            '- Your timezone: {tz}'.format(tz=tz),
+            '- Chat timezones: {chat_timezone_str}'.format(chat_timezone_str=", ".join(map(str, chat_timezones))),
+        ]))
+
+    with sqlite3.connect('db.sqlite') as conn:
+        cursor = conn.cursor()
+
+        strftime = DatetimeDbSerializer.strftime
+
+        cursor.execute("INSERT INTO Events(date, name, chat_id, source_user_id) VALUES (?,?,?,?)", (strftime(datetime_utc), name, chat_id, source_user_id))
+    
 import sqlite3
 async def add_event(update: Update, context: CallbackContext):
     send = make_send(update, context)
@@ -1127,20 +1232,7 @@ async def add_event(update: Update, context: CallbackContext):
     date_str, time, name, date, date_end, datetime, datetime_utc, tz = parse_datetime_point(update, context, when_infos=when_infos, what_infos=what_infos)
     
     chat_timezones = read_chat_settings("event.timezones")
-    
-    if chat_timezones and tz and tz not in chat_timezones:
-        raise UserError('\n'.join([
-            'Your timezone is not in chat timezones, this can be confusing, change your timezone or add your timezone to the chat timezones.',
-            '- Your timezone: {tz}'.format(tz=tz),
-            '- Chat timezones: {chat_timezone_str}'.format(chat_timezone_str=", ".join(map(str, chat_timezones))),
-        ]))
-
-    with sqlite3.connect('db.sqlite') as conn:
-        cursor = conn.cursor()
-
-        strftime = DatetimeDbSerializer.strftime
-
-        cursor.execute("INSERT INTO Events(date, name, chat_id, source_user_id) VALUES (?,?,?,?)", (strftime(datetime_utc), name, chat_id, source_user_id))
+    add_event_to_db(chat_timezones=chat_timezones, tz=tz, datetime_utc=datetime_utc, name=name, chat_id=chat_id, source_user_id=source_user_id)
     
     emojis = EventFormatting.emojis
 
@@ -2617,6 +2709,7 @@ if __name__ == '__main__':
     ))
     application.add_handler(CommandHandler('caps', caps))
     application.add_handler(CommandHandler('addevent', add_event))
+    application.add_handler(CommandHandler('addschedule', addschedule))
     application.add_handler(CommandHandler('eventfollow', eventfollow))
     application.add_handler(CommandHandler('eventacceptfollow', eventacceptfollow))
     application.add_handler(CommandHandler('deleventfollow', deleventfollow))
