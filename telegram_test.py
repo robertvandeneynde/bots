@@ -848,12 +848,16 @@ class ParsedEventMiddle(NamedTuple):
     def from_no_name(event: ParsedEventMiddleNoName, name:str):
         return ParsedEventMiddle(**event._asdict(), name=name)
 
+class ParsedScheduleMiddle(NamedTuple):
+    events: list[ParsedEventMiddle]
+    each_activateds: list[bool]
+
 class ParsedEventFinal(NamedTuple):
     date_str: str
     time: Optional[Time]
     name: str 
-    date: Datetime
-    date_end: Datetime 
+    date: Date
+    date_end: Date 
     datetime: Datetime 
     datetime_utc: Datetime 
     tz: ZoneInfo
@@ -905,7 +909,7 @@ class ParseEvents:
         return time, args
     
     @classmethod
-    def parse_event_timed(cls, args: list):
+    def parse_event_timed(cls, args: list) -> tuple[ParsedEventMiddleNoName, list]:
         date: str
         rest: list
         time: Optional[Time]
@@ -922,18 +926,54 @@ class ParseEvents:
         return ParsedEventMiddle.from_no_name(event_no_name, name=" ".join(rest))
 
     @classmethod
-    def parse_schedule(cls, args) -> list[ParsedEventMiddle]:
+    def parse_schedule(cls, args, *, tz) -> list[ParsedEventMiddleNoName]:
         out: list[ParsedEventMiddleNoName] = []
         it = args
         while it:
+            each_activated = False
+            It = InfiniteEmptyList(it)
+            if It[0].lower() in ('each', 'every', 'chaque', 'le'):
+                each_activated = True
+                each_activated_by = It[0]
+                it = it[1:]
+            elif tuple(map(str.lower, It[0:2])) in [('tous', 'les')]:
+                each_activated = True
+                each_activated_by = ' '.join(It[0:2])
+                it = it[2:]
+                
             bit = it[0]
             event, it = cls.parse_event_timed(it)
             try:
-                DatetimeText.to_date_range(event.date)
+                DatetimeText.to_date_range(event.date, tz=tz)
             except UnknownDateError:
                 it = [bit] + it
+                if each_activated:
+                    it = each_activated_by.split() + it
                 break
-            out.append(event)
+
+            if each_activated:
+                if not event.day_of_week:
+                    raise UserError(f"The keyword {each_activated_by!r} has to be applied on a day of the week")
+                date_obj, date_obj_end = DatetimeText.to_date_range(event.date, tz=tz)
+
+                It = InfiniteEmptyList(it)
+                n = 4
+                if (It[0].lower() in ("for", "pour")
+                    and It[1].isdecimal()
+                    and It[2].lower() in ("times", "fois")):
+                    n = int(It[1])
+                    it = it[3:]
+                elif (It[0].lower() == 'n'
+                    and It[1] == '='
+                    and It[2].isdecimal()):
+                    n = int(It[2])
+                    it = it[3:]
+
+                for i in range(n):
+                    out.append(event._replace(date=str(date_obj + timedelta(weeks=i))))
+            else:
+                out.append(event)
+
         name_fmt = ' '.join(it)
         return [ParsedEventMiddle.from_no_name(event, name=safe_format(name_fmt, n=n)) for event, n in zip(out, irange(1, len(out)))]
 
@@ -996,7 +1036,7 @@ def parse_datetime_schedule(*, tz, args) -> list[ParsedEventFinal]:
     out = []
     event: ParsedEventMiddle
     date: datetime
-    for event in ParseEvents.parse_schedule(args):
+    for event in ParseEvents.parse_schedule(args, tz=tz):
         time, name = event.time, event.name
         date, date_end = DatetimeText.to_date_range(event.date, tz=tz)
         datetime = Datetime.combine(date, time or Time(0, 0)).replace(tzinfo=tz)
