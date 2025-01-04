@@ -1004,7 +1004,7 @@ def parse_datetime_schedule(*, tz, args) -> list[ParsedEventFinal]:
 
         if day_of_week := event.day_of_week:
             if not is_correct_day_of_week(date, day_of_week):
-                raise UserError(f"{date!r} is not a {day_of_week!r}")
+                raise UserError(f"{event.date!r} is not a {day_of_week!r}")
         
         final = ParsedEventFinal(date_str=event.date, time=time, name=name, date=date, date_end=date_end, datetime=datetime, datetime_utc=datetime_utc, tz=tz)
         out.append(final)
