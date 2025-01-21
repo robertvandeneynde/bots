@@ -1905,7 +1905,7 @@ async def delevent(update, context):
         [InlineKeyboardButton("{} - {}".format(
             strftime_minutes(strptime(event['date']).replace(tzinfo=ZoneInfo("UTC")).astimezone(tz)),
             event['name']
-        ), callback_data=json.dumps(saved_info_dict | dict(rowid=str(event['rowid']))))]
+        ), callback_data=json.dumps(saved_info_dict | dict(rowid=str(event['rowid']), tz=str(tz))))]
         for event in events
     ]
 
@@ -1930,7 +1930,7 @@ async def do_delete_event(update, context):
     if rowid == "null":
         await send("Cancelled: No event deleted")
     else:
-        await db_delete_event(update, context, send, chat_id=update.effective_chat.id, event_id=rowid)
+        await db_delete_event(update, context, send, chat_id=update.effective_chat.id, event_id=rowid, tz=data_dict.get("tz"))
 
     # await query.edit_message_text
     # await query.edit_message_reply_markup()
@@ -1938,7 +1938,7 @@ async def do_delete_event(update, context):
         
     return ConversationHandler.END
 
-async def db_delete_event(update, context, send, *, chat_id, event_id):
+async def db_delete_event(update, context, send, *, chat_id, event_id, tz):
     read_chat_settings = make_read_chat_settings(update, context)
 
     if read_chat_settings('event.delevent.display'):
@@ -1946,9 +1946,11 @@ async def db_delete_event(update, context, send, *, chat_id, event_id):
     else:
         infos = None
 
+    date_tz = None if not(infos and infos.get('date') and tz) else DatetimeDbSerializer.strptime(infos.get('date')).astimezone(ZoneInfo(tz))
+
     simple_sql(('delete from Events where chat_id = ? and rowid = ?', (chat_id, event_id)))
     
-    await send(f"Event deleted" if infos is None else f"Event deleted: {infos}")
+    await send(f"Event deleted" if infos is None else "Event deleted: {}".format(dict(date=date_tz, name=infos.get('name'))))
 
 from typing import Iterable
 def n_to_1_dict(x:dict|Iterable):
