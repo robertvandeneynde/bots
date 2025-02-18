@@ -15,6 +15,7 @@ class FriendsUser(enum.StrEnum):
     KOROLEVA_LION = 'koroleva-lion'
     LOUKOUM = 'loukoum'
     JOKÈRE = 'jokère'
+    SHOKO = 'shoko'
 
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
@@ -105,6 +106,10 @@ async def hello_responder(msg:str, send: AsyncSend, *, update, context):
     elif user.id == FRIENDS_USER.get(FriendsUser.KOROLEVA_LION):
         if msg.lower().startswith("hello"):
             await send("Hellow you wild sladkij ^^ Hope your day will improve your life !")
+    elif user.id == FRIENDS_USER.get(FriendsUser.SHOKO):
+        if (english := msg.lower().startswith("hello")) or (russian := msg.lower().startswith("привет")):
+            assert english or russian
+            await send("Do you want some lezhunki ? Or some Tango ? It seems like you do !" if english else "Хочешь лежунки или Танго? Мне кстати Да !")
     else:
         if msg.lower().startswith("hello"):
             await send("Hello ! :3")
