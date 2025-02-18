@@ -2236,20 +2236,49 @@ async def settings_command(update: Update, context: CallbackContext, *, command_
     send = make_send(update, context)
 
     async def print_usage():
-        await send(f"Usage:\n/{command_name} command.key\n/{command_name} command.key value")
+        await send(f"Usage:" + "\n"
+                   f"/{command_name} command.key" + "\n"
+                   f"/{command_name} command.key value" + "\n"
+                   f"/{command_name} delete command.key")
 
     if len(context.args) == 0:
         return await print_usage()
 
-    key, *rest = context.args
+    Args = InfiniteEmptyList(context.args)
+
+    action: Literal["get", "set", "getset", "delete"]
+    
+    match Args[0].lower():
+        case "del" | "delete":
+            args = Args[1:]
+            action = "delete"
+        case "get":
+            args = Args[1:]
+            action = "get"
+        case "set":
+            args = Args[1:]
+            action = "set"
+        case _:
+            args = Args[:]
+            action = "getset"
+
+    key, *rest = args
 
     if key not in accepted_settings:
         return await send(f'Unknown settings: {key!r}\n\nType /listallsettings for complete list of settings (hidden command)')
 
-    if rest and rest[0] == '=':
+    if rest and rest[0] == '=' and action in ("set", "getset"):
         rest = rest[1:]
         if not rest:
-            raise UserError('Must sepcify a value when setting a value with "a.b = c"')
+            raise UserError('Must specify a value when setting a value with "a.b = c"')
+
+    if action == "delete":
+        if len(rest) > 0:
+            raise UserError(f'Usage: /{command_name} delete command.key')
+        return await delsettings_command(update, context, key=key, command_name=command_name + ' ' + 'delete', settings_type=settings_type, accepted_settings=accepted_settings)
+
+    if action == "set" and len(rest) == 0:
+        raise UserError(f"Usage: /{command_name} set command.key value")
 
     if key in ('money.currencies', 'event.timezones'):
         value = ([] if list(rest) in [['()'], ['[]']] else
@@ -2279,17 +2308,9 @@ async def settings_command(update: Update, context: CallbackContext, *, command_
         set_settings(value_raw=value, id=id, key=key, settings_type=settings_type)
         await send(f"Settings: {key} = {value}")
 
-async def delsettings_command(update:Update, context: CallbackContext, *, accepted_settings:list[str], settings_type:Literal['chat'] | Literal['id'], command_name:str):
+async def delsettings_command(update:Update, context: CallbackContext, *, key: str, accepted_settings:list[str], settings_type:Literal['chat'] | Literal['id'], command_name:str):
     send = make_send(update, context)
     
-    if len(context.args) != 1:
-        return await send(f"Usage: /{command_name} command.key")
-    
-    key, = context.args
-
-    if key not in accepted_settings:
-        return await send(f'Unknown setting: {key!r}')
-
     if settings_type == 'user':
         id = update.message.from_user.id
     elif settings_type == 'chat':
@@ -2300,10 +2321,8 @@ async def delsettings_command(update:Update, context: CallbackContext, *, accept
     delete_settings(id=id, key=key, settings_type=settings_type)
     await send(f"Deleted settings for {key!r}")
 
-settings = partial(settings_command, accepted_settings=ACCEPTED_SETTINGS_USER, settings_type='user', command_name='settings')
-delsettings = partial(delsettings_command, accepted_settings=ACCEPTED_SETTINGS_USER, settings_type='user', command_name='delsettings')
+mysettings = partial(settings_command, accepted_settings=ACCEPTED_SETTINGS_USER, settings_type='user', command_name='mysettings')
 chatsettings = partial(settings_command, accepted_settings=ACCEPTED_SETTINGS_CHAT, settings_type='chat', command_name='chatsettings')
-delchatsettings = partial(delsettings_command, accepted_settings=ACCEPTED_SETTINGS_CHAT, settings_type='chat', command_name='delchatsettings')
 
 def migration0():
     with sqlite3.connect('db.sqlite') as conn:
@@ -2754,7 +2773,7 @@ COMMAND_LIST = (
     'ru',
     'dict', 'wikt', 'larousse',
     'convertmoney', 'eur', 'brl', 'rub',
-    'mytimezone', 'settings', 'delsettings', 'chatsettings', 'delchatsettings',
+    'mytimezone', 'settings', 'mysettings', 'delmysettings', 'chatsettings', 'delchatsettings',
     'flashcard', 'exportflashcards', 'practiceflashcards', 'switchpageflashcard',
     'help',
     'uniline', 'nuniline',
@@ -2819,10 +2838,8 @@ if __name__ == '__main__':
     application.add_handler(CommandHandler('convertmoney', convertmoney))
     application.add_handler(CommandHandler('mytimezone', mytimezone))
     application.add_handler(CommandHandler('listallsettings', listallsettings))
-    application.add_handler(CommandHandler('settings', settings))
-    application.add_handler(CommandHandler('delsettings', delsettings))
+    application.add_handler(CommandHandler('mysettings', mysettings))
     application.add_handler(CommandHandler('chatsettings', chatsettings))
-    application.add_handler(CommandHandler('delchatsettings', delchatsettings))
     application.add_handler(CommandHandler('flashcard', flashcard))
     application.add_handler(CommandHandler('switchpageflashcard', switchpageflashcard))
     application.add_handler(CommandHandler('exportflashcards', exportflashcards))
