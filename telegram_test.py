@@ -780,6 +780,16 @@ class DatetimeText:
         reference = reference or datetime.now().astimezone(tz).replace(tzinfo=None)
         today = reference.date()
         name = name.lower()
+
+        if parsed_tuple := ParseEvents.parse_valid_date(name):
+            if len(parsed_tuple) == 3:
+                day = date(*map(int, parsed_tuple))
+                return day, day + timedelta(days=1)
+            elif len(parsed_tuple) == 2:
+                day = date(today.year, *map(int, parsed_tuple))
+                return day, day + timedelta(days=1)
+            else:
+                raise AssertionError
         
         if match := re.fullmatch("(\d{4})-(\d{2})-(\d{2})", name):
             day = date(*map(int, match.groups()))
@@ -876,6 +886,8 @@ def parse_event_date(args) -> tuple[str, str, list]:
     ['Something', 'A', 'B', 'C'] -> 'Something', ['A', 'B', 'C']  # n = 1
     ['25', 'November', 'A', 'B', 'C'] -> '25 November', ['A', 'B', 'C']  # n = 2
     ['25', 'November', '2023', 'A', 'B', 'C'] -> '25 November 2023', ['A', 'B', 'C']  # n = 3
+    ['25.11', 'A', 'B', 'C'] -> '25.11', ['A', 'B', 'C']  # n = 3
+    ['25.11.2025', 'A', 'B', 'C'] -> '25.11.2025', ['A', 'B', 'C']  # n = 3
     """
     Args = GetOrEmpty(args)
     if Args[0].lower() in DatetimeText.days_english + DatetimeText.days_french:
@@ -885,7 +897,12 @@ def parse_event_date(args) -> tuple[str, str, list]:
     else:
         day_of_week = ''
 
-    if Args[0].isdecimal() and Args[1].lower() in DatetimeText.months_value \
+    if ParseEvents.is_valid_date(Args[0]):
+        if day_of_week:
+            n = 0
+        else:
+            n = 1
+    elif Args[0].isdecimal() and Args[1].lower() in DatetimeText.months_value \
     or Args[1].isdecimal() and Args[0].lower() in DatetimeText.months_value:
         if Args[2].isdecimal() and len(Args[2]) == 4:
             n = 3
@@ -899,8 +916,33 @@ def parse_event_date(args) -> tuple[str, str, list]:
     
     return ParsedEventDate(day_of_week=day_of_week, date_str=' '.join(args[:n]) if n > 0 else day_of_week), args[n:]
 
-
 class ParseEvents:
+
+    @classmethod
+    def is_valid_date(cls, value:str):
+        return cls.parse_valid_date(value) is not None
+
+    @classmethod
+    def parse_valid_date(cls, value:str) -> tuple:
+        import re
+        ReDateRu = re.compile('(\d{2})[.](\d{2})')
+        ReDateRuYear = re.compile('(\d{2})[.](\d{2})[.](\d{4})')
+        ReBeYear = re.compile('(\d{2})[/](\d{2})[/](\d{4})')
+        if regexes := [(R, M) for R in (ReDateRu, ReDateRuYear, ReBeYear) if (M := R.fullmatch(value))]:
+            matching_re, match = only_one(regexes, ValueError(f"ProgrammingError: Multiple regex match the string {value}"))
+            if ReDateRu is matching_re:
+                a,b = match.groups()
+                return b,a
+            elif ReDateRuYear is matching_re:
+                a,b,c = match.groups()
+                return c,b,a
+            elif ReBeYear is matching_re:
+                a,b,c = match.groups()
+                return c,b,a
+            else:
+                raise AssertionError("Problem")
+        else:
+            return None
 
     @classmethod
     def parse_time(cls, args: list) -> tuple[Optional[Time], list]:
