@@ -781,19 +781,17 @@ class DatetimeText:
         today = reference.date()
         name = name.lower()
 
+        day = None
         if parsed_tuple := ParseEvents.parse_valid_date(name):
             if len(parsed_tuple) == 3:
                 day = date(*map(int, parsed_tuple))
-                return day, day + timedelta(days=1)
             elif len(parsed_tuple) == 2:
                 day = date(today.year, *map(int, parsed_tuple))
-                return day, day + timedelta(days=1)
             else:
                 raise AssertionError
         
         if match := re.fullmatch("(\d{4})-(\d{2})-(\d{2})", name):
             day = date(*map(int, match.groups()))
-            return day, day + timedelta(days=1)
 
         if (match_eu := re.fullmatch(r"(\d{1,2}) (%s)( (\d{4}))?" % '|'.join(map(re.escape, self.months_value)), name)) or \
            (match_us := re.fullmatch(r"(%s) (\d{1,2})( (\d{4}))?" % '|'.join(map(re.escape, self.months_value)), name)):
@@ -808,6 +806,8 @@ class DatetimeText:
             d = int(dstr)
             m = self.months_value[mstr]
             day = date(y, m, d)
+
+        if day is not None:
             return day, day + timedelta(days=1)
         
         if name in ("today", "auj", "aujourdhui", "aujourd'hui", "aujourd’hui"):
