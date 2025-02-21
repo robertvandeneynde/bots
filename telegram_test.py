@@ -898,10 +898,7 @@ def parse_event_date(args) -> tuple[str, str, list]:
         day_of_week = ''
 
     if ParseEvents.is_valid_date(Args[0]):
-        if day_of_week:
-            n = 0
-        else:
-            n = 1
+        n = 1
     elif Args[0].isdecimal() and Args[1].lower() in DatetimeText.months_value \
     or Args[1].isdecimal() and Args[0].lower() in DatetimeText.months_value:
         if Args[2].isdecimal() and len(Args[2]) == 4:
