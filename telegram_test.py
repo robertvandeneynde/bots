@@ -727,9 +727,14 @@ import zoneinfo
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 UTC = ZoneInfo('UTC')
 
+import functools
+
 class DatetimeText:
     days_english = "monday tuesday wednesday thursday friday saturday sunday".split() 
     days_french = "lundi mardi mercredi jeudi vendredi samedi dimanche".split()
+    _days_russian = "понедельник вторник среда четверг пятница суббота воскресенье".split()
+    _days_russian_short = "пн вт ср чт пт сб вс".split()
+    _days_russian_short_dotted = "пн. вт. ср. чт. пт. сб. вс.".split()
 
     months_english = [
         "january",
@@ -761,11 +766,35 @@ class DatetimeText:
         "décembre"
     ]
 
-    months_value = {
-        x: i for i, x in enumerate(months_english, start=1)
-    } | {
-        x: i for i, x in enumerate(months_french, start=1)
-    }
+    _other_months_list = [
+        'январь февраль март апрель май июнь июль август сентябрь октябрь ноябрь декабрь'.split()
+    ]
+
+    months_value = functools.reduce(dict.__or__, ({
+        x: i for i, x in enumerate(months_list, start=1)
+    } for months_list in (months_english, months_french, *_other_months_list)))
+
+    @classmethod
+    def is_valid_weekday(cls, x:str):
+        return cls.parse_valid_weekday(x) is not None
+
+    @classmethod
+    def parse_valid_weekday(cls, x:str) -> int:
+        """0 == monday"""
+        x = x.lower()
+        for lang in (cls.days_english, cls.days_french, cls._days_russian, cls._days_russian_short, cls._days_russian_short_dotted):
+            if x in lang:
+                return lang.index(x)
+        return None
+    
+    @classmethod
+    def is_valid_month(cls, x:str):
+        return cls.parse_valid_month(x) is not None
+    
+    @classmethod
+    def parse_valid_month(cls, x:str):
+        x = x.lower()
+        return cls.months_value.get(x, None)
     
     @classmethod
     def to_datetime_range(self, name, *, time=None, reference=None, tz=None):
@@ -827,13 +856,14 @@ class DatetimeText:
         if name in ('past', 'passé'):
             return date.min + timedelta(days=7), today
         
-        if name in self.days_french:
-            i = self.days_french.index(name)
-        elif name in self.days_english:
-            i = self.days_english.index(name)
-        else:
+        if not DatetimeText.is_valid_weekday(name):
             raise UnknownDateError(f"Unknown date {name}")
-        
+
+        i = DatetimeText.parse_valid_weekday(name)
+
+        assert i is not None
+        assert 0 <= i < 7 
+
         the_day = today + timedelta(days=1)
         while the_day.weekday() != i:
             the_day += timedelta(days=1)
@@ -890,7 +920,7 @@ def parse_event_date(args) -> tuple[str, str, list]:
     ['25.11.2025', 'A', 'B', 'C'] -> '25.11.2025', ['A', 'B', 'C']  # n = 3
     """
     Args = GetOrEmpty(args)
-    if Args[0].lower() in DatetimeText.days_english + DatetimeText.days_french:
+    if DatetimeText.is_valid_weekday(Args[0]):
         day_of_week = Args[0]
         args = args[1:]
         Args = GetOrEmpty(args)
@@ -1096,7 +1126,8 @@ def parse_datetime_schedule(*, tz, args) -> list[ParsedEventFinal]:
     return out 
 
 def is_correct_day_of_week(date, day_of_week):
-    return date.weekday() == (DatetimeText.days_english + DatetimeText.days_french).index(day_of_week.lower()) % 7
+    return date.weekday() == DatetimeText.parse_valid_weekday(day_of_week)
+    # return date.weekday() == (DatetimeText.days_english + DatetimeText.days_french).index(day_of_week.lower()) % 7
 
 async def eventfollow(update, context):
     send = make_send(update, context)
