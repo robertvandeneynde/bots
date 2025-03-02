@@ -7,6 +7,8 @@ from telegram.constants import ChatType
 from telegram_settings_local import TOKEN
 from telegram_settings_local import FRIENDS_USER, SPECIAL_GROUPS
 
+from telegram_settings_local import SPECIAL_GROUPS_PARAMS
+
 import json
 
 import enum
@@ -27,9 +29,26 @@ class SpecialGroups(enum.StrEnum):
         return self.chat_matching(update.effective_chat)
     
     def chat_matching(self, chat) -> bool:
+        print(SPECIAL_GROUPS, self, chat, chat.id)
         return chat.id == SPECIAL_GROUPS.get(self, None) or isinstance(SPECIAL_GROUPS.get(self), (set, list, tuple)) and chat.id in SPECIAL_GROUPS.get(self)
 
 assert all(isinstance(x, (int, set, list, tuple)) for x in SPECIAL_GROUPS.values()), "Misconfiguration: all values of SPECIAL_GROUPS must be set-like"
+
+def check_location_based_group():
+    for k, v in SPECIAL_GROUPS_PARAMS[SpecialGroups.LOCATION_BASED_GROUP]['zone-topics'].items():
+        assert isinstance(k, int)
+        assert isinstance(v, dict)
+        for k2, v2 in v.items():
+            assert isinstance(k2, int)
+            assert isinstance(v2, dict)
+            assert 'prefix' in v2 # or other variations
+            if 'prefix' in v2:
+                assert isinstance(v2['prefix'], str)
+    
+    for v in ({x} if isinstance(x := SPECIAL_GROUPS.get(SpecialGroups.LOCATION_BASED_GROUP), int) else x):
+        assert v in SPECIAL_GROUPS_PARAMS[SpecialGroups.LOCATION_BASED_GROUP]['zone-topics'], f"{v} does not exists in table"
+
+check_location_based_group()
 
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
@@ -1386,6 +1405,15 @@ async def add_event(update: Update, context: CallbackContext):
 
     date_str, time, name, date, date_end, datetime, datetime_utc, tz = parse_datetime_point(update, context, when_infos=when_infos, what_infos=what_infos)
     
+    print(update.effective_chat.id, update.message.is_topic_message, update.message.message_thread_id)
+
+    if SpecialGroups.LOCATION_BASED_GROUP.update_matching(update):
+        if update.message.is_topic_message:
+            print(SPECIAL_GROUPS_PARAMS[SpecialGroups.LOCATION_BASED_GROUP]['zone-topics'], update.effective_chat.id, update.message.message_thread_id)
+            if zone_topic_data := SPECIAL_GROUPS_PARAMS[SpecialGroups.LOCATION_BASED_GROUP]['zone-topics'][update.effective_chat.id].get(update.message.message_thread_id):
+                prefix = zone_topic_data.get('prefix')
+                name = prefix + (' ' + name if name else '')
+
     chat_timezones = read_chat_settings("event.timezones")
     add_event_to_db(chat_timezones=chat_timezones, tz=tz, datetime_utc=datetime_utc, name=name, chat_id=chat_id, source_user_id=source_user_id)
     
@@ -1861,7 +1889,15 @@ async def next_event(update, context):
     return await next_or_last_event(update, context, 1)
 
 async def list_days(update: Update, context: CallbackContext):
-    return await list_days_or_today(update, context, mode='list')
+    filter_fn = lambda x:True
+
+    if SpecialGroups.LOCATION_BASED_GROUP.update_matching(update):
+        if update.message.is_topic_message:
+            if zone_topic_data := SPECIAL_GROUPS_PARAMS[SpecialGroups.LOCATION_BASED_GROUP]['zone-topics'][update.effective_chat.id].get(update.message.message_thread_id):
+                prefix = zone_topic_data.get('prefix')
+                filter_fn = lambda event: event['name'].startswith(prefix)
+
+    return await list_days_or_today(update, context, mode='list', filter_fn=filter_fn)
 
 def setting_on_off(s, default):
     return (s if isinstance(s, bool) else
@@ -1877,7 +1913,7 @@ def do_unless_setting_off(setting):
     return setting_on_off(setting, default=True)
 
 from typing import Literal
-async def list_days_or_today(update: Update, context: CallbackContext, mode: Literal['list', 'today']):
+async def list_days_or_today(update: Update, context: CallbackContext, mode: Literal['list', 'today'], filter_fn=lambda x:True):
     assert mode in ('list', 'today')
 
     send = make_send(update, context)
@@ -1895,6 +1931,8 @@ async def list_days_or_today(update: Update, context: CallbackContext, mode: Lit
         AND chat_id=?
         ORDER BY date''',
         (strftime(beg), strftime(end), update.effective_chat.id,)))
+    
+    events = list(filter(filter_fn, events))
 
     from collections import defaultdict
     days = defaultdict(list)
