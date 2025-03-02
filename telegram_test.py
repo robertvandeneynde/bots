@@ -5,7 +5,7 @@ from telegram.ext import ApplicationBuilder, CallbackContext, CommandHandler, Me
 from telegram.ext import filters
 from telegram.constants import ChatType
 from telegram_settings_local import TOKEN
-from telegram_settings_local import FRIENDS_USER
+from telegram_settings_local import FRIENDS_USER, SPECIAL_GROUPS
 
 import json
 
@@ -16,6 +16,20 @@ class FriendsUser(enum.StrEnum):
     LOUKOUM = 'loukoum'
     JOKÈRE = 'jokère'
     SHOKO = 'shoko'
+
+    def user_matching(self, user):
+        return user.id == FRIENDS_USER.get(self) or isinstance(FRIENDS_USER.get(self), (set, list, tuple)) and user.id in FRIENDS_USER.get(self)
+
+class SpecialGroups(enum.StrEnum):
+    LOCATION_BASED_GROUP = 'location-based-group'
+
+    def update_matching(self, update) -> bool:
+        return self.chat_matching(update.effective_chat)
+    
+    def chat_matching(self, chat) -> bool:
+        return chat.id == SPECIAL_GROUPS.get(self, None) or isinstance(SPECIAL_GROUPS.get(self), (set, list, tuple)) and chat.id in SPECIAL_GROUPS.get(self)
+
+assert all(isinstance(x, (int, set, list, tuple)) for x in SPECIAL_GROUPS.values()), "Misconfiguration: all values of SPECIAL_GROUPS must be set-like"
 
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
