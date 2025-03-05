@@ -113,6 +113,10 @@ async def hello_responder(msg:str, send: AsyncSend, *, update, context):
     else:
         if msg.lower().startswith("hello"):
             await send("Hello ! :3")
+        elif msg == "Hi":
+            await send("Yo")
+        elif msg == "hi":
+            await send("yë")
 
 def detect_currencies(msg: str):
     return [(value, MONEY_CURRENCIES_ALIAS[currency_raw.lower()]) for value, currency_raw in MONEY_RE.findall(msg)]
