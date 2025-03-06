@@ -230,8 +230,12 @@ async def sharemoney_responder(msg:str, send: AsyncSend, *, update, context):
     name = regex.compile(r"\p{L}\w*")
     amount = Amount()
     Args = GetOrEmpty(msg.split())
-    if name.fullmatch(Args[0]) and 'owes' == Args[1] and name.fullmatch(Args[2]) and amount.matches(Args[3]) and len(Args) == 4:
-        first_name, _, second_name, amount_str = Args
+    if name.fullmatch(Args[0]) and Args[1] in ('owes', 'paid') and name.fullmatch(Args[2]) and amount.matches(Args[3]) and len(Args) == 4:
+        first_name, operation, second_name, amount_str = Args
+
+        if operation == 'paid':
+            first_name, second_name = second_name, first_name
+            # now it's like owes
         
         debt = NamedChatDebt(
             debitor_id=first_name,
