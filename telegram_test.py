@@ -227,29 +227,53 @@ async def sharemoney_responder(msg:str, send: AsyncSend, *, update, context):
         return arithmetics
 
     import regex
-    name = regex.compile(r"\p{L}\w*")
+    name = regex.compile(r"(\p{L}\w*)([.]([A-Za-z]+))?")
     amount = Amount()
     Args = GetOrEmpty(msg.split())
-    if name.fullmatch(Args[0]) and Args[1] in ('owes', 'paid') and name.fullmatch(Args[2]) and amount.matches(Args[3]) and len(Args) == 4:
-        first_name, operation, second_name, amount_str = Args
+    if name.fullmatch(Args[0]) and Args[1] in ('owes', 'paid') and name.fullmatch(Args[2]) and amount.matches(Args[3]) and len(Args) in (4, 5):
+        first_name, operation, second_name, amount_str, *rest = Args
+
+        Rest = GetOrEmpty(rest)
+        currency_string: str = Rest[0].upper() or None
 
         if operation == 'paid':
             first_name, second_name = second_name, first_name
             # now it's like owes
+
+        first_currency, second_currency = map(lambda x: name.fullmatch(x).group(3), (first_name, second_name))
+
+        if first_currency or second_currency:
+            if not (first_currency and second_currency):
+                raise UserError("Currencies must match")
+            if not (first_currency.upper() == second_currency.upper()):
+                raise UserError("Currencies must match")
+        
+        if currency_string:
+            if first_currency or second_currency:
+                if not(first_currency.upper() == second_currency.upper() == currency_string.upper()):
+                    raise UserError("Currencies match")
+
+        if currency_string:
+            raise ValueError('I cannot deal properly with currencies atm, but you can use the equivalent "account" notation: A.EUR owes B.EUR 5')
+
+        if first_currency:
+            first_name = name.fullmatch(first_name).group(1) + "." + first_currency.upper()
+        if second_currency:
+            second_name = name.fullmatch(second_name).group(1) + "." + second_currency.upper()
         
         debt = NamedChatDebt(
             debitor_id=first_name,
             creditor_id=second_name,
             chat_id=chat_id,
             amount=amount.parse_string(amount_str, parse_all=True)[0].eval(),
-            currency=None)
+            currency=currency_string)
         
         simple_sql((
             'insert into NamedChatDebt(debitor_id, creditor_id, chat_id, amount, currency) values (?,?,?,?,?)',
             (debt.debitor_id, debt.creditor_id, debt.chat_id, debt.amount, debt.currency)))
         
         return await send('Debt "{d.debitor_id} owes {d.creditor_id} {d.amount}" created'.format(d=debt) if not debt.currency else
-                          'Debt "{d.debitor_id} owes {d.creditor_id} {d.amount} {d.amount}" created'.format(d=debt))
+                          'Debt "{d.debitor_id} owes {d.creditor_id} {d.amount} {d.currency}" created'.format(d=debt))
 
 RESPONDERS = (
     (hello_responder, 'hello', 'on'),
