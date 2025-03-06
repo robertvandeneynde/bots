@@ -344,8 +344,13 @@ async def befluent(update, context):
 
 async def ru(update: Update, context: CallbackContext):
     send = make_send(update, context)
-    if not context.args:
+    
+    if reply := get_reply(update.message):
+        pass
+    elif not context.args:
         return await send("Usage: /ru word1 word2 word3...")
+    else:
+        pass
     d1 = ("azertyuiopqsdfghjklmwxcvbn",
           "азертыуиопясдфгхйклмвхцвбн")
     d2 = ("sh shch ch ye yu zh ya yo".split(),
@@ -363,7 +368,7 @@ async def ru(update: Update, context: CallbackContext):
     R = re.compile('|'.join(map(re.escape, S)))
     def to_cyrilic(word):
         return R.sub(lambda m: (lambda x: D.get(x,x))(m.group(0)), word)
-    await send(' '.join(to_cyrilic(word) for word in context.args))
+    await send(' '.join(to_cyrilic(word) for word in context.args) if not reply else to_cyrilic(reply.text))
 
 with open("json/ipa/fr_FR.json") as IPA_DATA_FR:
     IPA_DATA_FR = json.load(IPA_DATA_FR)
