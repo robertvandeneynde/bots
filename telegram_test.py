@@ -230,8 +230,11 @@ async def sharemoney_responder(msg:str, send: AsyncSend, *, update, context):
     name = regex.compile(r"\p{L}\w*")
     amount = Amount()
     Args = GetOrEmpty(msg.split())
-    if name.fullmatch(Args[0]) and Args[1] in ('owes', 'paid') and name.fullmatch(Args[2]) and amount.matches(Args[3]) and len(Args) == 4:
-        first_name, operation, second_name, amount_str = Args
+    if name.fullmatch(Args[0]) and Args[1] in ('owes', 'paid') and name.fullmatch(Args[2]) and amount.matches(Args[3]) and len(Args) in (4, 5):
+        first_name, operation, second_name, amount_str, *rest = Args
+
+        Rest = GetOrEmpty(rest)
+        currency_string: str = Rest[0].upper() or None
 
         if operation == 'paid':
             first_name, second_name = second_name, first_name
@@ -242,14 +245,14 @@ async def sharemoney_responder(msg:str, send: AsyncSend, *, update, context):
             creditor_id=second_name,
             chat_id=chat_id,
             amount=amount.parse_string(amount_str, parse_all=True)[0].eval(),
-            currency=None)
+            currency=currency_string)
         
         simple_sql((
             'insert into NamedChatDebt(debitor_id, creditor_id, chat_id, amount, currency) values (?,?,?,?,?)',
             (debt.debitor_id, debt.creditor_id, debt.chat_id, debt.amount, debt.currency)))
         
         return await send('Debt "{d.debitor_id} owes {d.creditor_id} {d.amount}" created'.format(d=debt) if not debt.currency else
-                          'Debt "{d.debitor_id} owes {d.creditor_id} {d.amount} {d.amount}" created'.format(d=debt))
+                          'Debt "{d.debitor_id} owes {d.creditor_id} {d.amount} {d.currency}" created'.format(d=debt))
 
 RESPONDERS = (
     (hello_responder, 'hello', 'on'),
