@@ -227,7 +227,7 @@ async def sharemoney_responder(msg:str, send: AsyncSend, *, update, context):
         return arithmetics
 
     import regex
-    name = regex.compile(r"\p{L}\w*")
+    name = regex.compile(r"(\p{L}\w*)([.]([A-Za-z]+))?")
     amount = Amount()
     Args = GetOrEmpty(msg.split())
     if name.fullmatch(Args[0]) and Args[1] in ('owes', 'paid') and name.fullmatch(Args[2]) and amount.matches(Args[3]) and len(Args) in (4, 5):
@@ -239,7 +239,20 @@ async def sharemoney_responder(msg:str, send: AsyncSend, *, update, context):
         if operation == 'paid':
             first_name, second_name = second_name, first_name
             # now it's like owes
+
+        first_currency, second_currency = map(lambda x: name.fullmatch(x).group(2), (first_name, second_name))
+
+        if first_currency or second_currency:
+            if not (first_currency and second_currency):
+                raise UserError("Currencies must match")
+            if not (first_currency.upper() == second_currency.upper()):
+                raise UserError("Currencies must match")
         
+        if currency_string:
+            if first_currency or second_currency:
+                if not(first_currency.upper() == second_currency.upper() == currency_string.upper()):
+                    raise UserError("Currencies match")
+
         debt = NamedChatDebt(
             debitor_id=first_name,
             creditor_id=second_name,
