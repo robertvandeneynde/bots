@@ -140,24 +140,28 @@ async def money_responder(msg:str, send: AsyncSend, *, update, context):
                 amounts_converted = [convert_money(amount_base, currency_base=currency, currency_converted=currency_to_convert, rates=rates) for currency_to_convert in currencies_to_convert]
                 await send(format_currency(currency_list=[currency] + currencies_to_convert, amount_list=[amount_base] + amounts_converted))
 
+class DoNotAnswer(Exception):
+    pass
+
 async def whereisanswer_responder(msg:str, send: AsyncSend, *, update, context):
     reply = get_reply(update.message)
 
-    class DoNotAnswer(Exception):
-        pass
-
-    try:
-        assert_true(reply and reply.text, DoNotAnswer)
-        assert_true(reply.text.startswith('/whereis') or reply.text.startswith('/whereis@' + context.bot.username), DoNotAnswer)
-    except DoNotAnswer:
-        return
+    assert_true(reply and reply.text, DoNotAnswer)
+    assert_true(reply.text.startswith('/whereis') or reply.text.startswith('/whereis@' + context.bot.username), DoNotAnswer)
     
     key = ' '.join(InfiniteEmptyList(reply.text.split())[1:])
     value = msg
     
     await save_thereis(key, value, update=update, context=context)
-    
-    
+
+async def eventedit_responder(msg:str, send: AsyncSend, *, update, context):
+    reply = get_reply(update.message)
+
+    try:
+        event = addevent_analyse_from_bot(update, context, msg)
+    except ValueError:
+        raise DoNotAnswer
+
 class GetOrEmpty(list):
     def __getitem__(self, i):
         try:
@@ -280,6 +284,7 @@ RESPONDERS = (
     (money_responder, 'money', 'on'),
     (sharemoney_responder, 'sharemoney', 'off'),
     (whereisanswer_responder, 'whereisanswer', 'on'),
+    (eventedit_responder, 'eventedit', 'on'),
 )
 
 async def on_message(update: Update, context: CallbackContext):
@@ -304,6 +309,8 @@ async def on_message(update: Update, context: CallbackContext):
                 continue
             try:
                 await responder(msg, send, update=update, context=context)
+            except DoNotAnswer:
+                pass
             except Exception as e:
                 await log_error(e, send)
 
@@ -1612,6 +1619,11 @@ def addevent_analyse_from_bot(update, context, text:str) -> {'what': str, 'when'
         'what': what,
         'when': when,
     }
+
+def retrieve_event_from_db(what: str, when: str):
+    from datetime import datetime
+    datetime_utc = ...
+    simple_sql_dict((''' select ''', ()))
 
 def enrich_event_with_where(event):
     if event.get('where'):
