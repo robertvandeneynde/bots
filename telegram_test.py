@@ -312,7 +312,8 @@ async def on_message(update: Update, context: CallbackContext):
 
 async def caps(update: Update, context: CallbackContext):
     text_caps = str(context.args).upper()
-    await context.bot.send_message(chat_id=update.effective_chat.id, text=text_caps)
+    send = make_send(update, context)
+    await send(text_caps)
 
 def unilinetext(x):
     import unicodedata
