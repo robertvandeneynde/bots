@@ -986,7 +986,6 @@ def parse_event_date(args) -> tuple[ParsedEventDate, list]:
         day_of_week = '' # we don't know the day of week
 
     date_str = None
-    n = None
     if ParseEvents.is_valid_date(Args[0]): # Example: 2020-12-31
         n = 1 # the first token is the date
     elif Args[0].isdecimal() and Args[1].lower() in DatetimeText.months_value \
@@ -1001,6 +1000,7 @@ def parse_event_date(args) -> tuple[ParsedEventDate, list]:
             # if only relative_day_keyword: it will be enough to know the date
             # if both: we are based on the relative_day_keyword (today) and will later check that it corresponds to a "Friday" for example 
             date_str = relative_day_keyword or day_of_week
+            n = 0
         else:
             n = 1 # the first token will be the date
     
