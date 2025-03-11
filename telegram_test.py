@@ -526,7 +526,7 @@ async def dict_command(update: Update, context: CallbackContext, *, engine:Liter
     elif engine == 'glosbe':
         pass
     else:
-        raise UsageError("Engine is misconfigured, please run /settings dict.engine {}".format('|'.join(DICT_ENGINES)))
+        raise UsageError("Engine is misconfigured, please run /mysettings dict.engine {}".format('|'.join(DICT_ENGINES)))
 
     # url maker
     if engine == 'wikt':
@@ -562,7 +562,7 @@ async def dict_(update: Update, context: CallbackContext):
     read_my_settings = make_read_my_settings(update, context)
     engine = read_my_settings('dict.engine')
     if not engine:
-        raise UserError('Engine not set for /dict command, use "/settings dict.engine wikt" for example to set wiktionary engine')
+        raise UserError('Engine not set for /dict command, use "/mysettings dict.engine wikt" for example to set wiktionary engine')
     return await dict_command(update, context, command_name='dict', engine=engine)
 
 class UsageError(Exception):
