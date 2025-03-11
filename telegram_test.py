@@ -862,10 +862,10 @@ class DatetimeText:
             else:
                 raise AssertionError
         
-        if match := re.fullmatch("(\d{4})-(\d{2})-(\d{2})", name):
+        elif match := re.fullmatch("(\d{4})-(\d{2})-(\d{2})", name):
             day = date(*map(int, match.groups()))
 
-        if (match_eu := re.fullmatch(r"(\d{1,2}) (%s)( (\d{4}))?" % '|'.join(map(re.escape, self.months_value)), name)) or \
+        elif (match_eu := re.fullmatch(r"(\d{1,2}) (%s)( (\d{4}))?" % '|'.join(map(re.escape, self.months_value)), name)) or \
            (match_us := re.fullmatch(r"(%s) (\d{1,2})( (\d{4}))?" % '|'.join(map(re.escape, self.months_value)), name)):
             if match := match_eu:
                 dstr,mstr,_,ystr = match.groups()
