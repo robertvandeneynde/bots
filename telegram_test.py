@@ -812,6 +812,11 @@ class DatetimeText:
         x: i for i, x in enumerate(months_list, start=1)
     } for months_list in (months_english, months_french, *_other_months_list)))
 
+
+    @classmethod
+    def is_relative_day_keyword(cls, x:str):
+        return x.lower() in ("today", "auj", "aujourdhui", "aujourd'hui", "aujourd’hui", "tomorrow", "demain")
+    
     @classmethod
     def is_valid_weekday(cls, x:str):
         return cls.parse_valid_weekday(x) is not None
@@ -920,12 +925,14 @@ class ParsedEventMiddleNoName(NamedTuple):
     date: str
     time: Optional[Time]
     day_of_week: str
+    relative_day_keyword: str
 
 class ParsedEventMiddle(NamedTuple):
     date: str
     time: Optional[Time]
     name: str 
     day_of_week: str
+    relative_day_keyword: str
 
     @staticmethod
     def from_no_name(event: ParsedEventMiddleNoName, name:str):
@@ -945,41 +952,66 @@ class ParsedEventFinal(NamedTuple):
     datetime_utc: Datetime 
     tz: ZoneInfo
 
-class ParsedEventDate(NamedTuple):
+from dataclasses import dataclass
+
+@dataclass
+class ParsedEventDate:
     day_of_week: str
     date_str: str
+    relative_day_keyword: str
 
-def parse_event_date(args) -> tuple[str, str, list]:
+def parse_event_date(args) -> tuple[ParsedEventDate, list]:
     """
     ['Something', 'A', 'B', 'C'] -> 'Something', ['A', 'B', 'C']  # n = 1
     ['25', 'November', 'A', 'B', 'C'] -> '25 November', ['A', 'B', 'C']  # n = 2
     ['25', 'November', '2023', 'A', 'B', 'C'] -> '25 November 2023', ['A', 'B', 'C']  # n = 3
     ['25.11', 'A', 'B', 'C'] -> '25.11', ['A', 'B', 'C']  # n = 3
     ['25.11.2025', 'A', 'B', 'C'] -> '25.11.2025', ['A', 'B', 'C']  # n = 3
+    ['today', 'friday', 'A', 'B', 'C'] -> ['A', 'B', 'C'], day_of_week
     """
     Args = GetOrEmpty(args)
-    if DatetimeText.is_valid_weekday(Args[0]):
+
+    if DatetimeText.is_relative_day_keyword(Args[0]): # Examples: today, tomorrow
+        relative_day_keyword = Args[0]
+        args = args[1:]
+        Args = GetOrEmpty(args)
+    else:
+        relative_day_keyword = '' # we don't use any relative day indicator
+
+    if DatetimeText.is_valid_weekday(Args[0]): # Examples: Monday
         day_of_week = Args[0]
         args = args[1:]
         Args = GetOrEmpty(args)
     else:
-        day_of_week = ''
+        day_of_week = '' # we don't know the day of week
 
-    if ParseEvents.is_valid_date(Args[0]):
-        n = 1
+    date_str = None
+    n = None
+    if ParseEvents.is_valid_date(Args[0]): # Example: 2020-12-31
+        n = 1 # the first token is the date
     elif Args[0].isdecimal() and Args[1].lower() in DatetimeText.months_value \
-    or Args[1].isdecimal() and Args[0].lower() in DatetimeText.months_value:
-        if Args[2].isdecimal() and len(Args[2]) == 4:
-            n = 3
+    or Args[1].isdecimal() and Args[0].lower() in DatetimeText.months_value: # Example: 25 November
+        if Args[2].isdecimal() and len(Args[2]) == 4: # Example: 2012
+            n = 3 # has year
         else:
-            n = 2
+            n = 2 # no year
     else:
-        if day_of_week:
-            n = 0
+        if relative_day_keyword or day_of_week:
+            # if only day_of_week: ir will be enough to know the date
+            # if only relative_day_keyword: it will be enough to know the date
+            # if both: we are based on the relative_day_keyword (today) and will later check that it corresponds to a "Friday" for example 
+            date_str = relative_day_keyword or day_of_week
         else:
-            n = 1
+            n = 1 # the first token will be the date
     
-    return ParsedEventDate(day_of_week=day_of_week, date_str=' '.join(args[:n]) if n > 0 else day_of_week), args[n:]
+    if date_str is None:
+        date_str = ' '.join(args[:n])
+
+    return ParsedEventDate(
+        day_of_week=day_of_week,
+        relative_day_keyword=relative_day_keyword,
+        date_str=date_str,
+    ), args[n:]
 
 class ParseEvents:
 
@@ -1026,10 +1058,16 @@ class ParseEvents:
         rest: list
         time: Optional[Time]
         
-        (day_of_week, date), rest = parse_event_date(args)
+        parsed_event_date: ParsedEventDate
+        parsed_event_date, rest = parse_event_date(args)
+        
+        day_of_week = parsed_event_date.day_of_week 
+        date = parsed_event_date.date_str
+        relative_day_keyword = parsed_event_date.relative_day_keyword
+
         time, rest = cls.parse_time(rest)
 
-        return ParsedEventMiddleNoName(date=date, time=time, day_of_week=day_of_week), rest
+        return ParsedEventMiddleNoName(date=date, time=time, day_of_week=day_of_week, relative_day_keyword=relative_day_keyword), rest
     
     @classmethod
     def parse_event(cls, args) -> ParsedEventMiddle:
@@ -1097,11 +1135,8 @@ def safe_format(fmt, **kwargs):
     Re = re.compile(re.escape('{') + '[a-zA-Z_][a-zA-Z_[0-9]*' + re.escape('}'))
     return Re.sub(lambda m: str(kwargs.get(m.group(0)[1:-1], m.group(0))), fmt)
 
-parse_event = ParseEvents.parse_event
-
 def raise_error(error):
     raise error
-
 
 def induce_my_timezone(*, user_id, chat_id):
     if tz := get_my_timezone(user_id):
@@ -1126,9 +1161,9 @@ def parse_datetime_point(update, context, when_infos=None, what_infos=None) -> P
     tz = induce_my_timezone(user_id=update.message.from_user.id, chat_id=update.effective_chat.id)
     
     if when_infos is None and what_infos is None:
-        date_str, time, name, day_of_week = parse_event(context.args)
+        date_str, time, name, day_of_week, relative_day_keyword = ParseEvents.parse_event(context.args)
     else:
-        date_str, time, name_from_when_part, day_of_week = parse_event(when_infos.split())
+        date_str, time, name_from_when_part, day_of_week, relative_day_keyword = ParseEvents.parse_event(when_infos.split())
         if name_from_when_part:
             raise UserError("Too much infos in the When part")
         name = what_infos or ''
@@ -1138,10 +1173,15 @@ def parse_datetime_point(update, context, when_infos=None, what_infos=None) -> P
     datetime_utc = datetime.astimezone(UTC)
     Loc = locals()
 
+    if relative_day_keyword:
+        rdate, rdate_end = DatetimeText.to_date_range(relative_day_keyword, tz=tz)
+        if rdate != date:
+            raise UserError(f"{date_str!r} is not {relative_day_keyword!r}")
+
     if day_of_week:
         if not is_correct_day_of_week(date, day_of_week):
             raise UserError(f"{date_str!r} is not a {day_of_week!r}")
-
+    
     return ParsedEventFinal(**{x: Loc[x] for x in ParsedEventFinal._fields})
 
 def parse_datetime_schedule(*, tz, args) -> list[ParsedEventFinal]:
