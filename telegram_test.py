@@ -163,9 +163,9 @@ async def eventedit_responder(msg:str, send: AsyncSend, *, update, context):
     except ValueError:
         raise DoNotAnswer
     
-    event_db = retrieve_event_from_db(update=update, context=context, what=event['what'], when=event['when'])
-
     if match_postpone := re.match('([+]|[-])\s*(\d+)\s*(h|hours|min|minute|minutes|day|days|week|weeks)', msg):
+        event_db = retrieve_event_from_db(update=update, context=context, what=event['what'], when=event['when'])
+        
         sign, amount, units = match_postpone.groups()
         amount = int(amount)
         sign = +1 if sign == '+' else -1
