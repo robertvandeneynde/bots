@@ -164,7 +164,7 @@ async def eventedit_responder(msg:str, send: AsyncSend, *, update, context):
     
     event_db = retrieve_event_from_db(update=update, context=context, what=event['what'], when=event['when'])
 
-    if match_postpone := re.match('([+]|[-])(\d+)(h|min)', msg):
+    if match_postpone := re.match('([+]|[-])\s*(\d+)\s*(h|min)', msg):
         sign, amount, units = match_postpone.groups()
         amount = int(amount)
         sign = +1 if sign == '+' else -1
