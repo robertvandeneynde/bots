@@ -162,10 +162,30 @@ async def eventedit_responder(msg:str, send: AsyncSend, *, update, context):
     except ValueError:
         raise DoNotAnswer
     
-    print(event)
-    
     event_db = retrieve_event_from_db(update=update, context=context, what=event['what'], when=event['when'])
-    await send(f"This is the info: {dict(event_db)}")
+
+    if match_postpone := re.match('([+]|[-])(\d+)(h|min)', msg):
+        sign, amount, units = match_postpone.groups()
+        amount = int(amount)
+        sign = +1 if sign == '+' else -1
+        delta = amount * sign * timedelta(**{'hours' if units == 'h' else 'minutes':1})
+
+        before = DatetimeDbSerializer.strptime(event_db['date'])
+        after = before + delta
+
+        simple_sql(('''UPDATE Events SET date=? where rowid=?''', (DatetimeDbSerializer.strftime(after), event_db['rowid'], )))
+        
+        new_event_db = only_one(simple_sql_dict(('select rowid, date, name from Events where rowid=?', (event_db['rowid'],))))
+        date_utc = new_event_db['date']
+        name = new_event_db['name']
+        tz = induce_my_timezone(user_id=update.message.from_user.id, chat_id=update.effective_chat.id)
+        datetime = DatetimeDbSerializer.strptime(date_utc).replace(tzinfo=ZoneInfo('UTC')).astimezone(tz)
+        date, time = datetime.date(), datetime.time()
+        read_chat_settings = make_read_chat_settings(update, context)
+        chat_timezones = read_chat_settings("event.timezones")
+        return await send("Event edited:\n" + format_event_emoji_style(name=name, datetime=datetime, date=date, time=time, tz=tz, chat_timezones=chat_timezones))
+    
+    raise DoNotAnswer
 
 class GetOrEmpty(list):
     def __getitem__(self, i):
@@ -1557,7 +1577,7 @@ def addevent_analyse_from_bot(update, context, text:str) -> {'what': str, 'when'
     my_timezone = induce_my_timezone(user_id=update.message.from_user.id, chat_id=update.effective_chat.id)
 
     lines = GetOrEmpty(text.splitlines())
-    if lines[0] in ("Event!", "Event added:") or re.match('^Event from.*[:]', lines[0]):
+    if lines[0] in ("Event!", "Event added:", "Event edited:") or re.match('^Event from.*[:]', lines[0]):
         del lines[0]
         
     re_pattern = (
@@ -1947,6 +1967,21 @@ async def next_or_last_event(update: Update, context: CallbackContext, n:int):
         if timezone != tz
         for datetime_tz in [datetime.astimezone(timezone)]
     ] if time else []))))
+
+def format_event_emoji_style(*, name, datetime, date, time, tz, chat_timezones):
+    emojis = EventFormatting.emojis
+    return '\n'.join(natural_filter([
+        f"{emojis.Name} {name}",
+        f"{emojis.Date} {datetime:%A} {datetime.date():%d/%m/%Y}",
+        (f"{emojis.Time} {time:%H:%M} ({tz})" if chat_timezones and set(chat_timezones) != {tz} else
+         f"{emojis.Time} {time:%H:%M}") if time else None
+    ] + ([
+        f"{emojis.Time} {datetime_tz:%H:%M} ({timezone})" if datetime_tz.date() == datetime.date() else
+        f"{emojis.Time} {datetime_tz:%H:%M} on {datetime_tz.date()} ({timezone})"
+        for timezone in chat_timezones or []
+        if timezone != tz
+        for datetime_tz in [datetime.astimezone(timezone)]
+    ] if time else [])))
 
 async def last_event(update, context):
     return await next_or_last_event(update, context, -1)
