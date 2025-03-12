@@ -158,9 +158,14 @@ async def eventedit_responder(msg:str, send: AsyncSend, *, update, context):
     reply = get_reply(update.message)
 
     try:
-        event = addevent_analyse_from_bot(update, context, msg)
+        event = addevent_analyse_from_bot(update, context, reply.text)
     except ValueError:
         raise DoNotAnswer
+    
+    print(event)
+    
+    event_db = retrieve_event_from_db(update=update, context=context, what=event['what'], when=event['when'])
+    await send(f"This is the info: {dict(event_db)}")
 
 class GetOrEmpty(list):
     def __getitem__(self, i):
@@ -1534,14 +1539,19 @@ def addevent_analyse_yaml(update, context, text:str) -> {'what': str, 'when': st
 
     return result
 
-def only_one(it, error=ValueError):
+def only_one(it, error=None, *, many=ValueError, none=ValueError):
+    if error is not None:
+        many = none = ValueError
     if len(L := list(it)) == 1:
         return L[0]
     else:
-        raise error
+        if len(L) == 0:
+            raise none
+        else:
+            raise many
 
 def only_one_with_error(error):
-    return partial(only_one, error=error)
+    return partial(only_one, many=error, none=error)
 
 def addevent_analyse_from_bot(update, context, text:str) -> {'what': str, 'when': str}:
     my_timezone = induce_my_timezone(user_id=update.message.from_user.id, chat_id=update.effective_chat.id)
@@ -1620,10 +1630,18 @@ def addevent_analyse_from_bot(update, context, text:str) -> {'what': str, 'when'
         'when': when,
     }
 
-def retrieve_event_from_db(what: str, when: str):
+def retrieve_event_from_db(update, context, what: str, when: str):
     from datetime import datetime
-    datetime_utc = ...
-    simple_sql_dict((''' select ''', ()))
+    event: ParsedEventFinal = parse_datetime_point(update, context, when_infos=when, what_infos=what)
+    
+    datetime_utc = event.datetime_utc
+    name = event.name
+    chat_id = update.effective_chat.id
+
+    return only_one(simple_sql_dict(("SELECT rowid, date, name from Events where date=? and name=? and chat_id=?", (DatetimeDbSerializer.strftime(datetime_utc), name, chat_id))),
+             many=UserError("Too many events matching this information (duplicate in db)"),
+             none=UserError("No events matching this information (was probably deleted)"))
+
 
 def enrich_event_with_where(event):
     if event.get('where'):
