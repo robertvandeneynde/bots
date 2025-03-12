@@ -156,6 +156,7 @@ async def whereisanswer_responder(msg:str, send: AsyncSend, *, update, context):
 
 async def eventedit_responder(msg:str, send: AsyncSend, *, update, context):
     reply = get_reply(update.message)
+    assert_true(reply and reply.text, DoNotAnswer)
 
     try:
         event = addevent_analyse_from_bot(update, context, reply.text)
