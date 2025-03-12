@@ -140,24 +140,53 @@ async def money_responder(msg:str, send: AsyncSend, *, update, context):
                 amounts_converted = [convert_money(amount_base, currency_base=currency, currency_converted=currency_to_convert, rates=rates) for currency_to_convert in currencies_to_convert]
                 await send(format_currency(currency_list=[currency] + currencies_to_convert, amount_list=[amount_base] + amounts_converted))
 
+class DoNotAnswer(Exception):
+    pass
+
 async def whereisanswer_responder(msg:str, send: AsyncSend, *, update, context):
     reply = get_reply(update.message)
 
-    class DoNotAnswer(Exception):
-        pass
-
-    try:
-        assert_true(reply and reply.text, DoNotAnswer)
-        assert_true(reply.text.startswith('/whereis') or reply.text.startswith('/whereis@' + context.bot.username), DoNotAnswer)
-    except DoNotAnswer:
-        return
+    assert_true(reply and reply.text, DoNotAnswer)
+    assert_true(reply.text.startswith('/whereis') or reply.text.startswith('/whereis@' + context.bot.username), DoNotAnswer)
     
     key = ' '.join(InfiniteEmptyList(reply.text.split())[1:])
     value = msg
     
     await save_thereis(key, value, update=update, context=context)
+
+async def eventedit_responder(msg:str, send: AsyncSend, *, update, context):
+    reply = get_reply(update.message)
+
+    try:
+        event = addevent_analyse_from_bot(update, context, reply.text)
+    except ValueError:
+        raise DoNotAnswer
     
+    event_db = retrieve_event_from_db(update=update, context=context, what=event['what'], when=event['when'])
+
+    if match_postpone := re.match('([+]|[-])\s*(\d+)\s*(h|min)', msg):
+        sign, amount, units = match_postpone.groups()
+        amount = int(amount)
+        sign = +1 if sign == '+' else -1
+        delta = amount * sign * timedelta(**{'hours' if units == 'h' else 'minutes':1})
+
+        before = DatetimeDbSerializer.strptime(event_db['date'])
+        after = before + delta
+
+        simple_sql(('''UPDATE Events SET date=? where rowid=?''', (DatetimeDbSerializer.strftime(after), event_db['rowid'], )))
+        
+        new_event_db = only_one(simple_sql_dict(('select rowid, date, name from Events where rowid=?', (event_db['rowid'],))))
+        date_utc = new_event_db['date']
+        name = new_event_db['name']
+        tz = induce_my_timezone(user_id=update.message.from_user.id, chat_id=update.effective_chat.id)
+        datetime = DatetimeDbSerializer.strptime(date_utc).replace(tzinfo=ZoneInfo('UTC')).astimezone(tz)
+        date, time = datetime.date(), datetime.time()
+        read_chat_settings = make_read_chat_settings(update, context)
+        chat_timezones = read_chat_settings("event.timezones")
+        return await send("Event edited:\n" + format_event_emoji_style(name=name, datetime=datetime, date=date, time=time, tz=tz, chat_timezones=chat_timezones))
     
+    raise DoNotAnswer
+
 class GetOrEmpty(list):
     def __getitem__(self, i):
         try:
@@ -280,6 +309,7 @@ RESPONDERS = (
     (money_responder, 'money', 'on'),
     (sharemoney_responder, 'sharemoney', 'off'),
     (whereisanswer_responder, 'whereisanswer', 'on'),
+    (eventedit_responder, 'eventedit', 'on'),
 )
 
 async def on_message(update: Update, context: CallbackContext):
@@ -304,6 +334,8 @@ async def on_message(update: Update, context: CallbackContext):
                 continue
             try:
                 await responder(msg, send, update=update, context=context)
+            except DoNotAnswer:
+                pass
             except Exception as e:
                 await log_error(e, send)
 
@@ -1527,20 +1559,25 @@ def addevent_analyse_yaml(update, context, text:str) -> {'what': str, 'when': st
 
     return result
 
-def only_one(it, error=ValueError):
+def only_one(it, error=None, *, many=ValueError, none=ValueError):
+    if error is not None:
+        many = none = ValueError
     if len(L := list(it)) == 1:
         return L[0]
     else:
-        raise error
+        if len(L) == 0:
+            raise none
+        else:
+            raise many
 
 def only_one_with_error(error):
-    return partial(only_one, error=error)
+    return partial(only_one, many=error, none=error)
 
 def addevent_analyse_from_bot(update, context, text:str) -> {'what': str, 'when': str}:
     my_timezone = induce_my_timezone(user_id=update.message.from_user.id, chat_id=update.effective_chat.id)
 
     lines = GetOrEmpty(text.splitlines())
-    if lines[0] in ("Event!", "Event added:") or re.match('^Event from.*[:]', lines[0]):
+    if lines[0] in ("Event!", "Event added:", "Event edited:") or re.match('^Event from.*[:]', lines[0]):
         del lines[0]
         
     re_pattern = (
@@ -1612,6 +1649,19 @@ def addevent_analyse_from_bot(update, context, text:str) -> {'what': str, 'when'
         'what': what,
         'when': when,
     }
+
+def retrieve_event_from_db(update, context, what: str, when: str):
+    from datetime import datetime
+    event: ParsedEventFinal = parse_datetime_point(update, context, when_infos=when, what_infos=what)
+    
+    datetime_utc = event.datetime_utc
+    name = event.name
+    chat_id = update.effective_chat.id
+
+    return only_one(simple_sql_dict(("SELECT rowid, date, name from Events where date=? and name=? and chat_id=?", (DatetimeDbSerializer.strftime(datetime_utc), name, chat_id))),
+             many=UserError("Too many events matching this information (duplicate in db)"),
+             none=UserError("No events matching this information (was probably deleted)"))
+
 
 def enrich_event_with_where(event):
     if event.get('where'):
@@ -1917,6 +1967,21 @@ async def next_or_last_event(update: Update, context: CallbackContext, n:int):
         if timezone != tz
         for datetime_tz in [datetime.astimezone(timezone)]
     ] if time else []))))
+
+def format_event_emoji_style(*, name, datetime, date, time, tz, chat_timezones):
+    emojis = EventFormatting.emojis
+    return '\n'.join(natural_filter([
+        f"{emojis.Name} {name}",
+        f"{emojis.Date} {datetime:%A} {datetime.date():%d/%m/%Y}",
+        (f"{emojis.Time} {time:%H:%M} ({tz})" if chat_timezones and set(chat_timezones) != {tz} else
+         f"{emojis.Time} {time:%H:%M}") if time else None
+    ] + ([
+        f"{emojis.Time} {datetime_tz:%H:%M} ({timezone})" if datetime_tz.date() == datetime.date() else
+        f"{emojis.Time} {datetime_tz:%H:%M} on {datetime_tz.date()} ({timezone})"
+        for timezone in chat_timezones or []
+        if timezone != tz
+        for datetime_tz in [datetime.astimezone(timezone)]
+    ] if time else [])))
 
 async def last_event(update, context):
     return await next_or_last_event(update, context, -1)
