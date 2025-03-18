@@ -1524,6 +1524,28 @@ async def add_event(update: Update, context: CallbackContext):
         if do_unless_setting_off(read_chat_settings('event.addevent.display_forwarded_infos')):
             await send(f'Forwarded to {len(forward_ids)} chats')
 
+from abc import ABC, abstractmethod
+
+class GeneralAction(ABC):
+    async def __call__(self, update: Update, context: CallbackContext):
+        self.update = update
+        self.context = context
+        return await self.run()
+    
+    def send(self, *a, **b):
+        return make_send(self.update, self.context)(*a, **b)
+    
+    def chat_settings(self, *a, **b):
+        return make_read_chat_settings(self.update, self.context)(*a, **b)
+    
+    @abstractmethod
+    async def run(self):
+        raise NotImplementedError
+
+class events(GeneralAction):
+    async def run(self):
+        await self.send("Hello")
+        
 def list_del(li, i):
     copy = list(li)
     del copy[i]
@@ -3021,6 +3043,7 @@ if __name__ == '__main__':
     ))
     application.add_handler(CommandHandler('caps', caps))
     application.add_handler(CommandHandler('addevent', add_event))
+    application.add_handler(CommandHandler('events', events()))
     application.add_handler(CommandHandler('addschedule', addschedule))
     application.add_handler(CommandHandler('eventfollow', eventfollow))
     application.add_handler(CommandHandler('eventacceptfollow', eventacceptfollow))
