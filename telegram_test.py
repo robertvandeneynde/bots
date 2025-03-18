@@ -654,6 +654,22 @@ def simple_sql(query, *, connection=None):
     with sqlite3.connect("db.sqlite") as conn:
         return conn.execute(*query).fetchall()
 
+from typing import TypedDict
+SimpleSqlModifyReturn = TypedDict('SimpleSqlModifyReturn', {'rowcount': int})
+
+def simple_sql_modify(query, *, connection=None) -> SimpleSqlModifyReturn:
+    conn = connection
+    assert isinstance(query, (tuple, list))
+    assert isinstance(query[1], (tuple, list))
+    if conn:
+        cursor = conn.cursor()
+        cursor.execute(*query).fetchall()
+        return SimpleSqlModifyReturn(rowcount=cursor.rowcount)
+    with sqlite3.connect("db.sqlite") as conn:
+        cursor = conn.cursor()
+        cursor.execute(*query).fetchall()
+        return SimpleSqlModifyReturn(rowcount=cursor.rowcount)
+
 def simple_sql_dict(query, *, connection=None):
     conn = connection
     assert isinstance(query, (tuple, list))
@@ -696,8 +712,8 @@ async def practiceflashcards(update, context):
     context.user_data['sample'] = sample
     context.user_data['direction'] = direction
 
-    return 0
 
+    return 0
 from telegram.ext import ConversationHandler
 async def guessing_word(update, context):
     sample = context.user_data['sample']
@@ -951,6 +967,7 @@ class DatetimeText:
 
 from collections import namedtuple
 from typing import NamedTuple
+from typing import TypedDict
 
 from datetime import date as Date, time as Time, datetime as Datetime, timedelta as Timedelta
 from typing import Optional
@@ -1530,7 +1547,14 @@ class GeneralAction(ABC):
     async def __call__(self, update: Update, context: CallbackContext):
         self.update = update
         self.context = context
-        return await self.run()
+
+        self.Args = InfiniteEmptyList(self.context.args)
+
+        try:
+            return await self.run()
+        except UsageError as e:
+            self.exception = e
+            return await self.print_usage()
     
     def send(self, *a, **b):
         return make_send(self.update, self.context)(*a, **b)
@@ -1541,10 +1565,55 @@ class GeneralAction(ABC):
     @abstractmethod
     async def run(self):
         raise NotImplementedError
+    
+    async def print_usage(self):
+        await self.send("Arguments not correct, please read the manual")
 
 class events(GeneralAction):
+    class DuplicatesUsageError(UsageError):
+        pass
+
     async def run(self):
-        await self.send("Hello")
+        match self.Args[0].lower():
+            case 'deldups' | 'deldup' | 'deleteduplicates' | 'removeduplicates':
+                return await self.delete_duplicates(args=self.Args[1:])
+            case 'add':
+                return self.send("Not implements yet: use /addevent")
+            case _:
+                raise UsageError
+    
+    async def delete_duplicates(self, args):
+        if args:
+            return await self.send("deleteduplicates with arguments is not implemtented yet")
+        
+        datetime_range = parse_datetime_range(self.update, args=args)
+        beg, end, tz, when = (datetime_range[x] for x in ('beg_utc', 'end_utc', 'tz', 'when'))
+
+        events = simple_sql_dict(('''
+            SELECT rowid, date, name
+            FROM Events
+            WHERE ? <= date AND date < ?
+            AND chat_id=?
+            ORDER BY date''',
+            (DatetimeDbSerializer.strftime(beg), DatetimeDbSerializer.strftime(end), self.update.effective_chat.id,)))
+        
+        to_delete = []
+        for i in range(len(events)-1):
+            if (events[i]['date'], events[i]['name']) == (events[i+1]['date'], events[i+1]['name']):
+                to_delete.append(str(events[i]['rowid']))
+        
+        result = simple_sql_modify(('''DELETE FROM Events where rowid IN ({qmarks})'''.format(qmarks=','.join('?' * len(to_delete))), (*to_delete, ),))
+
+        assert_true(result['rowcount'] == len(to_delete), ValueError("Wrong deletion"))
+
+        return await self.send(f"{len(to_delete)} event(s) deleted")
+
+    async def print_usage(self):
+        match self.exception:
+            case self.DuplicatesUsageError:
+                return await self.send("Usage:\n/events removeduplicates [when]")
+            case _:
+                return await self.send("Usage:\n/events add when [time] [what]\n/events removeduplicates [when]\n")
         
 def list_del(li, i):
     copy = list(li)
