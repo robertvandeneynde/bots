@@ -1466,7 +1466,74 @@ def add_event_to_db(*, chat_timezones, tz, datetime_utc, name, chat_id, source_u
         strftime = DatetimeDbSerializer.strftime
 
         cursor.execute("INSERT INTO Events(date, name, chat_id, source_user_id) VALUES (?,?,?,?)", (strftime(datetime_utc), name, chat_id, source_user_id))
+
+class InteractiveAddEvent:
+    @staticmethod
+    async def ask_when(update, context):
+        send = make_send(update, context)
+        await send("When is the event ?\n\nExamples:\n- Today\n- Tomorrow\n- Sunday\n- 25.11\n- 31.12.2000")
+        return 'ask-what'
     
+    @staticmethod
+    async def ask_what(update, context):
+        send = make_send(update, context)
+        when = update.message.text
+
+        parse_datetime_point(update, context, when_infos=when, what_infos='')
+        # no error: ok
+
+        context.user_data['when'] = when
+        await send("What is the event about ?\nThe name of the event.\n\nExamples:\n- Party\n- /empty")
+        return 'ask-confirm'
+    
+    @staticmethod
+    async def ask_confirm(update, context):
+        what = update.message.text
+        return await InteractiveAddEvent.continue_ask_confirm(update, context, what=what)
+    
+    @staticmethod
+    async def ask_confirm_empty(update, context):
+        what = ''
+        return await InteractiveAddEvent.continue_ask_confirm(update, context, what=what)
+    
+    @staticmethod
+    async def continue_ask_confirm(update, context, what):
+        send = make_send(update, context)
+
+        context.user_data['what'] = what
+        when = context.user_data['when']
+        await send(f"Do you want to add this event ?\nWhen: {when}\nWhat: {what}\n")
+        return 'do-add-event'
+    
+    @staticmethod
+    async def do_add_event(update, context):
+        send = make_send(update, context)
+
+        when = context.user_data['when']
+        what = context.user_data['what']
+        context.user_data.clear()
+
+        if update.message.text.lower() in ("no", "n"):
+            await send("Event not added.\n\n/addevent can be however applied on the last message.")
+            return ConversationHandler.END
+
+        await InteractiveAddEvent.do_all_add_event(update, context, what=what, when=when)
+        return ConversationHandler.END
+    
+    async def do_all_add_event(update, context, *, what, when):
+        read_chat_settings = make_read_chat_settings(update, context)
+
+        source_user_id = update.message.from_user.id
+        chat_id = update.effective_chat.id
+
+        date_str, time, name, date, date_end, datetime, datetime_utc, tz = parse_datetime_point(update, context, when_infos=when, what_infos=what)
+        
+        chat_timezones = read_chat_settings("event.timezones")
+        add_event_to_db(chat_timezones=chat_timezones, tz=tz, datetime_utc=datetime_utc, name=name, chat_id=chat_id, source_user_id=source_user_id)
+        
+        await post_event(update, context, name=name, datetime=datetime, time=time, date_str=date_str, chat_timezones=chat_timezones, tz=tz, chat_id=chat_id, datetime_utc=datetime_utc)
+
+
 import sqlite3
 async def add_event(update: Update, context: CallbackContext):
     send = make_send(update, context)
@@ -1477,7 +1544,7 @@ async def add_event(update: Update, context: CallbackContext):
         if reply := get_reply(update.message):
             infos_event = addevent_analyse(update, context)
         else:
-            return await send("Usage: /addevent date name\nUsage: /addevent date hour name")
+            return await send("Usage: /addevent date name\nUsage: /addevent date hour name\nInteractive version: /iaddevent")
     else:
         infos_event = None
 
@@ -1504,6 +1571,12 @@ async def add_event(update: Update, context: CallbackContext):
     chat_timezones = read_chat_settings("event.timezones")
     add_event_to_db(chat_timezones=chat_timezones, tz=tz, datetime_utc=datetime_utc, name=name, chat_id=chat_id, source_user_id=source_user_id)
     
+    await post_event(update, context, name=name, datetime=datetime, time=time, date_str=date_str, chat_timezones=chat_timezones, tz=tz, chat_id=chat_id, datetime_utc=datetime_utc)
+
+async def post_event(update, context, *, name, datetime, time, date_str, chat_timezones, tz, chat_id, datetime_utc):
+    send = make_send(update, context)
+    read_chat_settings = make_read_chat_settings(update, context)
+
     emojis = EventFormatting.emojis
 
     # 1. Send info in text
@@ -1540,6 +1613,7 @@ async def add_event(update: Update, context: CallbackContext):
     if forward_ids:
         if do_unless_setting_off(read_chat_settings('event.addevent.display_forwarded_infos')):
             await send(f'Forwarded to {len(forward_ids)} chats')
+
 
 from abc import ABC, abstractmethod
 
@@ -3076,6 +3150,7 @@ COMMAND_DESC = {
 COMMAND_LIST = (
     'caps',
     'addevent', 'addschedule', 'nextevent', 'lastevent', 'listevents', 'listdays', 'listtoday', 'today', 'delevent',
+    'iaddevent',
     'eventfollow', 'eventacceptfollow', 'deleventfollow', 'deleventacceptfollow',
     'whereis', 'thereis', 'whereto',
     'ru',
@@ -3109,6 +3184,18 @@ if __name__ == '__main__':
     ))
     application.add_handler(CommandHandler('caps', caps))
     application.add_handler(CommandHandler('addevent', add_event))
+    application.add_handler(ConversationHandler(
+        entry_points=[CommandHandler('iaddevent', InteractiveAddEvent.ask_when)],
+        states={
+            'ask-what': [MessageHandler(filters.TEXT & ~filters.COMMAND, InteractiveAddEvent.ask_what)],
+            'ask-confirm': [
+                MessageHandler(filters.TEXT & ~filters.COMMAND, InteractiveAddEvent.ask_confirm),
+                CommandHandler('empty', InteractiveAddEvent.ask_confirm_empty),
+            ],
+            'do-add-event': [MessageHandler(filters.TEXT & ~filters.COMMAND, InteractiveAddEvent.do_add_event)]
+        },
+        fallbacks=[]
+    ), group=3)
     application.add_handler(CommandHandler('events', events()))
     application.add_handler(CommandHandler('addschedule', addschedule))
     application.add_handler(CommandHandler('eventfollow', eventfollow))
