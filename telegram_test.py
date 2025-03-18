@@ -1466,7 +1466,31 @@ def add_event_to_db(*, chat_timezones, tz, datetime_utc, name, chat_id, source_u
         strftime = DatetimeDbSerializer.strftime
 
         cursor.execute("INSERT INTO Events(date, name, chat_id, source_user_id) VALUES (?,?,?,?)", (strftime(datetime_utc), name, chat_id, source_user_id))
+
+class InteractiveAddEvent:
+    @staticmethod
+    async def ask_when(update, context):
+        send = make_send(update, context)
+        await send("When is the event ?\n\nExamples:\n- Today\n- Tomorrow\n- Sunday\n- 25.11\n- 31.12.2000")
+        return 'ask-what'
     
+    @staticmethod
+    async def ask_what(update, context):
+        send = make_send(update, context)
+        when = update.message.text
+        context.user_data['when'] = when
+        await send("What is the event about ?\nThe name of the event.\n\nExample: Party")
+        return 'ask-confirm'
+    
+    @staticmethod
+    async def ask_confirm(update, context):
+        send = make_send(update, context)
+        what = update.message.text
+        when = context.user_data['when']
+        context.user_data.clear()
+        await send(f"You want to add this event ?\nWhen: {when}\nWhat: {what}\n")
+        return ConversationHandler.END
+
 import sqlite3
 async def add_event(update: Update, context: CallbackContext):
     send = make_send(update, context)
@@ -1477,7 +1501,7 @@ async def add_event(update: Update, context: CallbackContext):
         if reply := get_reply(update.message):
             infos_event = addevent_analyse(update, context)
         else:
-            return await send("Usage: /addevent date name\nUsage: /addevent date hour name")
+            return await send("Usage: /addevent date name\nUsage: /addevent date hour name\nInteractive version: /iaddevent")
     else:
         infos_event = None
 
@@ -3109,6 +3133,14 @@ if __name__ == '__main__':
     ))
     application.add_handler(CommandHandler('caps', caps))
     application.add_handler(CommandHandler('addevent', add_event))
+    application.add_handler(ConversationHandler(
+        entry_points=[CommandHandler('iaddevent', InteractiveAddEvent.ask_when)],
+        states={
+            'ask-what': [MessageHandler(filters.TEXT, InteractiveAddEvent.ask_what)],
+            'ask-confirm': [MessageHandler(filters.TEXT, InteractiveAddEvent.ask_confirm)],
+        },
+        fallbacks=[]
+    ), group=3)
     application.add_handler(CommandHandler('events', events()))
     application.add_handler(CommandHandler('addschedule', addschedule))
     application.add_handler(CommandHandler('eventfollow', eventfollow))
