@@ -1478,17 +1478,47 @@ class InteractiveAddEvent:
     async def ask_what(update, context):
         send = make_send(update, context)
         when = update.message.text
+
+        date_str, time, name_from_when_part, day_of_week, relative_day_keyword = ParseEvents.parse_event(when.split())
+        if name_from_when_part:
+            await send("Too much infos in the When part. Please retry")
+            return
+        
+        print(("Date", date_str), ("Time", time), ("Day of week", day_of_week), ("Relative", relative_day_keyword), sep='\n')
+
         context.user_data['when'] = when
-        await send("What is the event about ?\nThe name of the event.\n\nExample: Party")
+        await send("What is the event about ?\nThe name of the event.\n\nExamples:\n- Party\n- /empty")
         return 'ask-confirm'
     
     @staticmethod
     async def ask_confirm(update, context):
-        send = make_send(update, context)
         what = update.message.text
+        return await InteractiveAddEvent.continue_ask_confirm(update, context, what=what)
+    
+    @staticmethod
+    async def ask_confirm_empty(update, context):
+        what = ''
+        return await InteractiveAddEvent.continue_ask_confirm(update, context, what=what)
+    
+    @staticmethod
+    async def continue_ask_confirm(update, context, what):
+        send = make_send(update, context)
+
+        context.user_data['what'] = what
         when = context.user_data['when']
+        await send(f"Do you want to add this event ?\nWhen: {when}\nWhat: {what}\n")
+        return 'do-add-event'
+    
+    @staticmethod
+    async def do_add_event(update, context):
+        send = make_send(update, context)
+
+        when = context.user_data['when']
+        what = context.user_data['what']
         context.user_data.clear()
-        await send(f"You want to add this event ?\nWhen: {when}\nWhat: {what}\n")
+
+        await send(f"Event added {when} {what}") # TODO: format it like addevent and run the addevent procedures
+
         return ConversationHandler.END
 
 import sqlite3
@@ -3100,6 +3130,7 @@ COMMAND_DESC = {
 COMMAND_LIST = (
     'caps',
     'addevent', 'addschedule', 'nextevent', 'lastevent', 'listevents', 'listdays', 'listtoday', 'today', 'delevent',
+    'iaddevent',
     'eventfollow', 'eventacceptfollow', 'deleventfollow', 'deleventacceptfollow',
     'whereis', 'thereis', 'whereto',
     'ru',
@@ -3136,8 +3167,12 @@ if __name__ == '__main__':
     application.add_handler(ConversationHandler(
         entry_points=[CommandHandler('iaddevent', InteractiveAddEvent.ask_when)],
         states={
-            'ask-what': [MessageHandler(filters.TEXT, InteractiveAddEvent.ask_what)],
-            'ask-confirm': [MessageHandler(filters.TEXT, InteractiveAddEvent.ask_confirm)],
+            'ask-what': [MessageHandler(filters.TEXT & ~filters.COMMAND, InteractiveAddEvent.ask_what)],
+            'ask-confirm': [
+                MessageHandler(filters.TEXT & ~filters.COMMAND, InteractiveAddEvent.ask_confirm),
+                CommandHandler('empty', InteractiveAddEvent.ask_confirm_empty),
+            ],
+            'do-add-event': [MessageHandler(filters.TEXT & ~filters.COMMAND, InteractiveAddEvent.do_add_event)]
         },
         fallbacks=[]
     ), group=3)
