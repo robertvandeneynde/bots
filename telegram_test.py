@@ -1483,8 +1483,6 @@ class InteractiveAddEvent:
         if name_from_when_part:
             await send("Too much infos in the When part. Please retry")
             return
-        
-        print(("Date", date_str), ("Time", time), ("Day of week", day_of_week), ("Relative", relative_day_keyword), sep='\n')
 
         context.user_data['when'] = when
         await send("What is the event about ?\nThe name of the event.\n\nExamples:\n- Party\n- /empty")
@@ -1517,9 +1515,23 @@ class InteractiveAddEvent:
         what = context.user_data['what']
         context.user_data.clear()
 
-        await send(f"Event added {when} {what}") # TODO: format it like addevent and run the addevent procedures
+        await InteractiveAddEvent.do_all_add_event(update, context, what=what, when=when)
 
         return ConversationHandler.END
+    
+    async def do_all_add_event(update, context, *, what, when):
+        read_chat_settings = make_read_chat_settings(update, context)
+
+        source_user_id = update.message.from_user.id
+        chat_id = update.effective_chat.id
+
+        date_str, time, name, date, date_end, datetime, datetime_utc, tz = parse_datetime_point(update, context, when_infos=when, what_infos=what)
+        
+        chat_timezones = read_chat_settings("event.timezones")
+        add_event_to_db(chat_timezones=chat_timezones, tz=tz, datetime_utc=datetime_utc, name=name, chat_id=chat_id, source_user_id=source_user_id)
+        
+        await post_event(update, context, name=name, datetime=datetime, time=time, date_str=date_str, chat_timezones=chat_timezones, tz=tz, chat_id=chat_id, datetime_utc=datetime_utc)
+
 
 import sqlite3
 async def add_event(update: Update, context: CallbackContext):
@@ -1558,6 +1570,12 @@ async def add_event(update: Update, context: CallbackContext):
     chat_timezones = read_chat_settings("event.timezones")
     add_event_to_db(chat_timezones=chat_timezones, tz=tz, datetime_utc=datetime_utc, name=name, chat_id=chat_id, source_user_id=source_user_id)
     
+    await post_event(update, context, name=name, datetime=datetime, time=time, date_str=date_str, chat_timezones=chat_timezones, tz=tz, chat_id=chat_id, datetime_utc=datetime_utc)
+
+async def post_event(update, context, *, name, datetime, time, date_str, chat_timezones, tz, chat_id, datetime_utc):
+    send = make_send(update, context)
+    read_chat_settings = make_read_chat_settings(update, context)
+
     emojis = EventFormatting.emojis
 
     # 1. Send info in text
@@ -1594,6 +1612,7 @@ async def add_event(update: Update, context: CallbackContext):
     if forward_ids:
         if do_unless_setting_off(read_chat_settings('event.addevent.display_forwarded_infos')):
             await send(f'Forwarded to {len(forward_ids)} chats')
+
 
 from abc import ABC, abstractmethod
 
