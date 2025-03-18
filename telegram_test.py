@@ -1515,8 +1515,11 @@ class InteractiveAddEvent:
         what = context.user_data['what']
         context.user_data.clear()
 
-        await InteractiveAddEvent.do_all_add_event(update, context, what=what, when=when)
+        if update.message.text.lower() in ("no", "n"):
+            await send("Event not added. However you can still apply /addevent on the last message.")
+            return ConversationHandler.END
 
+        await InteractiveAddEvent.do_all_add_event(update, context, what=what, when=when)
         return ConversationHandler.END
     
     async def do_all_add_event(update, context, *, what, when):
