@@ -1583,9 +1583,6 @@ class events(GeneralAction):
                 raise UsageError
     
     async def delete_duplicates(self, args):
-        if args:
-            return await self.send("deleteduplicates with arguments is not implemtented yet")
-        
         datetime_range = parse_datetime_range(self.update, args=args)
         beg, end, tz, when = (datetime_range[x] for x in ('beg_utc', 'end_utc', 'tz', 'when'))
 
