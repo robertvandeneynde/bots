@@ -1479,10 +1479,8 @@ class InteractiveAddEvent:
         send = make_send(update, context)
         when = update.message.text
 
-        date_str, time, name_from_when_part, day_of_week, relative_day_keyword = ParseEvents.parse_event(when.split())
-        if name_from_when_part:
-            await send("Too much infos in the When part. Please retry")
-            return
+        parse_datetime_point(update, context, when_infos=when, what_infos='')
+        # no error: ok
 
         context.user_data['when'] = when
         await send("What is the event about ?\nThe name of the event.\n\nExamples:\n- Party\n- /empty")
@@ -1516,7 +1514,7 @@ class InteractiveAddEvent:
         context.user_data.clear()
 
         if update.message.text.lower() in ("no", "n"):
-            await send("Event not added. However you can still apply /addevent on the last message.")
+            await send("Event not added.\n\n/addevent can be however applied on the last message.")
             return ConversationHandler.END
 
         await InteractiveAddEvent.do_all_add_event(update, context, what=what, when=when)
