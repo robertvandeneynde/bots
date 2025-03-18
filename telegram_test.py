@@ -175,18 +175,19 @@ async def eventedit_responder(msg:str, send: AsyncSend, *, update, context):
         after = before + delta
 
         simple_sql(('''UPDATE Events SET date=? where rowid=?''', (DatetimeDbSerializer.strftime(after), event_db['rowid'], )))
-        
-        new_event_db = only_one(simple_sql_dict(('select rowid, date, name from Events where rowid=?', (event_db['rowid'],))))
-        date_utc = new_event_db['date']
-        name = new_event_db['name']
-        tz = induce_my_timezone(user_id=update.message.from_user.id, chat_id=update.effective_chat.id)
-        datetime = DatetimeDbSerializer.strptime(date_utc).replace(tzinfo=ZoneInfo('UTC')).astimezone(tz)
-        date, time = datetime.date(), datetime.time()
-        read_chat_settings = make_read_chat_settings(update, context)
-        chat_timezones = read_chat_settings("event.timezones")
-        return await send("Event edited:\n" + format_event_emoji_style(name=name, datetime=datetime, date=date, time=time, tz=tz, chat_timezones=chat_timezones))
     
-    raise DoNotAnswer
+    else:
+        raise DoNotAnswer
+    
+    new_event_db = only_one(simple_sql_dict(('select rowid, date, name from Events where rowid=?', (event_db['rowid'],))))
+    date_utc = new_event_db['date']
+    name = new_event_db['name']
+    tz = induce_my_timezone(user_id=update.message.from_user.id, chat_id=update.effective_chat.id)
+    datetime = DatetimeDbSerializer.strptime(date_utc).replace(tzinfo=ZoneInfo('UTC')).astimezone(tz)
+    date, time = datetime.date(), datetime.time()
+    read_chat_settings = make_read_chat_settings(update, context)
+    chat_timezones = read_chat_settings("event.timezones")
+    return await send("Event edited:\n" + format_event_emoji_style(name=name, datetime=datetime, date=date, time=time, tz=tz, chat_timezones=chat_timezones))
 
 class GetOrEmpty(list):
     def __getitem__(self, i):
