@@ -3130,7 +3130,7 @@ COMMAND_DESC = {
     'rub': "Convert russian rubles to other currencies",
     'convertmoney': 'Convert money to chat currencies or to specific currency',
     "mytimezone": "Set your timezone to use events commands",
-    "settings": "Change user settings that are usable for commands",
+    "mysettings": "Change user settings that are usable for commands",
     "delsettings": "Delete user settings that are usable for commands",
     "chatsettings": "Change chat settings that are usable for commands",
     "delchatsettings": "Delete chat settings that are usable for commands",
