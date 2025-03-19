@@ -3156,7 +3156,7 @@ COMMAND_LIST = (
     'ru',
     'dict', 'wikt', 'larousse',
     'convertmoney', 'eur', 'brl', 'rub',
-    'mytimezone', 'settings', 'mysettings', 'delmysettings', 'chatsettings', 'delchatsettings',
+    'mytimezone', 'mysettings', 'delmysettings', 'chatsettings', 'delchatsettings',
     'flashcard', 'exportflashcards', 'practiceflashcards', 'switchpageflashcard',
     'help',
     'uniline', 'nuniline',
