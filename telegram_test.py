@@ -1643,6 +1643,12 @@ class GeneralAction(ABC):
     async def print_usage(self):
         await self.send("Arguments not correct, please read the manual")
 
+    def get_chat_id(self):
+        return self.update.effective_chat.id
+    
+    def get_user_id(self):
+        return self.update.effective_user.id
+
 class events(GeneralAction):
     class DuplicatesUsageError(UsageError):
         pass
@@ -1689,19 +1695,71 @@ class events(GeneralAction):
 class listsmodule:
     class createlist(GeneralAction):
         async def run(self):
-            await self.send("Hello!")
+            match self.Args[0]:
+                case "":
+                    name = "list"
+                case _ as x:
+                    name = x
+
+            with sqlite3.connect("db.sqlite") as conn:
+                my_simple_sql = partial(simple_sql, connection=conn)
+                conn.execute('begin transaction')
+                if my_simple_sql(('''select 1 from List where chat_id=? and lower(name)=lower(?)''', (self.get_chat_id(), name,))):
+                    return await self.send(f'List {name!r} already exist')
+                my_simple_sql(('insert into List(name, chat_id, source_user_id) VALUES (?,?,?)', (name, self.get_chat_id(), self.get_user_id())))
+                conn.execute('end transaction')
+            
+            return await self.send('List created')
+            
 
     class addtolist(GeneralAction):
         async def run(self):
-            await self.send("Hellooo")
+            with sqlite3.connect("db.sqlite") as conn:
+                my_simple_sql = partial(simple_sql, connection=conn)
+                conn.execute('begin transaction')
+
+                match self.Args[0]:
+                    case "":
+                        name = "list"
+                        value = ' '.join(self.Args[0:])
+                    case _ as x:
+                        if my_simple_sql((''' select 1 from List where chat_id=? and lower(name)=lower(?) ''', (self.get_chat_id(), x,) )):
+                            name = x 
+                            value = ' '.join(self.Args[1:])
+                        else:
+                            name = 'list'
+                            value = ' '.join(self.Args[0:])
+                
+                listid, = only_one(my_simple_sql(('''select rowid from List where chat_id=? and lower(name)=lower(?)''', (self.get_chat_id(), name,))))
+                my_simple_sql((''' insert into ListElement(listid, value) values (?,?)''', (listid, value) ))
+                conn.execute('end transaction')
+
+            return await self.send(f'''List named {name!r} edited''')        
 
     class removefromlist(GeneralAction):
         async def run(self):
-            await self.send("Hellooooowo")
+            await self.send("To be implemented")
 
     class printlist(GeneralAction):
         async def run(self):
-            await self.send("Helw")
+            with sqlite3.connect("db.sqlite") as conn:
+                my_simple_sql = partial(simple_sql, connection=conn)
+                conn.execute('begin transaction')
+
+                match self.Args[0]:
+                    case "":
+                        name = "list"
+                    case _ as x:
+                        if my_simple_sql((''' select 1 from List where chat_id=? and lower(name)=lower(?) ''', (self.get_chat_id(), x,) )):
+                            name = x
+                        else:
+                            name = 'list'
+                
+                listid, = only_one(my_simple_sql(('''select rowid from List where chat_id=? and lower(name)=lower(?)''', (self.get_chat_id(), name,))))
+                result_list = [x[0] for x in simple_sql((''' select value from ListElement where listid=?''', (listid, ) ))]
+                conn.execute('end transaction')
+
+            return await self.send('\n'.join(map('- {}'.format, result_list)) if result_list else '/')
 
 def list_del(li, i):
     copy = list(li)
@@ -2812,6 +2870,13 @@ def migration12():
         conn.execute('alter table EventFollow add column a_thread_id DEFAULT \'\'')
         conn.execute('end transaction')
 
+def migration13():
+    with sqlite3.connect('db.sqlite') as conn:
+        conn.execute('begin transaction')
+        conn.execute('create table List(name, chat_id, source_user_id)')
+        conn.execute('create table ListElement(listid, value)')
+        conn.execute('end transaction')
+
 def get_latest_euro_rates_from_api() -> json:
     import requests
     from telegram_settings_local import FIXER_TOKEN
@@ -3311,7 +3376,7 @@ if __name__ == '__main__':
     application.add_handler(CommandHandler('removefromlist', listsmodule.removefromlist()))
     application.add_handler(CommandHandler('delfromlist', listsmodule.removefromlist()))
     application.add_handler(CommandHandler('deletefromlist', listsmodule.removefromlist()))
-    application.add_handler(CommandHandler('printlist', listsmodule.printlist))
+    application.add_handler(CommandHandler('printlist', listsmodule.printlist()))
 
     application.add_error_handler(general_error_callback)
     
