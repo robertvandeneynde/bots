@@ -159,7 +159,27 @@ async def list_responder(msg: str, send: AsyncSend, *, update, context):
     LIST_OP_RE = regex.compile(r"(\p{L}+)(\s*[.]\s*|\s+)(add|append|clear|print)\s*(.*)")
     if match := LIST_OP_RE.fullmatch(msg):
         list_name, _, operation, parameters = match.groups()
-        return await send(f"I should do the operation {operation!r} on the list named {list_name!r} (not implemeted yet)")
+
+        if operation in ('add', 'append', 'print'):
+            with sqlite3.connect("db.sqlite") as conn:
+                conn.execute('begin transaction')
+
+                chat_id = update.effective_chat.id
+                if listsmodule.list_exists(conn=conn, chat_id=chat_id, name=list_name):
+                    if operation in ('add', 'append'):
+                        listsmodule.addtolist.do_it(conn=conn, name=list_name, chat_id=chat_id, value=parameters)
+                        await send(f"List {list_name!r} edited")
+
+                    elif operation in ('print', ):
+                        await send(listsmodule.printlist.it(conn=conn, chat_id=chat_id, name=list_name))
+                        
+                    else:
+                        raise AssertionError(f"On operation {operation}")
+                    
+                conn.execute('end transaction')
+            
+        else:
+            return await send(f"I should do the operation {operation!r} on the list named {list_name!r} (not implemeted yet)")
 
 async def eventedit_responder(msg:str, send: AsyncSend, *, update, context):
     reply = get_reply(update.message)
@@ -1701,6 +1721,12 @@ class events(GeneralAction):
                 return await self.send("Usage:\n/events add when [time] [what]\n/events removeduplicates [when]\n")
 
 class listsmodule:
+    @staticmethod
+    def list_exists(*, chat_id, name, conn):
+        my_simple_sql = partial(simple_sql, connection=conn)
+
+        return bool(my_simple_sql((''' select 1 from List where chat_id=? and lower(name)=lower(?) ''', (chat_id, name,) )))
+
     class createlist(GeneralAction):
         async def run(self):
             match self.Args[0]:
@@ -1721,6 +1747,13 @@ class listsmodule:
             
 
     class addtolist(GeneralAction):
+        @staticmethod
+        def do_it(*, conn, chat_id, name, value):
+            my_simple_sql = partial(simple_sql, connection=conn)
+
+            listid, = only_one(my_simple_sql(('''select rowid from List where chat_id=? and lower(name)=lower(?)''', (chat_id, name,))))
+            my_simple_sql((''' insert into ListElement(listid, value) values (?,?)''', (listid, value) ))
+
         async def run(self):
             with sqlite3.connect("db.sqlite") as conn:
                 my_simple_sql = partial(simple_sql, connection=conn)
@@ -1738,8 +1771,7 @@ class listsmodule:
                             name = 'list'
                             value = ' '.join(self.Args[0:])
                 
-                listid, = only_one(my_simple_sql(('''select rowid from List where chat_id=? and lower(name)=lower(?)''', (self.get_chat_id(), name,))))
-                my_simple_sql((''' insert into ListElement(listid, value) values (?,?)''', (listid, value) ))
+                await listsmodule.addtolist.do_it(name=name, chat_id=self.get_chat_id(), value=value, conn=conn)
                 conn.execute('end transaction')
 
             return await self.send(f'''List named {name!r} edited''')        
@@ -1749,6 +1781,15 @@ class listsmodule:
             await self.send("To be implemented")
 
     class printlist(GeneralAction):
+        @staticmethod
+        def it(*, conn, chat_id, name):
+            my_simple_sql = partial(simple_sql, connection=conn)
+
+            listid, = only_one(my_simple_sql(('''select rowid from List where chat_id=? and lower(name)=lower(?)''', (chat_id, name,))))
+            result_list = [x[0] for x in simple_sql((''' select value from ListElement where listid=?''', (listid, ) ))]
+
+            return '\n'.join(map('- {}'.format, result_list)) if result_list else '/'
+            
         async def run(self):
             with sqlite3.connect("db.sqlite") as conn:
                 my_simple_sql = partial(simple_sql, connection=conn)
@@ -1763,11 +1804,8 @@ class listsmodule:
                         else:
                             name = 'list'
                 
-                listid, = only_one(my_simple_sql(('''select rowid from List where chat_id=? and lower(name)=lower(?)''', (self.get_chat_id(), name,))))
-                result_list = [x[0] for x in simple_sql((''' select value from ListElement where listid=?''', (listid, ) ))]
+                await self.send(listsmodule.printlist.it(conn=conn, chat_id=self.get_chat_id(), name=name))
                 conn.execute('end transaction')
-
-            return await self.send('\n'.join(map('- {}'.format, result_list)) if result_list else '/')
 
 def list_del(li, i):
     copy = list(li)
