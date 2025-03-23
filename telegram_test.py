@@ -1685,7 +1685,24 @@ class events(GeneralAction):
                 return await self.send("Usage:\n/events removeduplicates [when]")
             case _:
                 return await self.send("Usage:\n/events add when [time] [what]\n/events removeduplicates [when]\n")
-        
+
+class listsmodule:
+    class createlist(GeneralAction):
+        async def run(self):
+            await self.send("Hello!")
+
+    class addtolist(GeneralAction):
+        async def run(self):
+            await self.send("Hellooo")
+
+    class removefromlist(GeneralAction):
+        async def run(self):
+            await self.send("Hellooooowo")
+
+    class printlist(GeneralAction):
+        async def run(self):
+            await self.send("Helw")
+
 def list_del(li, i):
     copy = list(li)
     del copy[i]
@@ -2970,10 +2987,14 @@ async def listdebts(update, context):
 async def help(update, context):
     send = make_send(update, context)
 
-    fmt = ('{} - {}' if '--botfather' in context.args else
+    bot_father = '--botfather' in context.args
+
+    fmt = ('{} - {}' if bot_father else
            '/{} {}')
     
-    return await send('\n'.join(fmt.format(command, COMMAND_DESC.get(command, command)) for command in COMMAND_LIST))
+    li = ordered_set_remove(COMMAND_LIST, BOT_FATHER_HIDDEN_COMMANDS) if bot_father else ordered_set_union(COMMAND_LIST, BOT_FATHER_HIDDEN_COMMANDS)
+    
+    return await send('\n'.join(fmt.format(command, COMMAND_DESC.get(command, command)) for command in li))
 
 class UserError(ValueError):
     pass
@@ -3145,7 +3166,30 @@ COMMAND_DESC = {
     "sleep": "Record personal sleep cycle and make graphs", 
     "sharemoney": "Manage money between users (shared bank account, add a debt)",
     "listdebts": "List debts between users (sharemoney)",
+
+    'createlist': 'Create a list (of strings, by default)',
+    'addtolist': 'Add to the end of a list',
+    'appendtolist': 'Alias for addtolist',
+    'removefromlist': 'Remove the first element from a list or print error',
+    'delfromlist': 'Alias for delfromlist',
+    'deletefromlist': 'Alias for removefromlist',
+    'printlist': 'Print a list using dashes',
 }
+
+import itertools
+
+def ordered_set_remove(A, B):
+    return (''.join if isinstance(A, str) else type(A))(x for x in A if x not in B)
+
+def ordered_set_union(A, B):
+    return (''.join if isinstance(A, str) else type(A))(x for x in itertools.chain(A, B) if x in A and x in B)
+
+BOT_FATHER_HIDDEN_COMMANDS = (
+    'createlist',
+    'addtolist',
+    'removefromlist', 'delfromlist', 'deletefromlist',
+    'printlist',
+)
 
 COMMAND_LIST = (
     'caps',
@@ -3162,7 +3206,13 @@ COMMAND_LIST = (
     'uniline', 'nuniline',
     #'sleep',
     'sharemoney', 'listdebts',
+    #
+    'createlist',
+    'addtolist',
+    'removefromlist', 'delfromlist', 'deletefromlist',
+    'printlist',
 )
+
 
 if __name__ == '__main__':
     application = ApplicationBuilder().token(TOKEN).build()
@@ -3254,6 +3304,14 @@ if __name__ == '__main__':
     application.add_handler(CommandHandler('timesince', timesince))
     #application.add_handler(CommandHandler('sleep', sleep_))
     application.add_handler(CommandHandler('listdebts', listdebts))
+
+    application.add_handler(CommandHandler('createlist', listsmodule.createlist()))
+    application.add_handler(CommandHandler('addtolist', listsmodule.addtolist()))
+    application.add_handler(CommandHandler('appendtolist', listsmodule.addtolist()))
+    application.add_handler(CommandHandler('removefromlist', listsmodule.removefromlist()))
+    application.add_handler(CommandHandler('delfromlist', listsmodule.removefromlist()))
+    application.add_handler(CommandHandler('deletefromlist', listsmodule.removefromlist()))
+    application.add_handler(CommandHandler('printlist', listsmodule.printlist))
 
     application.add_error_handler(general_error_callback)
     
