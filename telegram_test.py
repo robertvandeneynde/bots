@@ -154,6 +154,13 @@ async def whereisanswer_responder(msg:str, send: AsyncSend, *, update, context):
     
     await save_thereis(key, value, update=update, context=context)
 
+async def list_responder(msg: str, send: AsyncSend, *, update, context):
+    import regex
+    LIST_OP_RE = regex.compile(r"(\p{L}+)(\s*[.]\s*|\s+)(add|append|clear|print)\s*(.*)")
+    if match := LIST_OP_RE.fullmatch(msg):
+        list_name, _, operation, parameters = match.groups()
+        return await send(f"I should do the operation {operation!r} on the list named {list_name!r} (not implemeted yet)")
+
 async def eventedit_responder(msg:str, send: AsyncSend, *, update, context):
     reply = get_reply(update.message)
     assert_true(reply and reply.text, DoNotAnswer)
@@ -312,6 +319,7 @@ RESPONDERS = (
     (sharemoney_responder, 'sharemoney', 'off'),
     (whereisanswer_responder, 'whereisanswer', 'on'),
     (eventedit_responder, 'eventedit', 'on'),
+    (list_responder, 'list', 'off'),
 )
 
 async def on_message(update: Update, context: CallbackContext):
