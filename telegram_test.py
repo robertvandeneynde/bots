@@ -1771,7 +1771,7 @@ class listsmodule:
                             name = 'list'
                             value = ' '.join(self.Args[0:])
                 
-                await listsmodule.addtolist.do_it(name=name, chat_id=self.get_chat_id(), value=value, conn=conn)
+                listsmodule.addtolist.do_it(name=name, chat_id=self.get_chat_id(), value=value, conn=conn)
                 conn.execute('end transaction')
 
             return await self.send(f'''List named {name!r} edited''')        
