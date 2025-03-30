@@ -173,22 +173,30 @@ async def list_responder(msg: str, send: AsyncSend, *, update, context):
             parameters_lines = list(filter(None, parameters_lines))
             parameters = parameters_lines
 
-        if operation in ('=', ):
+        if operation in ('=', 'editmulti'):
             with sqlite3.connect("db.sqlite") as conn:
                 conn.execute('begin transaction')
                 chat_id, user_id = update.effective_chat.id, update.effective_user.id
-                if parameters.lower() == 'list' or re.match(re.escape('[') + '\s*' + re.escape(']'), parameters):
+                if operation == '=':
+                    if parameters.lower() == 'list' or re.match(re.escape('[') + '\s*' + re.escape(']'), parameters):
+                        type_list = 'list'
+                    elif param_match := regex.compile('copy\s*((of|from)\s*)?(\p{L}+)').fullmatch(parameters):
+                        _, _, copy_from_name = param_match.groups()
+                        type_list = ('copy', copy_from_name)
+                    else:
+                        raise UserError("Operation for list creation not implemented, use = list, for example")
+                elif operation == 'editmulti':
                     type_list = 'list'
-                elif param_match := regex.compile('copy\s*((of|from)\s*)?(\p{L}+)').fullmatch(parameters):
-                    _, _, copy_from_name = param_match.groups()
-                    type_list = ('copy', copy_from_name)
-                else:
-                    raise UserError("Operation for list creation not implemented, use = list, for example")
+                
                 listsmodule.forcecreatelist.do_it(conn=conn, chat_id=chat_id, name=list_name, user_id=user_id, type_list=type_list)
+
+                if operation == 'editmulti':
+                    listsmodule.editmultilist.do_it(conn=conn, name=list_name, chat_id=chat_id, values=parameters)
+
                 conn.execute('end transaction')
                 await send(f"List named {list_name!r} created")
 
-        elif operation in ('add', 'append', 'print', 'clear', 'editmulti', 'extendmulti', 'shuffle'):
+        elif operation in ('add', 'append', 'print', 'clear', 'extendmulti', 'shuffle'):
             with sqlite3.connect("db.sqlite") as conn:
                 conn.execute('begin transaction')
 
@@ -203,10 +211,6 @@ async def list_responder(msg: str, send: AsyncSend, *, update, context):
 
                     elif operation in ('clear', ):
                         listsmodule.clearlist.do_it(conn=conn, name=list_name, chat_id=chat_id)
-                        await send(f"List {list_name!r} edited")
-
-                    elif operation in ('editmulti', ):
-                        listsmodule.editmultilist.do_it(conn=conn, name=list_name, chat_id=chat_id, values=parameters)
                         await send(f"List {list_name!r} edited")
 
                     elif operation in ('extendmulti', ):
