@@ -156,7 +156,7 @@ async def whereisanswer_responder(msg:str, send: AsyncSend, *, update, context):
 
 async def list_responder(msg: str, send: AsyncSend, *, update, context):
     import regex
-    LIST_OP_RE = regex.compile(r"(\p{L}+)(\s*[.]\s*|\s+)(add|append|clear|print|shuffle)\s*(.*)")
+    LIST_OP_RE = regex.compile(r"(\p{L}+)(\s*[.]\s*|\s+)(add|append|clear|print|shuffle|[=])\s*(.*)")
     LIST_OP_RE_MULTI = regex.compile(r"(\p{L}+)\s*[=]\s*\n(.*)", regex.MULTILINE | regex.DOTALL)
     if (match := LIST_OP_RE.fullmatch(msg)) or (match_multi := LIST_OP_RE_MULTI.fullmatch(msg)):
         if match:
@@ -171,7 +171,15 @@ async def list_responder(msg: str, send: AsyncSend, *, update, context):
             parameters_lines = [line[1:] if line.startswith("-") else line for line in parameters_lines]
             parameters = list(map(str.strip, parameters_lines))
 
-        if operation in ('add', 'append', 'print', 'clear', 'editmulti', 'shuffle'):
+        if operation in ('=', ):
+            with sqlite3.connect("db.sqlite") as conn:
+                conn.execute('begin transaction')
+                chat_id, user_id = update.effective_chat.id, update.effective_user.id
+                assert_true(parameters.lower() == 'list' or re.match(re.escape('[') + '\s*' + re.escape(']'), parameters), UserError("Only list typed list is implemented"))
+                listsmodule.forcecreatelist.do_it(conn=conn, chat_id=chat_id, name=list_name, list_type=parameters, user_id=user_id)
+                conn.execute('end transaction')
+
+        elif operation in ('add', 'append', 'print', 'clear', 'editmulti', 'shuffle'):
             with sqlite3.connect("db.sqlite") as conn:
                 conn.execute('begin transaction')
 
@@ -1751,6 +1759,12 @@ class listsmodule:
         return bool(my_simple_sql((''' select 1 from List where chat_id=? and lower(name)=lower(?) ''', (chat_id, name,) )))
     
     @staticmethod
+    def get_list_id(*, chat_id, name, conn):
+        my_simple_sql = partial(simple_sql, connection=conn)
+
+        return only_one(my_simple_sql(('''select rowid from List where chat_id=? and lower(name)=lower(?)''', (chat_id, name,))))
+    
+    @staticmethod
     def load(*, chat_id, name, conn):
         my_simple_sql = partial(simple_sql, connection=conn)
 
@@ -1760,6 +1774,18 @@ class listsmodule:
     @staticmethod
     def dump(*, chat_id, name, conn, values):
         listsmodule.editmultilist.do_it(conn=conn, chat_id=chat_id, name=name, values=values)
+
+    class forcecreatelist:
+        @staticmethod
+        def do_it(*, conn, chat_id, name, value, user_id):
+            my_simple_sql = partial(simple_sql, connection=conn)
+
+            if listsmodule.list_exists(conn=conn, chat_id=chat_id, name=name):
+                listsmodule.clearlist.do_it(conn=conn, chat_id=chat_id, name=name)
+                listid = listsmodule.get_list_id(conn=conn, chat_id=chat_id, name=name)
+                my_simple_sql(('delete from ListElement where listid=?', (listid, )))
+                my_simple_sql(('delete into List where rowid=?', (listid, )))
+            my_simple_sql(('insert into List(name, chat_id, source_user_id) VALUES (?,?,?)', (name, chat_id, user_id)))
 
     class createlist(GeneralAction):
         async def run(self):
