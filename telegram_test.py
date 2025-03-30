@@ -176,8 +176,9 @@ async def list_responder(msg: str, send: AsyncSend, *, update, context):
                 conn.execute('begin transaction')
                 chat_id, user_id = update.effective_chat.id, update.effective_user.id
                 assert_true(parameters.lower() == 'list' or re.match(re.escape('[') + '\s*' + re.escape(']'), parameters), UserError("Only list typed list is implemented"))
-                listsmodule.forcecreatelist.do_it(conn=conn, chat_id=chat_id, name=list_name, list_type=parameters, user_id=user_id)
+                listsmodule.forcecreatelist.do_it(conn=conn, chat_id=chat_id, name=list_name, user_id=user_id)
                 conn.execute('end transaction')
+                await send(f"List named {list_name!r} created")
 
         elif operation in ('add', 'append', 'print', 'clear', 'editmulti', 'shuffle'):
             with sqlite3.connect("db.sqlite") as conn:
@@ -1762,7 +1763,8 @@ class listsmodule:
     def get_list_id(*, chat_id, name, conn):
         my_simple_sql = partial(simple_sql, connection=conn)
 
-        return only_one(my_simple_sql(('''select rowid from List where chat_id=? and lower(name)=lower(?)''', (chat_id, name,))))
+        x, = only_one(my_simple_sql(('''select rowid from List where chat_id=? and lower(name)=lower(?)''', (chat_id, name,))))
+        return x
     
     @staticmethod
     def load(*, chat_id, name, conn):
@@ -1777,14 +1779,14 @@ class listsmodule:
 
     class forcecreatelist:
         @staticmethod
-        def do_it(*, conn, chat_id, name, value, user_id):
+        def do_it(*, conn, chat_id, name, user_id):
             my_simple_sql = partial(simple_sql, connection=conn)
 
             if listsmodule.list_exists(conn=conn, chat_id=chat_id, name=name):
                 listsmodule.clearlist.do_it(conn=conn, chat_id=chat_id, name=name)
                 listid = listsmodule.get_list_id(conn=conn, chat_id=chat_id, name=name)
                 my_simple_sql(('delete from ListElement where listid=?', (listid, )))
-                my_simple_sql(('delete into List where rowid=?', (listid, )))
+                my_simple_sql(('delete from List where rowid=?', (listid, )))
             my_simple_sql(('insert into List(name, chat_id, source_user_id) VALUES (?,?,?)', (name, chat_id, user_id)))
 
     class createlist(GeneralAction):
