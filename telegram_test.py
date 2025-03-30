@@ -1777,7 +1777,7 @@ class listsmodule:
                 my_simple_sql(('insert into List(name, chat_id, source_user_id) VALUES (?,?,?)', (name, self.get_chat_id(), self.get_user_id())))
                 conn.execute('end transaction')
             
-            return await self.send('List created')
+            return await self.send(f'List named {name!r} created')
             
 
     class addtolist(GeneralAction):
