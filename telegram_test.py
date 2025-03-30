@@ -175,8 +175,14 @@ async def list_responder(msg: str, send: AsyncSend, *, update, context):
             with sqlite3.connect("db.sqlite") as conn:
                 conn.execute('begin transaction')
                 chat_id, user_id = update.effective_chat.id, update.effective_user.id
-                assert_true(parameters.lower() == 'list' or re.match(re.escape('[') + '\s*' + re.escape(']'), parameters), UserError("Only list typed list is implemented"))
-                listsmodule.forcecreatelist.do_it(conn=conn, chat_id=chat_id, name=list_name, user_id=user_id)
+                if parameters.lower() == 'list' or re.match(re.escape('[') + '\s*' + re.escape(']'), parameters):
+                    type_list = 'list'
+                elif param_match := regex.compile('copy\s*(of|from\s*)(\p{L}+)').fullmatch(parameters):
+                    _, copy_from_name = param_match.groups()
+                    type_list = ('copy', copy_from_name)
+                else:
+                    raise UserError("Operation for list creation not implemented, use = list, for example")
+                listsmodule.forcecreatelist.do_it(conn=conn, chat_id=chat_id, name=list_name, user_id=user_id, type_list=type_list)
                 conn.execute('end transaction')
                 await send(f"List named {list_name!r} created")
 
@@ -1779,7 +1785,7 @@ class listsmodule:
 
     class forcecreatelist:
         @staticmethod
-        def do_it(*, conn, chat_id, name, user_id):
+        def do_it(*, conn, chat_id, name, user_id, type_list: object):
             my_simple_sql = partial(simple_sql, connection=conn)
 
             if listsmodule.list_exists(conn=conn, chat_id=chat_id, name=name):
@@ -1787,7 +1793,22 @@ class listsmodule:
                 listid = listsmodule.get_list_id(conn=conn, chat_id=chat_id, name=name)
                 my_simple_sql(('delete from ListElement where listid=?', (listid, )))
                 my_simple_sql(('delete from List where rowid=?', (listid, )))
+
             my_simple_sql(('insert into List(name, chat_id, source_user_id) VALUES (?,?,?)', (name, chat_id, user_id)))
+
+            match type_list:
+                case 'list':
+                    pass # nothing to do more
+
+                case 'copy', copy_from_name:
+                    if listsmodule.list_exists(conn=conn, chat_id=chat_id, name=copy_from_name):
+                        values = listsmodule.load(conn=conn, chat_id=chat_id, name=copy_from_name)
+                        listsmodule.dump(conn=conn, chat_id=chat_id, name=name, values=values)
+                    else:
+                        raise UserError(f'List {copy_from_name!r} does not exist')  # transaction will rollback
+                
+                case _:
+                    raise AssertionError(f'Internal error on type_list variable: {type_list}')
 
     class createlist(GeneralAction):
         async def run(self):
