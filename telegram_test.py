@@ -154,6 +154,71 @@ async def whereisanswer_responder(msg:str, send: AsyncSend, *, update, context):
     
     await save_thereis(key, value, update=update, context=context)
 
+async def list_responder(msg: str, send: AsyncSend, *, update, context):
+    import regex
+    LIST_OP_RE = regex.compile(r"(\p{L}+)(\s*[.]\s*|\s+)(add|append|clear|print|shuffle|[=])\s*(.*)")
+    LIST_OP_RE_MULTI = regex.compile(r"(\p{L}+)\s*[=]\s*\n(.*)", regex.MULTILINE | regex.DOTALL)
+    if (match := LIST_OP_RE.fullmatch(msg)) or (match_multi := LIST_OP_RE_MULTI.fullmatch(msg)):
+        if match:
+            list_name, _, operation, parameters = match.groups()
+
+        elif match_multi:
+            list_name, parameters_text = match_multi.groups()
+            operation = 'editmulti'
+            parameters_lines = parameters_text.splitlines()
+            if any(map(lambda x:x.startswith("-"), parameters_lines)) and not all(map(lambda x:x.startswith("-"), parameters_lines)):
+                raise UserError("Either use dash notation or don't, not a mix")
+            parameters_lines = [line[1:] if line.startswith("-") else line for line in parameters_lines]
+            parameters = list(map(str.strip, parameters_lines))
+
+        if operation in ('=', ):
+            with sqlite3.connect("db.sqlite") as conn:
+                conn.execute('begin transaction')
+                chat_id, user_id = update.effective_chat.id, update.effective_user.id
+                if parameters.lower() == 'list' or re.match(re.escape('[') + '\s*' + re.escape(']'), parameters):
+                    type_list = 'list'
+                elif param_match := regex.compile('copy\s*(of|from\s*)(\p{L}+)').fullmatch(parameters):
+                    _, copy_from_name = param_match.groups()
+                    type_list = ('copy', copy_from_name)
+                else:
+                    raise UserError("Operation for list creation not implemented, use = list, for example")
+                listsmodule.forcecreatelist.do_it(conn=conn, chat_id=chat_id, name=list_name, user_id=user_id, type_list=type_list)
+                conn.execute('end transaction')
+                await send(f"List named {list_name!r} created")
+
+        elif operation in ('add', 'append', 'print', 'clear', 'editmulti', 'shuffle'):
+            with sqlite3.connect("db.sqlite") as conn:
+                conn.execute('begin transaction')
+
+                chat_id = update.effective_chat.id
+                if listsmodule.list_exists(conn=conn, chat_id=chat_id, name=list_name):
+                    if operation in ('add', 'append'):
+                        listsmodule.addtolist.do_it(conn=conn, name=list_name, chat_id=chat_id, value=parameters)
+                        await send(f"List {list_name!r} edited")
+
+                    elif operation in ('print', ):
+                        await send(listsmodule.printlist.it(conn=conn, chat_id=chat_id, name=list_name))
+
+                    elif operation in ('clear', ):
+                        listsmodule.clearlist.do_it(conn=conn, name=list_name, chat_id=chat_id)
+                        await send(f"List {list_name!r} edited")
+
+                    elif operation in ('editmulti', ):
+                        listsmodule.editmultilist.do_it(conn=conn, name=list_name, chat_id=chat_id, values=parameters)
+                        await send(f"List {list_name!r} edited")
+                    
+                    elif operation in ('shuffle', ):
+                        listsmodule.shuffle.do_it(conn=conn, name=list_name, chat_id=chat_id)
+                        await send(f"List {list_name!r} edited")
+                        
+                    else:
+                        raise AssertionError(f"On operation {operation}")
+                    
+                conn.execute('end transaction')
+            
+        else:
+            return await send(f"I should do the operation {operation!r} on the list named {list_name!r} (not implemeted yet)")
+
 async def eventedit_responder(msg:str, send: AsyncSend, *, update, context):
     reply = get_reply(update.message)
     assert_true(reply and reply.text, DoNotAnswer)
@@ -312,6 +377,7 @@ RESPONDERS = (
     (sharemoney_responder, 'sharemoney', 'off'),
     (whereisanswer_responder, 'whereisanswer', 'on'),
     (eventedit_responder, 'eventedit', 'on'),
+    (list_responder, 'list', 'off'),
 )
 
 async def on_message(update: Update, context: CallbackContext):
@@ -1643,6 +1709,12 @@ class GeneralAction(ABC):
     async def print_usage(self):
         await self.send("Arguments not correct, please read the manual")
 
+    def get_chat_id(self):
+        return self.update.effective_chat.id
+    
+    def get_user_id(self):
+        return self.update.effective_user.id
+
 class events(GeneralAction):
     class DuplicatesUsageError(UsageError):
         pass
@@ -1685,7 +1757,176 @@ class events(GeneralAction):
                 return await self.send("Usage:\n/events removeduplicates [when]")
             case _:
                 return await self.send("Usage:\n/events add when [time] [what]\n/events removeduplicates [when]\n")
+
+class listsmodule:
+    @staticmethod
+    def list_exists(*, chat_id, name, conn):
+        my_simple_sql = partial(simple_sql, connection=conn)
+
+        return bool(my_simple_sql((''' select 1 from List where chat_id=? and lower(name)=lower(?) ''', (chat_id, name,) )))
+    
+    @staticmethod
+    def get_list_id(*, chat_id, name, conn):
+        my_simple_sql = partial(simple_sql, connection=conn)
+
+        x, = only_one(my_simple_sql(('''select rowid from List where chat_id=? and lower(name)=lower(?)''', (chat_id, name,))))
+        return x
+    
+    @staticmethod
+    def load(*, chat_id, name, conn):
+        my_simple_sql = partial(simple_sql, connection=conn)
+
+        listid, = only_one(my_simple_sql(('''select rowid from List where chat_id=? and lower(name)=lower(?)''', (chat_id, name,))))
+        return [x[0] for x in my_simple_sql(('''select value from ListElement where listid=?''', (listid, )))]
+    
+    @staticmethod
+    def dump(*, chat_id, name, conn, values):
+        listsmodule.editmultilist.do_it(conn=conn, chat_id=chat_id, name=name, values=values)
+
+    class forcecreatelist:
+        @staticmethod
+        def do_it(*, conn, chat_id, name, user_id, type_list: object):
+            my_simple_sql = partial(simple_sql, connection=conn)
+
+            if listsmodule.list_exists(conn=conn, chat_id=chat_id, name=name):
+                listsmodule.clearlist.do_it(conn=conn, chat_id=chat_id, name=name)
+                listid = listsmodule.get_list_id(conn=conn, chat_id=chat_id, name=name)
+                my_simple_sql(('delete from ListElement where listid=?', (listid, )))
+                my_simple_sql(('delete from List where rowid=?', (listid, )))
+
+            my_simple_sql(('insert into List(name, chat_id, source_user_id) VALUES (?,?,?)', (name, chat_id, user_id)))
+
+            match type_list:
+                case 'list':
+                    pass # nothing to do more
+
+                case 'copy', copy_from_name:
+                    if listsmodule.list_exists(conn=conn, chat_id=chat_id, name=copy_from_name):
+                        values = listsmodule.load(conn=conn, chat_id=chat_id, name=copy_from_name)
+                        listsmodule.dump(conn=conn, chat_id=chat_id, name=name, values=values)
+                    else:
+                        raise UserError(f'List {copy_from_name!r} does not exist')  # transaction will rollback
+                
+                case _:
+                    raise AssertionError(f'Internal error on type_list variable: {type_list}')
+
+    class createlist(GeneralAction):
+        async def run(self):
+            match len(self.Args):
+                case 0:
+                    name = "list"
+                case 1:
+                    name = self.Args[0]
+                case _:
+                    raise UsageError
+                
+            import regex 
+            NAME = regex.compile(r"\p{L}+")
+            assert_true(NAME.fullmatch(name), UserError("Name should be made of letters"))
+
+            with sqlite3.connect("db.sqlite") as conn:
+                my_simple_sql = partial(simple_sql, connection=conn)
+                conn.execute('begin transaction')
+                if my_simple_sql(('''select 1 from List where chat_id=? and lower(name)=lower(?)''', (self.get_chat_id(), name,))):
+                    return await self.send(f'List {name!r} already exist')
+                my_simple_sql(('insert into List(name, chat_id, source_user_id) VALUES (?,?,?)', (name, self.get_chat_id(), self.get_user_id())))
+                conn.execute('end transaction')
+            
+            return await self.send(f'List named {name!r} created')
         
+        async def print_usage(self):
+            return await self.send("/createlist\n/createlist name")
+
+    class addtolist(GeneralAction):
+        @staticmethod
+        def do_it(*, conn, chat_id, name, value):
+            my_simple_sql = partial(simple_sql, connection=conn)
+
+            listid, = only_one(my_simple_sql(('''select rowid from List where chat_id=? and lower(name)=lower(?)''', (chat_id, name,))))
+            my_simple_sql((''' insert into ListElement(listid, value) values (?,?)''', (listid, value) ))
+
+        async def run(self):
+            with sqlite3.connect("db.sqlite") as conn:
+                my_simple_sql = partial(simple_sql, connection=conn)
+                conn.execute('begin transaction')
+
+                match self.Args[0]:
+                    case "":
+                        name = "list"
+                        value = ' '.join(self.Args[0:])
+                    case _ as x:
+                        if my_simple_sql((''' select 1 from List where chat_id=? and lower(name)=lower(?) ''', (self.get_chat_id(), x,) )):
+                            name = x 
+                            value = ' '.join(self.Args[1:])
+                        else:
+                            name = 'list'
+                            value = ' '.join(self.Args[0:])
+                
+                listsmodule.addtolist.do_it(name=name, chat_id=self.get_chat_id(), value=value, conn=conn)
+                conn.execute('end transaction')
+
+            return await self.send(f'''List named {name!r} edited''')        
+
+    class removefromlist(GeneralAction):
+        async def run(self):
+            await self.send("To be implemented")
+
+    class clearlist:
+        @staticmethod
+        def do_it(*, conn, chat_id, name):
+            my_simple_sql = partial(simple_sql, connection=conn)
+            listid, = only_one(my_simple_sql(('''select rowid from List where chat_id=? and lower(name)=lower(?)''', (chat_id, name,))))
+            my_simple_sql(('''delete from ListElement where listid=?''', (listid, )))
+
+    class editmultilist:
+        @staticmethod
+        def do_it(*, conn, chat_id, name, values):
+            # 1: clear (in transaction)
+            listsmodule.clearlist.do_it(conn=conn, chat_id=chat_id, name=name)
+            # 2: set (in transaction)
+            my_simple_sql = partial(simple_sql, connection=conn)
+            listid, = only_one(my_simple_sql(('''select rowid from List where chat_id=? and lower(name)=lower(?)''', (chat_id, name,))))
+            for value in values:
+                my_simple_sql(('''insert into ListElement(listid, value) values (?,?)''', (listid, value)))
+
+    class shuffle:
+        @staticmethod
+        def do_it(*, conn, chat_id, name):
+            # 1: load
+            values = listsmodule.load(conn=conn, chat_id=chat_id, name=name)
+            
+            import random
+            random.shuffle(values)
+
+            listsmodule.dump(conn=conn, chat_id=chat_id, name=name, values=values)
+
+    class printlist(GeneralAction):
+        @staticmethod
+        def it(*, conn, chat_id, name):
+            my_simple_sql = partial(simple_sql, connection=conn)
+
+            listid, = only_one(my_simple_sql(('''select rowid from List where chat_id=? and lower(name)=lower(?)''', (chat_id, name,))))
+            result_list = [x[0] for x in simple_sql((''' select value from ListElement where listid=?''', (listid, ) ))]
+
+            return '\n'.join(map('- {}'.format, result_list)) if result_list else '/'
+            
+        async def run(self):
+            with sqlite3.connect("db.sqlite") as conn:
+                my_simple_sql = partial(simple_sql, connection=conn)
+                conn.execute('begin transaction')
+
+                match self.Args[0]:
+                    case "":
+                        name = "list"
+                    case _ as x:
+                        if my_simple_sql((''' select 1 from List where chat_id=? and lower(name)=lower(?) ''', (self.get_chat_id(), x,) )):
+                            name = x
+                        else:
+                            name = 'list'
+                
+                await self.send(listsmodule.printlist.it(conn=conn, chat_id=self.get_chat_id(), name=name))
+                conn.execute('end transaction')
+
 def list_del(li, i):
     copy = list(li)
     del copy[i]
@@ -2795,6 +3036,13 @@ def migration12():
         conn.execute('alter table EventFollow add column a_thread_id DEFAULT \'\'')
         conn.execute('end transaction')
 
+def migration13():
+    with sqlite3.connect('db.sqlite') as conn:
+        conn.execute('begin transaction')
+        conn.execute('create table List(name, chat_id, source_user_id)')
+        conn.execute('create table ListElement(listid, value)')
+        conn.execute('end transaction')
+
 def get_latest_euro_rates_from_api() -> json:
     import requests
     from telegram_settings_local import FIXER_TOKEN
@@ -2970,10 +3218,14 @@ async def listdebts(update, context):
 async def help(update, context):
     send = make_send(update, context)
 
-    fmt = ('{} - {}' if '--botfather' in context.args else
+    bot_father = '--botfather' in context.args
+
+    fmt = ('{} - {}' if bot_father else
            '/{} {}')
     
-    return await send('\n'.join(fmt.format(command, COMMAND_DESC.get(command, command)) for command in COMMAND_LIST))
+    li = ordered_set_remove(COMMAND_LIST, BOT_FATHER_HIDDEN_COMMANDS) if bot_father else ordered_set_union(COMMAND_LIST, BOT_FATHER_HIDDEN_COMMANDS)
+    
+    return await send('\n'.join(fmt.format(command, COMMAND_DESC.get(command, command)) for command in li))
 
 class UserError(ValueError):
     pass
@@ -3145,7 +3397,30 @@ COMMAND_DESC = {
     "sleep": "Record personal sleep cycle and make graphs", 
     "sharemoney": "Manage money between users (shared bank account, add a debt)",
     "listdebts": "List debts between users (sharemoney)",
+
+    'createlist': 'Create a list (of strings, by default)',
+    'addtolist': 'Add to the end of a list',
+    'appendtolist': 'Alias for addtolist',
+    'removefromlist': 'Remove the first element from a list or print error',
+    'delfromlist': 'Alias for delfromlist',
+    'deletefromlist': 'Alias for removefromlist',
+    'printlist': 'Print a list using dashes',
 }
+
+import itertools
+
+def ordered_set_remove(A, B):
+    return (''.join if isinstance(A, str) else type(A))(x for x in A if x not in B)
+
+def ordered_set_union(A, B):
+    return (''.join if isinstance(A, str) else type(A))(x for x in itertools.chain(A, B) if x in A and x in B)
+
+BOT_FATHER_HIDDEN_COMMANDS = (
+    'createlist',
+    'addtolist',
+    'removefromlist', 'delfromlist', 'deletefromlist',
+    'printlist',
+)
 
 COMMAND_LIST = (
     'caps',
@@ -3162,7 +3437,13 @@ COMMAND_LIST = (
     'uniline', 'nuniline',
     #'sleep',
     'sharemoney', 'listdebts',
+    #
+    'createlist',
+    'addtolist',
+    'removefromlist', 'delfromlist', 'deletefromlist',
+    'printlist',
 )
+
 
 if __name__ == '__main__':
     application = ApplicationBuilder().token(TOKEN).build()
@@ -3254,6 +3535,14 @@ if __name__ == '__main__':
     application.add_handler(CommandHandler('timesince', timesince))
     #application.add_handler(CommandHandler('sleep', sleep_))
     application.add_handler(CommandHandler('listdebts', listdebts))
+
+    application.add_handler(CommandHandler('createlist', listsmodule.createlist()))
+    application.add_handler(CommandHandler('addtolist', listsmodule.addtolist()))
+    application.add_handler(CommandHandler('appendtolist', listsmodule.addtolist()))
+    application.add_handler(CommandHandler('removefromlist', listsmodule.removefromlist()))
+    application.add_handler(CommandHandler('delfromlist', listsmodule.removefromlist()))
+    application.add_handler(CommandHandler('deletefromlist', listsmodule.removefromlist()))
+    application.add_handler(CommandHandler('printlist', listsmodule.printlist()))
 
     application.add_error_handler(general_error_callback)
     
