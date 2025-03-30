@@ -156,11 +156,22 @@ async def whereisanswer_responder(msg:str, send: AsyncSend, *, update, context):
 
 async def list_responder(msg: str, send: AsyncSend, *, update, context):
     import regex
-    LIST_OP_RE = regex.compile(r"(\p{L}+)(\s*[.]\s*|\s+)(add|append|clear|print)\s*(.*)")
-    if match := LIST_OP_RE.fullmatch(msg):
-        list_name, _, operation, parameters = match.groups()
+    LIST_OP_RE = regex.compile(r"(\p{L}+)(\s*[.]\s*|\s+)(add|append|clear|print|shuffle)\s*(.*)")
+    LIST_OP_RE_MULTI = regex.compile(r"(\p{L}+)\s*[=]\s*\n(.*)", regex.MULTILINE | regex.DOTALL)
+    if (match := LIST_OP_RE.fullmatch(msg)) or (match_multi := LIST_OP_RE_MULTI.fullmatch(msg)):
+        if match:
+            list_name, _, operation, parameters = match.groups()
 
-        if operation in ('add', 'append', 'print'):
+        elif match_multi:
+            list_name, parameters_text = match_multi.groups()
+            operation = 'editmulti'
+            parameters_lines = parameters_text.splitlines()
+            if any(map("-".startswith, parameters_lines)) and not all(map("-".startswith, parameters_lines)):
+                raise UserError("Either use dash notation or don't, not a mix")
+            parameters_lines = [line[1:] if line.startswith("-") else line for line in parameters_lines]
+            parameters = list(map(str.strip, parameters_lines))
+
+        if operation in ('add', 'append', 'print', 'clear', 'editmulti', 'shuffle'):
             with sqlite3.connect("db.sqlite") as conn:
                 conn.execute('begin transaction')
 
@@ -172,6 +183,18 @@ async def list_responder(msg: str, send: AsyncSend, *, update, context):
 
                     elif operation in ('print', ):
                         await send(listsmodule.printlist.it(conn=conn, chat_id=chat_id, name=list_name))
+
+                    elif operation in ('clear', ):
+                        listsmodule.clearlist.do_it(conn=conn, name=list_name, chat_id=chat_id)
+                        await send(f"List {list_name!r} edited")
+
+                    elif operation in ('editmulti', ):
+                        listsmodule.editmultilist.do_it(conn=conn, name=list_name, chat_id=chat_id, values=parameters)
+                        await send(f"List {list_name!r} edited")
+                    
+                    elif operation in ('shuffle', ):
+                        listsmodule.shuffle.do_it(conn=conn, name=list_name, chat_id=chat_id)
+                        await send(f"List {list_name!r} edited")
                         
                     else:
                         raise AssertionError(f"On operation {operation}")
@@ -1726,6 +1749,17 @@ class listsmodule:
         my_simple_sql = partial(simple_sql, connection=conn)
 
         return bool(my_simple_sql((''' select 1 from List where chat_id=? and lower(name)=lower(?) ''', (chat_id, name,) )))
+    
+    @staticmethod
+    def load(*, chat_id, name, conn):
+        my_simple_sql = partial(simple_sql, connection=conn)
+
+        listid, = only_one(my_simple_sql(('''select rowid from List where chat_id=? and lower(name)=lower(?)''', (chat_id, name,))))
+        return [x[0] for x in my_simple_sql(('''select value from ListElement where listid=?''', (listid, )))]
+    
+    @staticmethod
+    def dump(*, chat_id, name, conn, values):
+        listsmodule.editmultilist.do_it(conn=conn, chat_id=chat_id, name=name, values=values)
 
     class createlist(GeneralAction):
         async def run(self):
@@ -1779,6 +1813,35 @@ class listsmodule:
     class removefromlist(GeneralAction):
         async def run(self):
             await self.send("To be implemented")
+
+    class clearlist:
+        @staticmethod
+        def do_it(*, conn, chat_id, name):
+            my_simple_sql = partial(simple_sql, connection=conn)
+            listid, = only_one(my_simple_sql(('''select rowid from List where chat_id=? and lower(name)=lower(?)''', (chat_id, name,))))
+            my_simple_sql(('''delete from ListElement where listid=?''', (listid, )))
+
+    class editmultilist:
+        @staticmethod
+        def do_it(*, conn, chat_id, name, values):
+            # 1: clear (in transaction)
+            listsmodule.clearlist.do_it(conn=conn, chat_id=chat_id, name=name)
+            # 2: set (in transaction)
+            my_simple_sql = partial(simple_sql, connection=conn)
+            listid, = only_one(my_simple_sql(('''select rowid from List where chat_id=? and lower(name)=lower(?)''', (chat_id, name,))))
+            for value in values:
+                my_simple_sql(('''insert into ListElement(listid, value) values (?,?)''', (listid, value)))
+
+    class shuffle:
+        @staticmethod
+        def do_it(*, conn, chat_id, name):
+            # 1: load
+            values = listsmodule.load(conn=conn, chat_id=chat_id, name=name)
+            
+            import random
+            random.shuffle(values)
+
+            listsmodule.dump(conn=conn, chat_id=chat_id, name=name, values=values)
 
     class printlist(GeneralAction):
         @staticmethod
