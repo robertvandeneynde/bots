@@ -177,8 +177,8 @@ async def list_responder(msg: str, send: AsyncSend, *, update, context):
                 chat_id, user_id = update.effective_chat.id, update.effective_user.id
                 if parameters.lower() == 'list' or re.match(re.escape('[') + '\s*' + re.escape(']'), parameters):
                     type_list = 'list'
-                elif param_match := regex.compile('copy\s*(of|from\s*)(\p{L}+)').fullmatch(parameters):
-                    _, copy_from_name = param_match.groups()
+                elif param_match := regex.compile('copy\s*((of|from)\s*)(\p{L}+)').fullmatch(parameters):
+                    _, _, copy_from_name = param_match.groups()
                     type_list = ('copy', copy_from_name)
                 else:
                     raise UserError("Operation for list creation not implemented, use = list, for example")
