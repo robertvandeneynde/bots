@@ -1845,6 +1845,9 @@ class listsmodule:
             listid, = only_one(my_simple_sql(('''select rowid from List where chat_id=? and lower(name)=lower(?)''', (chat_id, name,))))
             my_simple_sql((''' insert into ListElement(listid, value) values (?,?)''', (listid, value) ))
 
+        async def print_usage(self):
+            return await self.send("Usage:\n/addtolist value\n/addtolist listname value")
+        
         async def run(self):
             with sqlite3.connect("db.sqlite") as conn:
                 my_simple_sql = partial(simple_sql, connection=conn)
@@ -1861,6 +1864,9 @@ class listsmodule:
                         else:
                             name = 'list'
                             value = ' '.join(self.Args[0:])
+
+                if not value:
+                    raise UsageError
                 
                 listsmodule.addtolist.do_it(name=name, chat_id=self.get_chat_id(), value=value, conn=conn)
                 conn.execute('end transaction')
