@@ -1763,11 +1763,17 @@ class listsmodule:
 
     class createlist(GeneralAction):
         async def run(self):
-            match self.Args[0]:
-                case "":
+            match len(self.Args):
+                case 0:
                     name = "list"
-                case _ as x:
-                    name = x
+                case 1:
+                    name = self.Args[0]
+                case _:
+                    raise UsageError
+                
+            import regex 
+            NAME = regex.compile(r"\p{L}+")
+            assert_true(NAME.fullmatch(name), UserError("Name should be made of letters"))
 
             with sqlite3.connect("db.sqlite") as conn:
                 my_simple_sql = partial(simple_sql, connection=conn)
@@ -1778,7 +1784,9 @@ class listsmodule:
                 conn.execute('end transaction')
             
             return await self.send(f'List named {name!r} created')
-            
+        
+        async def print_usage(self):
+            return await self.send("/createlist\n/createlist name")
 
     class addtolist(GeneralAction):
         @staticmethod
