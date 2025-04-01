@@ -249,6 +249,9 @@ async def eventedit_responder(msg:str, send: AsyncSend, *, update, context):
         before = DatetimeDbSerializer.strptime(event_db['date'])
         after = before + delta
 
+        read_chat_settings = make_read_chat_settings(update, context)
+        do_event_admin_check('edit', setting=read_chat_settings('event.admins'), user_id=update.effective_user.id)
+
         simple_sql(('''UPDATE Events SET date=? where rowid=?''', (DatetimeDbSerializer.strftime(after), event_db['rowid'], )))
     
     else:
@@ -1609,7 +1612,8 @@ class InteractiveAddEvent:
         
         await post_event(update, context, name=name, datetime=datetime, time=time, date_str=date_str, chat_timezones=chat_timezones, tz=tz, chat_id=chat_id, datetime_utc=datetime_utc)
 
-def do_event_admin_check(type: Literal['add', 'del'], *, setting, user_id):
+def do_event_admin_check(type: Literal['add', 'del', 'edit', 'list'], *, setting, user_id):
+    assert type in ('add', 'del', 'edit', 'list')
     if setting:
         # do an admin check
         if user_id in (admin_ids := set(map(lambda x:int(x.user_id), event_admins := setting))):
@@ -1783,6 +1787,8 @@ class events(GeneralAction):
             if (events[i]['date'], events[i]['name']) == (events[i+1]['date'], events[i+1]['name']):
                 to_delete.append(str(events[i]['rowid']))
         
+        do_event_admin_check('del', setting=self.chat_settings('event.admins'), user_id=self.get_user_id())
+
         result = simple_sql_modify(('''DELETE FROM Events where rowid IN ({qmarks})'''.format(qmarks=','.join('?' * len(to_delete))), (*to_delete, ),))
 
         assert_true(result['rowcount'] == len(to_delete), ValueError("Wrong deletion"))
@@ -2629,6 +2635,8 @@ async def db_delete_event(update, context, send, *, chat_id, event_id, tz):
         infos = None
 
     date_tz = None if not(infos and infos.get('date') and tz) else DatetimeDbSerializer.strftime(DatetimeDbSerializer.strptime(infos.get('date')).replace(tzinfo=UTC).astimezone(tz))
+
+    do_event_admin_check('del', setting=read_chat_settings('event.admins'), user_id=update.effective_user.id)
 
     simple_sql(('delete from Events where chat_id = ? and rowid = ?', (chat_id, event_id)))
     
