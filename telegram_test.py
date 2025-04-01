@@ -2850,6 +2850,9 @@ class EventAdmin:
         while True:
             S = set(self.permissions)
 
+            if {'0'} <= S:
+                S = set()
+
             if {'add', 'del'} <= S:
                 S |= {"edit"}
             
