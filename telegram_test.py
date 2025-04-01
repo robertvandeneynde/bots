@@ -2827,7 +2827,7 @@ def is_timezone(x: str) -> bool:
 class EventAdmin:
     user_id: int
     local_name: str
-    permissions: list[Literal["add", "del", "edit", "list", "*"]]
+    permissions: list[Literal["add", "del", "edit", "list"]]
     # if add & del → edit
     # if add | del → list
     # if "*" → add, del, edit, list
@@ -2844,6 +2844,8 @@ class EventAdmin:
         
         self.add_implicit_permissions()
 
+        assert set(self.permissions) <= {'add', 'del', 'edit', 'list'}, str(self.permissions)
+
         if self.unknown and self.permissions is None:
             self.permissions = []
 
@@ -2859,6 +2861,7 @@ class EventAdmin:
 
             if {'*'} <= S:
                 S |= {"add", "del", "edit", "list"}
+                S -= {'*'}
 
             if set(self.permissions) == S:
                 break
