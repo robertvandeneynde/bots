@@ -1742,7 +1742,7 @@ class iameventadmin(GeneralAction):
     async def run(self):
         if self.Args:
             raise UsageError
-        await self.send("Use: /chatsettings event.admins {}\nOr: /chatsettings event.admins += {}".format(self.get_user_id()))
+        await self.send("Use: /chatsettings event.admins {0}\nOr: /chatsettings event.admins += {0}".format(self.get_user_id()))
 iameventadmin = iameventadmin()
 
 class events(GeneralAction):
@@ -2841,8 +2841,11 @@ class EventAdmin:
 
         if self.unknown and self.user_id != 0:
             raise ValueError
-
+        
         self.add_implicit_permissions()
+
+        if self.unknown and self.permissions is None:
+            self.permissions = []
 
     def add_implicit_permissions(self):
         while True:
