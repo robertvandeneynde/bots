@@ -1609,13 +1609,31 @@ class InteractiveAddEvent:
         
         await post_event(update, context, name=name, datetime=datetime, time=time, date_str=date_str, chat_timezones=chat_timezones, tz=tz, chat_id=chat_id, datetime_utc=datetime_utc)
 
+def do_event_admin_check(type: Literal['add', 'del'], *, setting, user_id):
+    if setting:
+        # do an admin check
+        if user_id in (admin_ids := set(map(lambda x:int(x.user_id), event_admins := setting))):
+            if type in (event_admin := only_one(filter(lambda x:x.user_id == user_id, event_admins))).permissions:
+                pass
+            else:
+                raise EventAdminError
+        elif 0 in admin_ids:
+            if type in (event_admin := only_one(filter(lambda x:x.user_id == 0, event_admins))).permissions:
+                pass
+            else:
+                raise EventAdminError
+        else:
+            raise EventAdminError
+    else:
+        # no setting set = everyone is admin
+        pass
 
 import sqlite3
 async def add_event(update: Update, context: CallbackContext):
     send = make_send(update, context)
     read_chat_settings = make_read_chat_settings(update, context)
     read_my_settings = make_read_my_settings(update, context)
-    
+
     if not context.args:
         if reply := get_reply(update.message):
             infos_event = addevent_analyse(update, context)
@@ -1645,6 +1663,9 @@ async def add_event(update: Update, context: CallbackContext):
     date_str, time, name, date, date_end, datetime, datetime_utc, tz = parse_datetime_point(update, context, when_infos=when_infos, what_infos=what_infos)
     
     chat_timezones = read_chat_settings("event.timezones")
+
+    do_event_admin_check('add', setting=read_chat_settings('event.admins'), user_id=update.effective_user.id)
+
     add_event_to_db(chat_timezones=chat_timezones, tz=tz, datetime_utc=datetime_utc, name=name, chat_id=chat_id, source_user_id=source_user_id)
     
     await post_event(update, context, name=name, datetime=datetime, time=time, date_str=date_str, chat_timezones=chat_timezones, tz=tz, chat_id=chat_id, datetime_utc=datetime_utc)
@@ -1724,6 +1745,13 @@ class GeneralAction(ABC):
     
     def get_user_id(self):
         return self.update.effective_user.id
+
+class iameventadmin(GeneralAction):
+    async def run(self):
+        if self.Args:
+            raise UsageError
+        await self.send("Use: /chatsettings event.admins {0}\nOr: /chatsettings event.admins += {0}".format(self.get_user_id()))
+iameventadmin = iameventadmin()
 
 class events(GeneralAction):
     class DuplicatesUsageError(UsageError):
@@ -2330,6 +2358,8 @@ async def next_or_last_event(update: Update, context: CallbackContext, n:int):
     send = make_send(update, context)
     read_chat_settings = make_read_chat_settings(update, context)
 
+    do_event_admin_check('list', setting=read_chat_settings('event.admins'), user_id=update.effective_user.id)
+
     datetime_str = None
     skip_n = None
     if len(context.args) == 0:
@@ -2436,6 +2466,9 @@ async def list_days_or_today(update: Update, context: CallbackContext, mode: Lit
     assert mode in ('list', 'today')
 
     send = make_send(update, context)
+    read_chat_settings = make_read_chat_settings(update, context)
+
+    do_event_admin_check('list', setting=read_chat_settings('event.admins'), user_id=update.effective_user.id)
     
     datetime_range = parse_datetime_range(update, args=context.args if mode == 'list' else ('today',) if mode == 'today' else raise_error(AssertionError('mode must be a correct value')))
     beg, end, tz, when = (datetime_range[x] for x in ('beg_utc', 'end_utc', 'tz', 'when'))
@@ -2458,7 +2491,6 @@ async def list_days_or_today(update: Update, context: CallbackContext, mode: Lit
         event_name = event['name']
         days[date.timetuple()[:3]].append((date, event_name))
 
-    read_chat_settings = make_read_chat_settings(update, context)
     display_time_marker = False if mode == 'list' else do_unless_setting_off(read_chat_settings('event.listtoday.display_time_marker'))
 
     now_tz = datetime.now().astimezone(tz)
@@ -2491,7 +2523,10 @@ async def list_today(update: Update, context: CallbackContext):
 
 async def list_events(update: Update, context: CallbackContext):
     send = make_send(update, context)
-    
+    read_chat_settings = make_read_chat_settings(update, context)
+
+    do_event_admin_check('list', setting=read_chat_settings('event.admins'), user_id=update.effective_user.id)
+
     datetime_range = parse_datetime_range(update, args=context.args)
     beg, end, tz, when = (datetime_range[x] for x in ('beg_utc', 'end_utc', 'tz', 'when'))
 
@@ -2508,7 +2543,6 @@ async def list_events(update: Update, context: CallbackContext):
                     ORDER BY date""",
                 (strftime(beg), strftime(end), chat_id))
         
-        read_chat_settings = make_read_chat_settings(update, context)
         chat_timezones = read_chat_settings("event.timezones")
         msg = '\n'.join(f"- {DatetimeText.days_english[date.weekday()]} {date:%d/%m}: {event}" if not has_hour else 
                         f"- {DatetimeText.days_english[date.weekday()]} {date:%d/%m %H:%M}: {event}"
@@ -2524,6 +2558,9 @@ async def list_events(update: Update, context: CallbackContext):
 
 async def delevent(update, context):
     send = make_send(update, context)
+    read_chat_settings = make_read_chat_settings(update, context)
+
+    do_event_admin_check('del', setting=read_chat_settings('event.admins'), user_id=update.effective_user.id)
 
     if reply := get_reply(update.message):
         return await send("Not implemented yet but will allow to deleent an event by responding to it.")
@@ -2681,10 +2718,15 @@ def set_my_timezone(user_id, tz:ZoneInfo):
             raise ValueError("Unique constraint failed: Multiple timezone for user {}".format(user_id))
         conn.execute("end transaction")
 
-def set_settings(*, id, key, value_raw:any, settings_type:Literal['chat'] | Literal['user']):
+def set_settings(*, id, key, value_raw:any, settings_type:Literal['chat'] | Literal['user'], list_type_and_extend:bool):
     conversion = CONVERSION_SETTINGS[settings_type][key]['to_db']
 
     value: any = conversion(value_raw)
+
+    if list_type_and_extend:
+        from_db = read_raw_settings(key=key, id=id, settings_type=settings_type)
+        value = json.dumps(json.loads(from_db) + json.loads(value))
+
     table = SettingsInfo.TABLES[settings_type]
     field_id = SettingsInfo.FIELDS[settings_type]
     query_read = (f"""SELECT value FROM {table} WHERE {field_id}=? and key=?""", (id, key))
@@ -2764,6 +2806,7 @@ ACCEPTED_SETTINGS_USER = (
 ACCEPTED_SETTINGS_CHAT = (
     'money.currencies',
     'event.timezones',
+    'event.admins',
     'event.addevent.help_file',
     'event.addevent.display_file',
     'event.addevent.display_forwarded_infos',
@@ -2788,8 +2831,97 @@ def is_timezone(x: str) -> bool:
     except ZoneInfoNotFoundError:
         return False
 
+@dataclass
+class EventAdmin:
+    user_id: int | 0
+    local_name: str
+    permissions: list[Literal["add", "del", "edit", "list"]]
+    # if add & del → edit
+    # if add | del → list
+    # if "*" → add, del, edit, list
+    unknown = False
+
+    def __init__(self, user_id:int | 0, local_name='', permissions=None):
+        self.user_id = user_id
+        self.local_name = local_name or ''
+        self.permissions = permissions if permissions is not None else ['*']
+
+        self.add_implicit_permissions()
+
+        assert set(self.permissions) <= {'add', 'del', 'edit', 'list'}, str(self.permissions)
+
+    def add_implicit_permissions(self):
+        while True:
+            S = set(self.permissions)
+
+            if {'0'} <= S:
+                S = set()
+
+            if {'add', 'del'} <= S:
+                S |= {"edit"}
+            
+            if {'add', 'del'} <= S:
+                S |= {"list"}
+
+            if {'*'} <= S:
+                S |= {"add", "del", "edit", "list"}
+                S -= {'*'}
+
+            if set(self.permissions) == S:
+                break
+
+            self.permissions = sorted(S)
+            
+        return self
+
+    def to_json(self):
+        J = {
+            'user_id': int(self.user_id),
+            'local_name': str(self.local_name) if self.local_name else '',
+            'permissions': list(map(str, self.permissions)),
+            'unknown': self.unknown,
+        }
+        
+        if not J.get('local_name'):
+            del J['local_name']
+        
+        if J['unknown'] == False:
+            del J['unknown']
+        
+        if J.get('permissions') == sorted(('*', 'list', 'add', 'del', 'edit')) or J.get('permissions') == sorted(('list', 'add', 'del', 'edit')):
+            J['permissions'] = ['*']
+
+        if J['permissions'] == []:
+            J['permissions'] = ['0']
+        
+        if J['permissions'] == ['*'] and not J.get('local_name'):
+            return int(J['user_id'])
+        else:
+            return J
+
+    @staticmethod
+    def from_json(J):
+        if isinstance(J, int) and J == 0:
+            return EventAdmin(user_id=0)
+        
+        if isinstance(J, int) or isinstance(J, str) and J.isdecimal():
+            return EventAdmin(user_id=J)
+        
+        return EventAdmin(**{
+            'user_id': int(J['user_id']),
+            'local_name': str(J['local_name']) if J.get('local_name') else '',
+            'permissions': list(map(str, J['permissions'])),
+        })
+
 def CONVERSION_SETTINGS_BUILDER():
     import json
+    # serializers helper
+    def list_of(obj):
+        return {
+            'from_db': lambda s: list(map(obj['from_db'], json.loads(s))),
+            'to_db': lambda L: json.dumps(list(map(obj['to_db'], L))),
+        }
+    
     # serializers
     default_serializer = {
         'from_db': lambda x:x,
@@ -2812,6 +2944,14 @@ def CONVERSION_SETTINGS_BUILDER():
         'from_db': lambda s: list(map(str.upper, json.loads(s))),
         'to_db': lambda L: json.dumps(list(map(str.upper, L)))
     }
+    list_of_event_admins = list_of({
+        'from_db': EventAdmin.from_json,
+        'to_db': lambda x: (
+            EventAdmin(user_id=int(x), permissions=['0']) if x.isdecimal() and int(x) == 0 else
+            EventAdmin(user_id=int(x), permissions=['*']) if x.isdecimal() else
+            EventAdmin(user_id=int(x.split(':')[0]), permissions=x.split(':')[1].split(",")) if ':' in x else raise_error(ValueError)
+        ).to_json(),
+    })
     on_off_serializer = {
         'from_db': lambda x: x != 'off',
         'to_db': lambda x: assert_true(isinstance(x, str) and x.lower() in ('on', 'off', 'true', 'false', 'yes', 'no'), UserError(f"{x} must be on/off"))
@@ -2821,6 +2961,7 @@ def CONVERSION_SETTINGS_BUILDER():
     mapping_chat = {
         'money.currencies': list_of_currencies_serializer,
         'event.timezones': list_of_timezone_serializer,
+        'event.admins': list_of_event_admins,
         'event.addevent.display_file': on_off_serializer,
         'event.delevent.display': on_off_serializer,
         'event.addevent.display_forwarded_infos': on_off_serializer,
@@ -2924,7 +3065,14 @@ async def settings_command(update: Update, context: CallbackContext, *, command_
     if action == "set" and len(rest) == 0:
         raise UserError(f"Usage: /{command_name} set command.key value")
 
-    if key in ('money.currencies', 'event.timezones'):
+    list_type_and_extend = False
+    if list_type := key in ('money.currencies', 'event.timezones', 'event.admins'):
+        if InfiniteEmptyList(rest)[0] == '+=':
+            rest = rest[1:]
+            list_type_and_extend = True
+        else:
+            list_type_and_extend = False
+
         value = ([] if list(rest) in [['()'], ['[]']] else
                  None if not rest else
                  list(rest))
@@ -2940,17 +3088,19 @@ async def settings_command(update: Update, context: CallbackContext, *, command_
         id = update.effective_chat.id
     else:
         raise ValueError(f'Invalid settings_type: {settings_type}')
-
+    
     if value is None:
         # read
         value = read_raw_settings(id=id, key=key, settings_type=settings_type)
+
         await send(f'Settings: {key} = {value}' if value is not None else
                     f'No settings for {key!r}')
     
     else:
         # write value
-        set_settings(value_raw=value, id=id, key=key, settings_type=settings_type)
-        await send(f"Settings: {key} = {value}")
+        set_settings(value_raw=value, id=id, key=key, settings_type=settings_type, list_type_and_extend=list_type_and_extend)
+        op = "+=" if list_type_and_extend else "="
+        await send(f"Settings: {key} {op} {value}")
 
 async def delsettings_command(update:Update, context: CallbackContext, *, key: str, accepted_settings:list[str], settings_type:Literal['chat'] | Literal['id'], command_name:str):
     send = make_send(update, context)
@@ -3251,6 +3401,10 @@ async def help(update, context):
 class UserError(ValueError):
     pass
 
+class EventAdminError(UserError):
+    def __init__(self, msg="You are not allowed to do this"):
+        super().__init__(msg)
+
 class UnknownDateError(UserError):
     pass
 
@@ -3486,6 +3640,7 @@ if __name__ == '__main__':
     ))
     application.add_handler(CommandHandler('caps', caps))
     application.add_handler(CommandHandler('addevent', add_event))
+    application.add_handler(CommandHandler('iameventadmin', iameventadmin))
     application.add_handler(ConversationHandler(
         entry_points=[CommandHandler('iaddevent', InteractiveAddEvent.ask_when)],
         states={
