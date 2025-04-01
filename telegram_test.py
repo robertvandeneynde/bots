@@ -1609,22 +1609,25 @@ class InteractiveAddEvent:
         
         await post_event(update, context, name=name, datetime=datetime, time=time, date_str=date_str, chat_timezones=chat_timezones, tz=tz, chat_id=chat_id, datetime_utc=datetime_utc)
 
+def do_event_admin_check(type: 'add', *, setting, user_id):
+    if setting:
+        # do an admin check
+        if user_id in (admin_ids := set(map(lambda x:x.user_id, event_admins := setting))):
+            if type in (event_admin := only_one(filter(lambda x:x.user_id == user_id, event_admins))).permissions:
+                pass
+            else:
+                raise EventAdminError
+        else:
+            raise EventAdminError
+
 import sqlite3
 async def add_event(update: Update, context: CallbackContext):
     send = make_send(update, context)
     read_chat_settings = make_read_chat_settings(update, context)
     read_my_settings = make_read_my_settings(update, context)
 
-    if read_chat_settings('event.admins'):
-        # do an admin check
-        if (user_id := update.effective_user.id) in (admin_ids := set(map(lambda x:x.user_id, event_admins := read_chat_settings('event.admins')))):
-            if 'add' in (event_admin := only_one(filter(lambda x:x.user_id == user_id, event_admins))).permissions:
-                pass
-            else:
-                raise EventAdminError
-        else:
-            raise EventAdminError
-    
+    do_event_admin_check('add', setting=read_chat_settings('event.admins'), user_id=update.effective_user.id)
+
     if not context.args:
         if reply := get_reply(update.message):
             infos_event = addevent_analyse(update, context)
