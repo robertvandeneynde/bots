@@ -1626,8 +1626,6 @@ async def add_event(update: Update, context: CallbackContext):
     read_chat_settings = make_read_chat_settings(update, context)
     read_my_settings = make_read_my_settings(update, context)
 
-    do_event_admin_check('add', setting=read_chat_settings('event.admins'), user_id=update.effective_user.id)
-
     if not context.args:
         if reply := get_reply(update.message):
             infos_event = addevent_analyse(update, context)
@@ -1657,6 +1655,9 @@ async def add_event(update: Update, context: CallbackContext):
     date_str, time, name, date, date_end, datetime, datetime_utc, tz = parse_datetime_point(update, context, when_infos=when_infos, what_infos=what_infos)
     
     chat_timezones = read_chat_settings("event.timezones")
+
+    do_event_admin_check('add', setting=read_chat_settings('event.admins'), user_id=update.effective_user.id)
+
     add_event_to_db(chat_timezones=chat_timezones, tz=tz, datetime_utc=datetime_utc, name=name, chat_id=chat_id, source_user_id=source_user_id)
     
     await post_event(update, context, name=name, datetime=datetime, time=time, date_str=date_str, chat_timezones=chat_timezones, tz=tz, chat_id=chat_id, datetime_utc=datetime_utc)
