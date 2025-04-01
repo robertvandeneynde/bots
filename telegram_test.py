@@ -1617,7 +1617,7 @@ async def add_event(update: Update, context: CallbackContext):
 
     if read_chat_settings('event.admins'):
         # do an admin check
-        if (user_id := update.effective_user.id) in (admin_ids := set(map(EventAdmin.user_id, event_admins := read_chat_settings('event.admins')))):
+        if (user_id := update.effective_user.id) in (admin_ids := set(map(lambda x:x.user_id, event_admins := read_chat_settings('event.admins')))):
             if 'add' in (event_admin := only_one(filter(lambda x:x.user_id == user_id, event_admins))).permissions:
                 pass
             else:
@@ -2862,7 +2862,7 @@ class EventAdmin:
     @staticmethod
     def from_json(J):
         if isinstance(J, int) or isinstance(J, str) and J.isdecimal():
-            return EventAdmin(int(J['user_id']))
+            return EventAdmin(user_id=J)
         
         return EventAdmin(**{
             'user_id': int(J['user_id']),
