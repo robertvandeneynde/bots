@@ -1612,13 +1612,21 @@ class InteractiveAddEvent:
 def do_event_admin_check(type: Literal['add', 'del'], *, setting, user_id):
     if setting:
         # do an admin check
-        if user_id in (admin_ids := set(map(lambda x:x.user_id, event_admins := setting))):
+        if user_id in (admin_ids := set(map(lambda x:int(x.user_id), event_admins := setting))):
             if type in (event_admin := only_one(filter(lambda x:x.user_id == user_id, event_admins))).permissions:
+                pass
+            else:
+                raise EventAdminError
+        elif 0 in admin_ids:
+            if type in (event_admin := only_one(filter(lambda x:x.user_id == 0, event_admins))).permissions:
                 pass
             else:
                 raise EventAdminError
         else:
             raise EventAdminError
+    else:
+        # no setting set = everyone is admin
+        pass
 
 import sqlite3
 async def add_event(update: Update, context: CallbackContext):
@@ -2837,6 +2845,9 @@ class EventAdmin:
         self.user_id = user_id
         self.local_name = local_name or ''
         self.permissions = permissions if permissions is not None else ['*']
+
+        if user_id == 0 and self.permissions == ['*']:
+            self.permissions = ['0']
 
         self.add_implicit_permissions()
 
