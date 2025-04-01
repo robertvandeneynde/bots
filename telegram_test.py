@@ -1609,7 +1609,7 @@ class InteractiveAddEvent:
         
         await post_event(update, context, name=name, datetime=datetime, time=time, date_str=date_str, chat_timezones=chat_timezones, tz=tz, chat_id=chat_id, datetime_utc=datetime_utc)
 
-def do_event_admin_check(type: 'add', *, setting, user_id):
+def do_event_admin_check(type: Literal['add', 'del'], *, setting, user_id):
     if setting:
         # do an admin check
         if user_id in (admin_ids := set(map(lambda x:x.user_id, event_admins := setting))):
@@ -2350,6 +2350,8 @@ async def next_or_last_event(update: Update, context: CallbackContext, n:int):
     send = make_send(update, context)
     read_chat_settings = make_read_chat_settings(update, context)
 
+    do_event_admin_check('list', setting=read_chat_settings('event.admins'), user_id=update.effective_user.id)
+
     datetime_str = None
     skip_n = None
     if len(context.args) == 0:
@@ -2456,6 +2458,9 @@ async def list_days_or_today(update: Update, context: CallbackContext, mode: Lit
     assert mode in ('list', 'today')
 
     send = make_send(update, context)
+    read_chat_settings = make_read_chat_settings(update, context)
+
+    do_event_admin_check('list', setting=read_chat_settings('event.admins'), user_id=update.effective_user.id)
     
     datetime_range = parse_datetime_range(update, args=context.args if mode == 'list' else ('today',) if mode == 'today' else raise_error(AssertionError('mode must be a correct value')))
     beg, end, tz, when = (datetime_range[x] for x in ('beg_utc', 'end_utc', 'tz', 'when'))
@@ -2478,7 +2483,6 @@ async def list_days_or_today(update: Update, context: CallbackContext, mode: Lit
         event_name = event['name']
         days[date.timetuple()[:3]].append((date, event_name))
 
-    read_chat_settings = make_read_chat_settings(update, context)
     display_time_marker = False if mode == 'list' else do_unless_setting_off(read_chat_settings('event.listtoday.display_time_marker'))
 
     now_tz = datetime.now().astimezone(tz)
@@ -2511,7 +2515,10 @@ async def list_today(update: Update, context: CallbackContext):
 
 async def list_events(update: Update, context: CallbackContext):
     send = make_send(update, context)
-    
+    read_chat_settings = make_read_chat_settings(update, context)
+
+    do_event_admin_check('list', setting=read_chat_settings('event.admins'), user_id=update.effective_user.id)
+
     datetime_range = parse_datetime_range(update, args=context.args)
     beg, end, tz, when = (datetime_range[x] for x in ('beg_utc', 'end_utc', 'tz', 'when'))
 
@@ -2528,7 +2535,6 @@ async def list_events(update: Update, context: CallbackContext):
                     ORDER BY date""",
                 (strftime(beg), strftime(end), chat_id))
         
-        read_chat_settings = make_read_chat_settings(update, context)
         chat_timezones = read_chat_settings("event.timezones")
         msg = '\n'.join(f"- {DatetimeText.days_english[date.weekday()]} {date:%d/%m}: {event}" if not has_hour else 
                         f"- {DatetimeText.days_english[date.weekday()]} {date:%d/%m %H:%M}: {event}"
@@ -2544,6 +2550,9 @@ async def list_events(update: Update, context: CallbackContext):
 
 async def delevent(update, context):
     send = make_send(update, context)
+    read_chat_settings = make_read_chat_settings(update, context)
+
+    do_event_admin_check('del', setting=read_chat_settings('event.admins'), user_id=update.effective_user.id)
 
     if reply := get_reply(update.message):
         return await send("Not implemented yet but will allow to deleent an event by responding to it.")
