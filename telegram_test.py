@@ -1609,7 +1609,6 @@ class InteractiveAddEvent:
         
         await post_event(update, context, name=name, datetime=datetime, time=time, date_str=date_str, chat_timezones=chat_timezones, tz=tz, chat_id=chat_id, datetime_utc=datetime_utc)
 
-
 import sqlite3
 async def add_event(update: Update, context: CallbackContext):
     send = make_send(update, context)
@@ -1724,6 +1723,12 @@ class GeneralAction(ABC):
     
     def get_user_id(self):
         return self.update.effective_user.id
+
+class iameventadmin(GeneralAction):
+    async def run(self):
+        if self.Args:
+            raise UsageError
+        await self.send("Use: /chatsettings event.admins {}".format(self.get_user_id()))
 
 class events(GeneralAction):
     class DuplicatesUsageError(UsageError):
@@ -3553,7 +3558,7 @@ if __name__ == '__main__':
     ))
     application.add_handler(CommandHandler('caps', caps))
     application.add_handler(CommandHandler('addevent', add_event))
-    application.add_handler(CommandHandler('eventadmin', eventadmin))
+    application.add_handler(CommandHandler('iameventadmin', iameventadmin))
     application.add_handler(ConversationHandler(
         entry_points=[CommandHandler('iaddevent', InteractiveAddEvent.ask_when)],
         states={
