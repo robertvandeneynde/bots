@@ -2991,7 +2991,7 @@ async def settings_command(update: Update, context: CallbackContext, *, command_
     if action == "set" and len(rest) == 0:
         raise UserError(f"Usage: /{command_name} set command.key value")
 
-    if key in ('money.currencies', 'event.timezones'):
+    if key in ('money.currencies', 'event.timezones', 'event.admins'):
         value = ([] if list(rest) in [['()'], ['[]']] else
                  None if not rest else
                  list(rest))
