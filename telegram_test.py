@@ -2846,9 +2846,6 @@ class EventAdmin:
         self.local_name = local_name or ''
         self.permissions = permissions if permissions is not None else ['*']
 
-        if user_id == 0 and self.permissions == ['*']:
-            self.permissions = ['0']
-
         self.add_implicit_permissions()
 
         assert set(self.permissions) <= {'add', 'del', 'edit', 'list'}, str(self.permissions)
@@ -2950,6 +2947,7 @@ def CONVERSION_SETTINGS_BUILDER():
     list_of_event_admins = list_of({
         'from_db': EventAdmin.from_json,
         'to_db': lambda x: (
+            EventAdmin(user_id=int(x), permissions=['0']) if x.isdecimal() and int(x) == 0 else
             EventAdmin(user_id=int(x), permissions=['*']) if x.isdecimal() else
             EventAdmin(user_id=int(x.split(':')[0]), permissions=x.split(':')[1].split(",")) if ':' in x else raise_error(ValueError)
         ).to_json(),
