@@ -1741,7 +1741,7 @@ class iameventadmin(GeneralAction):
     async def run(self):
         if self.Args:
             raise UsageError
-        await self.send("Use: /chatsettings event.admins {}".format(self.get_user_id()))
+        await self.send("Use: /chatsettings event.admins {}\nOr: /chatsettings event.admins += {}".format(self.get_user_id()))
 iameventadmin = iameventadmin()
 
 class events(GeneralAction):
@@ -2700,10 +2700,15 @@ def set_my_timezone(user_id, tz:ZoneInfo):
             raise ValueError("Unique constraint failed: Multiple timezone for user {}".format(user_id))
         conn.execute("end transaction")
 
-def set_settings(*, id, key, value_raw:any, settings_type:Literal['chat'] | Literal['user']):
+def set_settings(*, id, key, value_raw:any, settings_type:Literal['chat'] | Literal['user'], list_type_and_extend:bool):
     conversion = CONVERSION_SETTINGS[settings_type][key]['to_db']
 
     value: any = conversion(value_raw)
+
+    if list_type_and_extend:
+        from_db = read_raw_settings(key=key, id=id, settings_type=settings_type)
+        value = json.dumps(json.loads(from_db) + json.loads(value))
+
     table = SettingsInfo.TABLES[settings_type]
     field_id = SettingsInfo.FIELDS[settings_type]
     query_read = (f"""SELECT value FROM {table} WHERE {field_id}=? and key=?""", (id, key))
@@ -2816,11 +2821,16 @@ class EventAdmin:
     # if add & del → edit
     # if add | del → list
     # if "*" → add, del, edit, list
+    unknown = False
 
-    def __init__(self, user_id:int, local_name='', permissions=None):
+    def __init__(self, user_id:int, local_name='', permissions=None, unknown=False):
         self.user_id = user_id
         self.local_name = local_name or ''
         self.permissions = permissions or ['*']
+        self.unknown = unknown
+
+        if self.unknown and self.user_id != 0:
+            raise ValueError
 
         self.add_implicit_permissions()
 
@@ -2849,10 +2859,14 @@ class EventAdmin:
             'user_id': int(self.user_id),
             'local_name': str(self.local_name) if self.local_name else '',
             'permissions': list(map(str, self.permissions)),
+            'unknown': self.unknown,
         }
         
         if not J.get('local_name'):
             del J['local_name']
+        
+        if J['unknown'] == False:
+            del J['unknown']
         
         if J.get('permissions') == sorted(('*', 'list', 'add', 'del', 'edit')) or J.get('permissions') == sorted(('list', 'add', 'del', 'edit')):
             J['permissions'] = ['*']
@@ -2864,6 +2878,9 @@ class EventAdmin:
 
     @staticmethod
     def from_json(J):
+        if isinstance(J, int) and J == 0:
+            return EventAdmin(user_id=0, unknown=True)
+        
         if isinstance(J, int) or isinstance(J, str) and J.isdecimal():
             return EventAdmin(user_id=J)
         
@@ -3024,7 +3041,14 @@ async def settings_command(update: Update, context: CallbackContext, *, command_
     if action == "set" and len(rest) == 0:
         raise UserError(f"Usage: /{command_name} set command.key value")
 
-    if key in ('money.currencies', 'event.timezones', 'event.admins'):
+    list_type_and_extend = False
+    if list_type := key in ('money.currencies', 'event.timezones', 'event.admins'):
+        if InfiniteEmptyList(rest)[0] == '+=':
+            rest = rest[1:]
+            list_type_and_extend = True
+        else:
+            list_type_and_extend = False
+
         value = ([] if list(rest) in [['()'], ['[]']] else
                  None if not rest else
                  list(rest))
@@ -3040,17 +3064,19 @@ async def settings_command(update: Update, context: CallbackContext, *, command_
         id = update.effective_chat.id
     else:
         raise ValueError(f'Invalid settings_type: {settings_type}')
-
+    
     if value is None:
         # read
         value = read_raw_settings(id=id, key=key, settings_type=settings_type)
+
         await send(f'Settings: {key} = {value}' if value is not None else
                     f'No settings for {key!r}')
     
     else:
         # write value
-        set_settings(value_raw=value, id=id, key=key, settings_type=settings_type)
-        await send(f"Settings: {key} = {value}")
+        set_settings(value_raw=value, id=id, key=key, settings_type=settings_type, list_type_and_extend=list_type_and_extend)
+        op = "+=" if list_type_and_extend else "="
+        await send(f"Settings: {key} {op} {value}")
 
 async def delsettings_command(update:Update, context: CallbackContext, *, key: str, accepted_settings:list[str], settings_type:Literal['chat'] | Literal['id'], command_name:str):
     send = make_send(update, context)
