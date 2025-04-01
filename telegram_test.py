@@ -1729,6 +1729,7 @@ class iameventadmin(GeneralAction):
         if self.Args:
             raise UsageError
         await self.send("Use: /chatsettings event.admins {}".format(self.get_user_id()))
+iameventadmin = iameventadmin()
 
 class events(GeneralAction):
     class DuplicatesUsageError(UsageError):
@@ -2831,14 +2832,28 @@ class EventAdmin:
         return self
 
     def to_json(self):
-        return {
+        J = {
             'user_id': int(self.user_id),
             'local_name': str(self.local_name) if self.local_name else '',
             'permissions': list(map(str, self.permissions)),
         }
+        
+        if not J.get('local_name'):
+            del J['local_name']
+        
+        if J.get('permissions') == sorted(('*', 'list', 'add', 'del', 'edit')) or J.get('permissions') == sorted(('list', 'add', 'del', 'edit')):
+            J['permissions'] = ['*']
+        
+        if J['permissions'] == ['*'] and not J.get('local_name'):
+            return int(J['user_id'])
+        else:
+            return J
 
     @staticmethod
     def from_json(J):
+        if isinstance(J, int) or isinstance(J, str) and J.isdecimal():
+            return EventAdmin(int(J['user_id']))
+        
         return EventAdmin(**{
             'user_id': int(J['user_id']),
             'local_name': str(J['local_name']) if J.get('local_name') else '',
