@@ -2846,9 +2846,6 @@ class EventAdmin:
 
         assert set(self.permissions) <= {'add', 'del', 'edit', 'list'}, str(self.permissions)
 
-        if self.unknown and self.permissions is None:
-            self.permissions = []
-
     def add_implicit_permissions(self):
         while True:
             S = set(self.permissions)
