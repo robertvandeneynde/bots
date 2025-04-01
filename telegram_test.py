@@ -2764,6 +2764,7 @@ ACCEPTED_SETTINGS_USER = (
 ACCEPTED_SETTINGS_CHAT = (
     'money.currencies',
     'event.timezones',
+    'event.admins',
     'event.addevent.help_file',
     'event.addevent.display_file',
     'event.addevent.display_forwarded_infos',
@@ -2788,8 +2789,66 @@ def is_timezone(x: str) -> bool:
     except ZoneInfoNotFoundError:
         return False
 
+@dataclass
+class EventAdmin:
+    user_id: int
+    local_name: str
+    permissions: list[Literal["add", "del", "edit", "list", "*"]]
+    # if add & del → edit
+    # if add | del → list
+    # if "*" → add, del, edit, list
+
+    def __init__(self, user_id:int, local_name='', permissions=None):
+        self.user_id = user_id
+        self.local_name = local_name or ''
+        self.permissions = permissions or ['*']
+
+        self.add_implicit_permissions()
+
+    def add_implicit_permissions(self):
+        while True:
+            S = set(self.permissions)
+
+            if {'add', 'del'} <= S:
+                S |= {"edit"}
+            
+            if {'add', 'del'} <= S:
+                S |= {"list"}
+
+            if {'*'} <= S:
+                S |= {"add", "del", "edit", "list"}
+
+            if set(self.permissions) == S:
+                break
+
+            self.permissions = sorted(S)
+            
+        return self
+
+    def to_json(self):
+        return {
+            'user_id': int(self.user_id),
+            'local_name': str(self.local_name) if self.local_name else '',
+            'permissions': list(map(str, self.permissions)),
+        }
+
+    @staticmethod
+    def from_json(J):
+        return EventAdmin(**{
+            'user_id': int(J['user_id']),
+            'local_name': str(J['local_name']) if J.get('local_name') else '',
+            'permissions': list(map(str, J['permissions'])),
+        })
+
 def CONVERSION_SETTINGS_BUILDER():
     import json
+    # serializers helper
+    def list_of(obj):
+        return {
+            'from_db': lambda s: list(map(obj['from_db'], json.loads(s))),
+            'to_db': lambda L: json.dumps(list(map(obj['to_db'], L))),
+        }
+    
     # serializers
     default_serializer = {
         'from_db': lambda x:x,
@@ -2812,6 +2871,13 @@ def CONVERSION_SETTINGS_BUILDER():
         'from_db': lambda s: list(map(str.upper, json.loads(s))),
         'to_db': lambda L: json.dumps(list(map(str.upper, L)))
     }
+    list_of_event_admins = list_of({
+        'from_db': EventAdmin.from_json,
+        'to_db': lambda x: (
+            EventAdmin(user_id=int(x), permissions=['*']) if x.isdecimal() else
+            EventAdmin(user_id=int(x.split(':')[0]), permissions=x.split(':')[1].split(",")) if ':' in x else raise_error(ValueError)
+        ).to_json(),
+    })
     on_off_serializer = {
         'from_db': lambda x: x != 'off',
         'to_db': lambda x: assert_true(isinstance(x, str) and x.lower() in ('on', 'off', 'true', 'false', 'yes', 'no'), UserError(f"{x} must be on/off"))
@@ -2821,6 +2887,7 @@ def CONVERSION_SETTINGS_BUILDER():
     mapping_chat = {
         'money.currencies': list_of_currencies_serializer,
         'event.timezones': list_of_timezone_serializer,
+        'event.admins': list_of_event_admins,
         'event.addevent.display_file': on_off_serializer,
         'event.delevent.display': on_off_serializer,
         'event.addevent.display_forwarded_infos': on_off_serializer,
@@ -3486,6 +3553,7 @@ if __name__ == '__main__':
     ))
     application.add_handler(CommandHandler('caps', caps))
     application.add_handler(CommandHandler('addevent', add_event))
+    application.add_handler(CommandHandler('eventadmin', eventadmin))
     application.add_handler(ConversationHandler(
         entry_points=[CommandHandler('iaddevent', InteractiveAddEvent.ask_when)],
         states={
