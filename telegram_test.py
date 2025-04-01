@@ -1614,6 +1614,16 @@ async def add_event(update: Update, context: CallbackContext):
     send = make_send(update, context)
     read_chat_settings = make_read_chat_settings(update, context)
     read_my_settings = make_read_my_settings(update, context)
+
+    if read_chat_settings('event.admins'):
+        # do an admin check
+        if (user_id := update.effective_user.id) in (admin_ids := set(map(EventAdmin.user_id, event_admins := read_chat_settings('event.admins')))):
+            if 'add' in (event_admin := only_one(filter(lambda x:x.user_id == user_id, event_admins))).permissions:
+                pass
+            else:
+                raise EventAdminError
+        else:
+            raise EventAdminError
     
     if not context.args:
         if reply := get_reply(update.message):
@@ -3337,6 +3347,10 @@ async def help(update, context):
 
 class UserError(ValueError):
     pass
+
+class EventAdminError(UserError):
+    def __init__(self, msg="You are not allowed to do this"):
+        super().__init__(msg)
 
 class UnknownDateError(UserError):
     pass
