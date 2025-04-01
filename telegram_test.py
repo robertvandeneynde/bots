@@ -2825,7 +2825,7 @@ def is_timezone(x: str) -> bool:
 
 @dataclass
 class EventAdmin:
-    user_id: int
+    user_id: int | 0
     local_name: str
     permissions: list[Literal["add", "del", "edit", "list"]]
     # if add & del → edit
@@ -2833,15 +2833,11 @@ class EventAdmin:
     # if "*" → add, del, edit, list
     unknown = False
 
-    def __init__(self, user_id:int, local_name='', permissions=None, unknown=False):
+    def __init__(self, user_id:int | 0, local_name='', permissions=None):
         self.user_id = user_id
         self.local_name = local_name or ''
-        self.permissions = permissions or ['*']
-        self.unknown = unknown
+        self.permissions = permissions if permissions is not None else ['*']
 
-        if self.unknown and self.user_id != 0:
-            raise ValueError
-        
         self.add_implicit_permissions()
 
         assert set(self.permissions) <= {'add', 'del', 'edit', 'list'}, str(self.permissions)
@@ -2886,6 +2882,9 @@ class EventAdmin:
         
         if J.get('permissions') == sorted(('*', 'list', 'add', 'del', 'edit')) or J.get('permissions') == sorted(('list', 'add', 'del', 'edit')):
             J['permissions'] = ['*']
+
+        if J['permissions'] == []:
+            J['permissions'] = ['0']
         
         if J['permissions'] == ['*'] and not J.get('local_name'):
             return int(J['user_id'])
@@ -2895,7 +2894,7 @@ class EventAdmin:
     @staticmethod
     def from_json(J):
         if isinstance(J, int) and J == 0:
-            return EventAdmin(user_id=0, unknown=True)
+            return EventAdmin(user_id=0)
         
         if isinstance(J, int) or isinstance(J, str) and J.isdecimal():
             return EventAdmin(user_id=J)
