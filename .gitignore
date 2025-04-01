@@ -2,3 +2,7 @@
 db.sqlite
 token.json
 credentials.json
+/run
+/.vscode
+/__pycache__
+
