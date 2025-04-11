@@ -482,7 +482,7 @@ async def ru(update: Update, context: CallbackContext):
     R = re.compile('|'.join(map(re.escape, S)))
     def to_cyrilic(word):
         return R.sub(lambda m: (lambda x: D.get(x,x))(m.group(0)), word)
-    await send(' '.join(to_cyrilic(word) for word in context.args) if not reply else to_cyrilic(reply.text))
+    await send(' '.join(to_cyrilic(word) for word in context.args) if not reply or context.args else to_cyrilic(reply.text))
 
 with open("json/ipa/fr_FR.json") as IPA_DATA_FR:
     IPA_DATA_FR = json.load(IPA_DATA_FR)
@@ -1980,6 +1980,19 @@ class listsmodule:
                             name = 'list'
                 
                 await self.send(listsmodule.printlist.it(conn=conn, chat_id=self.get_chat_id(), name=name))
+                conn.execute('end transaction')
+        
+    class dirlist(GeneralAction):
+        @staticmethod
+        def it(*, conn, chat_id):
+            my_simple_sql = partial(simple_sql, connection=conn)
+            results = my_simple_sql(('''select name from List where chat_id=?''', (chat_id, )))
+            return '\n'.join("- {}".format(name) for name, in results)
+        
+        async def run(self):
+            with sqlite3.connect("db.sqlite") as conn:
+                conn.execute('begin transaction')
+                await self.send(self.it(conn=conn, chat_id=self.get_chat_id()))
                 conn.execute('end transaction')
 
 def list_del(li, i):
@@ -3625,6 +3638,7 @@ COMMAND_LIST = (
     'addtolist',
     'removefromlist', 'delfromlist', 'deletefromlist',
     'printlist',
+    'dirlist',
 )
 
 
@@ -3727,6 +3741,7 @@ if __name__ == '__main__':
     application.add_handler(CommandHandler('delfromlist', listsmodule.removefromlist()))
     application.add_handler(CommandHandler('deletefromlist', listsmodule.removefromlist()))
     application.add_handler(CommandHandler('printlist', listsmodule.printlist()))
+    application.add_handler(CommandHandler('dirlist', listsmodule.dirlist()))
 
     application.add_error_handler(general_error_callback)
     
