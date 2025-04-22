@@ -1043,6 +1043,20 @@ class DatetimeText:
         beg = the_day
         end = beg + timedelta(days=1)
         return beg, end
+    
+    @classmethod
+    def format_td_T_minus(cls, td:timedelta):
+        from datetime import timedelta
+        d,rem = divmod(td, timedelta(days=1))
+        m,s = divmod(rem.seconds, 60)
+        h,m = divmod(m, 60)
+        return (
+            "D-{}".format(d) if d else
+            "H-{}".format(h, m) if h >= 2 else 
+            "M-{}".format(m) if m else 
+            "S-{}".format(s)
+        )
+
 
 from collections import namedtuple
 from typing import NamedTuple
@@ -2464,8 +2478,10 @@ async def last_event(update, context):
 async def next_event(update, context):
     return await next_or_last_event(update, context, 1)
 
-async def list_days(update: Update, context: CallbackContext):
-    return await list_days_or_today(update, context, mode='list')
+async def list_days(update: Update, context: CallbackContext, relative=False):
+    return await list_days_or_today(update, context, mode='list', relative=relative)
+
+relative_list_days = partial(list_days, relative=True)
 
 def setting_on_off(s, default):
     return (s if isinstance(s, bool) else
@@ -2481,7 +2497,7 @@ def do_unless_setting_off(setting):
     return setting_on_off(setting, default=True)
 
 from typing import Literal
-async def list_days_or_today(update: Update, context: CallbackContext, mode: Literal['list', 'today']):
+async def list_days_or_today(update: Update, context: CallbackContext, mode: Literal['list', 'today'], relative=False):
     assert mode in ('list', 'today')
 
     send = make_send(update, context)
@@ -2523,7 +2539,11 @@ async def list_days_or_today(update: Update, context: CallbackContext, mode: Lit
         days_as_lines.append(
             f"{day_of_week.capitalize()} {date:%d/%m}"
             + "\n"
-            + "\n".join(f"-{marker} {event_date:%H:%M}: {event_name}" for event_date, event_name in days[day] for marker in ['>' if display_time_marker and is_past(event_date) else '']))
+            + "\n".join(
+                f"-{marker} {event_date:%H:%M}: {event_name}" if not relative else
+                f"-{marker} {DatetimeText.format_td_T_minus(event_date - now_tz)}: {event_name}"
+                for event_date, event_name in days[day]
+                for marker in ['>' if display_time_marker and is_past(event_date) else '']))
     
     msg = '\n\n'.join(days_as_lines)
 
@@ -3601,6 +3621,7 @@ COMMAND_DESC = {
     'delfromlist': 'Alias for delfromlist',
     'deletefromlist': 'Alias for removefromlist',
     'printlist': 'Print a list using dashes',
+    'dirlist': 'List all lists',
 }
 
 import itertools
@@ -3686,6 +3707,7 @@ if __name__ == '__main__':
     application.add_handler(CommandHandler('nextevent', next_event))
     application.add_handler(CommandHandler('listevents', list_events))
     application.add_handler(CommandHandler('listdays', list_days))
+    application.add_handler(CommandHandler('rlistdays', relative_list_days))
     application.add_handler(CommandHandler('listoday', list_today)) # hidden command, for typo
     application.add_handler(CommandHandler('listtoday', list_today))
     application.add_handler(CommandHandler('today', list_today))
