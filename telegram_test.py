@@ -2561,8 +2561,8 @@ async def list_days_or_today(update: Update, context: CallbackContext, mode: Lit
         f"No events for {when} !" + (" 😱" if "today" in (mode, when) else "")
     ))
 
-async def list_today(update: Update, context: CallbackContext):
-    return await list_days_or_today(update, context, mode='today')
+async def list_today(update: Update, context: CallbackContext, *, relative=False):
+    return await list_days_or_today(update, context, mode='today', relative=relative)
 
 async def list_events(update: Update, context: CallbackContext, relative=False):
     send = make_send(update, context)
@@ -3718,8 +3718,11 @@ if __name__ == '__main__':
     application.add_handler(CommandHandler('listdays', list_days))
     application.add_handler(CommandHandler('rlistdays', partial(list_days, relative=True)))
     application.add_handler(CommandHandler('listoday', list_today)) # hidden command, for typo
+    application.add_handler(CommandHandler('rlistoday', partial(list_today, relative=True))) # hidden command, for typo
     application.add_handler(CommandHandler('listtoday', list_today))
+    application.add_handler(CommandHandler('rlisttoday', partial(list_today, relative=True)))
     application.add_handler(CommandHandler('today', list_today))
+    application.add_handler(CommandHandler('rtoday', partial(list_today, relative=True)))
     application.add_handler(CommandHandler('lastevent', last_event))
     application.add_handler(CommandHandler('rlastevent', partial(last_event, relative=True)))
     application.add_handler(CommandHandler('whereis', whereis))
