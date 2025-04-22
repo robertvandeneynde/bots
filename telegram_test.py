@@ -2386,10 +2386,13 @@ def parse_datetime_range(update, *, args, default="week"):
     
     return dict(beg_utc=beg, end_utc=end, tz=tz, when=when, beg_local=beg_local, end_local=end_local)  # | {x: locals()[x] for x in ()}
 
-async def next_or_last_event(update: Update, context: CallbackContext, n:int):
+async def next_or_last_event(update: Update, context: CallbackContext, n:int, *, relative=False):
     from datetime import datetime as Datetime
     send = make_send(update, context)
     read_chat_settings = make_read_chat_settings(update, context)
+
+    if relative:
+        raise UserError("Not implemented yet, use /rlistdays with the correct date while waiting")
 
     do_event_admin_check('list', setting=read_chat_settings('event.admins'), user_id=update.effective_user.id)
 
@@ -2472,16 +2475,14 @@ def format_event_emoji_style(*, name, datetime, date, time, tz, chat_timezones):
         for datetime_tz in [datetime.astimezone(timezone)]
     ] if time else [])))
 
-async def last_event(update, context):
-    return await next_or_last_event(update, context, -1)
+async def last_event(update, context, *, relative=False):
+    return await next_or_last_event(update, context, -1, relative=relative)
 
-async def next_event(update, context):
-    return await next_or_last_event(update, context, 1)
+async def next_event(update, context, *, relative=False):
+    return await next_or_last_event(update, context, 1, relative=relative)
 
 async def list_days(update: Update, context: CallbackContext, relative=False):
     return await list_days_or_today(update, context, mode='list', relative=relative)
-
-relative_list_days = partial(list_days, relative=True)
 
 def setting_on_off(s, default):
     return (s if isinstance(s, bool) else
@@ -2560,9 +2561,12 @@ async def list_days_or_today(update: Update, context: CallbackContext, mode: Lit
 async def list_today(update: Update, context: CallbackContext):
     return await list_days_or_today(update, context, mode='today')
 
-async def list_events(update: Update, context: CallbackContext):
+async def list_events(update: Update, context: CallbackContext, relative=False):
     send = make_send(update, context)
     read_chat_settings = make_read_chat_settings(update, context)
+
+    if relative:
+        raise UserError("Not implemented yet, use /rlistdays for example")
 
     do_event_admin_check('list', setting=read_chat_settings('event.admins'), user_id=update.effective_user.id)
 
@@ -2594,6 +2598,10 @@ async def list_events(update: Update, context: CallbackContext):
             "No events for the next 7 days !" if when == 'week' else
             f"No events for {when} !" + (" 😱" if "today" == when else "")
         ))
+
+relative_next_event = partial(next_event, relative=True)
+relative_list_events = partial(list_events, relative=True)
+relative_list_days = partial(list_days, relative=True)
 
 async def delevent(update, context):
     send = make_send(update, context)
@@ -3705,7 +3713,9 @@ if __name__ == '__main__':
     application.add_handler(CommandHandler('renameeventfollow', renameeventfollow))
     application.add_handler(CommandHandler('renameeventacceptfollow', renameeventacceptfollow))
     application.add_handler(CommandHandler('nextevent', next_event))
+    application.add_handler(CommandHandler('rnextevent', relative_next_event))
     application.add_handler(CommandHandler('listevents', list_events))
+    application.add_handler(CommandHandler('rlistevents', relative_list_events))
     application.add_handler(CommandHandler('listdays', list_days))
     application.add_handler(CommandHandler('rlistdays', relative_list_days))
     application.add_handler(CommandHandler('listoday', list_today)) # hidden command, for typo
