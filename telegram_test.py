@@ -1052,7 +1052,7 @@ class DatetimeText:
         h,m = divmod(m, 60)
         return (
             "D-{}".format(d) if d else
-            "H-{}".format(h, m) if h >= 2 else 
+            "H-{}".format(h) if h else 
             "M-{}".format(m) if m else 
             "S-{}".format(s)
         )
