@@ -2391,9 +2391,6 @@ async def next_or_last_event(update: Update, context: CallbackContext, n:int, *,
     send = make_send(update, context)
     read_chat_settings = make_read_chat_settings(update, context)
 
-    if relative:
-        raise UserError("Not implemented yet, use /rlistdays with the correct date while waiting")
-
     do_event_admin_check('list', setting=read_chat_settings('event.admins'), user_id=update.effective_user.id)
 
     datetime_str = None
@@ -2458,7 +2455,11 @@ async def next_or_last_event(update: Update, context: CallbackContext, n:int, *,
         for timezone in chat_timezones or []
         if timezone != tz
         for datetime_tz in [datetime.astimezone(timezone)]
-    ] if time else []))))
+    ] if time else [])) if not relative else natural_filter([
+        f"Event!",
+        f"{emojis.Name} {name}",
+        f"{emojis.Date} {DatetimeText.format_td_T_minus(datetime - now)}",
+    ])))
 
 def format_event_emoji_style(*, name, datetime, date, time, tz, chat_timezones):
     emojis = EventFormatting.emojis
