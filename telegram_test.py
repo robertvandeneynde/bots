@@ -1047,14 +1047,16 @@ class DatetimeText:
     @classmethod
     def format_td_T_minus(cls, td:timedelta):
         from datetime import timedelta
+        sign = "-" if td >= timedelta(seconds=0) else "+"
+        td = abs(td)
         d,rem = divmod(td, timedelta(days=1))
         m,s = divmod(rem.seconds, 60)
         h,m = divmod(m, 60)
         return (
-            "D-{}".format(d) if d else
-            "H-{}".format(h) if h else 
-            "M-{}".format(m) if m else 
-            "S-{}".format(s)
+            "D{}{}".format(sign, d) if d else
+            "H{}{}".format(sign, h) if h else 
+            "M{}{}".format(sign, m) if m else 
+            "S{}{}".format(sign, s)
         )
 
 
@@ -2600,10 +2602,6 @@ async def list_events(update: Update, context: CallbackContext, relative=False):
             f"No events for {when} !" + (" 😱" if "today" == when else "")
         ))
 
-relative_next_event = partial(next_event, relative=True)
-relative_list_events = partial(list_events, relative=True)
-relative_list_days = partial(list_days, relative=True)
-
 async def delevent(update, context):
     send = make_send(update, context)
     read_chat_settings = make_read_chat_settings(update, context)
@@ -3714,15 +3712,16 @@ if __name__ == '__main__':
     application.add_handler(CommandHandler('renameeventfollow', renameeventfollow))
     application.add_handler(CommandHandler('renameeventacceptfollow', renameeventacceptfollow))
     application.add_handler(CommandHandler('nextevent', next_event))
-    application.add_handler(CommandHandler('rnextevent', relative_next_event))
+    application.add_handler(CommandHandler('rnextevent', partial(next_event, relative=True)))
     application.add_handler(CommandHandler('listevents', list_events))
-    application.add_handler(CommandHandler('rlistevents', relative_list_events))
+    application.add_handler(CommandHandler('rlistevents', partial(list_events, relative=True)))
     application.add_handler(CommandHandler('listdays', list_days))
-    application.add_handler(CommandHandler('rlistdays', relative_list_days))
+    application.add_handler(CommandHandler('rlistdays', partial(list_days, relative=True)))
     application.add_handler(CommandHandler('listoday', list_today)) # hidden command, for typo
     application.add_handler(CommandHandler('listtoday', list_today))
     application.add_handler(CommandHandler('today', list_today))
     application.add_handler(CommandHandler('lastevent', last_event))
+    application.add_handler(CommandHandler('rlastevent', partial(last_event, relative=True)))
     application.add_handler(CommandHandler('whereis', whereis))
     application.add_handler(CommandHandler('whereto', whereto))
     application.add_handler(CommandHandler('thereis', thereis))
