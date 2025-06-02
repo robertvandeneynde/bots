@@ -1638,22 +1638,25 @@ class InteractiveAddEvent:
 
         when = context.user_data['when']
         what = context.user_data['what']
+        where = context.user_data['where']
         context.user_data.clear()
 
         if update.message.text.lower() in ("no", "n"):
             await send("Event not added.\n\n/addevent can be however applied on the last message.")
             return ConversationHandler.END
 
-        await InteractiveAddEvent.do_all_add_event(update, context, what=what, when=when)
+        await InteractiveAddEvent.do_all_add_event(update, context, what=what, when=when, where=where)
         return ConversationHandler.END
     
-    async def do_all_add_event(update, context, *, what, when):
+    async def do_all_add_event(update, context, *, what, when, where):
         read_chat_settings = make_read_chat_settings(update, context)
 
         source_user_id = update.message.from_user.id
         chat_id = update.effective_chat.id
 
-        date_str, time, name, date, date_end, datetime, datetime_utc, tz = parse_datetime_point(update, context, when_infos=when, what_infos=what)
+        real_what = what if not where else what + ' @ ' + where 
+
+        date_str, time, name, date, date_end, datetime, datetime_utc, tz = parse_datetime_point(update, context, when_infos=when, what_infos=real_what)
         
         chat_timezones = read_chat_settings("event.timezones")
         add_event_to_db(chat_timezones=chat_timezones, tz=tz, datetime_utc=datetime_utc, name=name, chat_id=chat_id, source_user_id=source_user_id)
