@@ -3763,7 +3763,7 @@ if __name__ == '__main__':
                 MessageHandler(filters.TEXT & ~filters.COMMAND, InteractiveAddEvent.ask_what_or_time),
             ],
             'ask-time': [
-
+                MessageHandler(filters.TEXT & ~filters.COMMAND, InteractiveAddEvent.ask_time),
             ],
             'ask-what': [
                 MessageHandler(filters.TEXT & ~filters.COMMAND, InteractiveAddEvent.ask_what)
