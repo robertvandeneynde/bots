@@ -1611,10 +1611,9 @@ class InteractiveAddEvent:
         else:
             pass # user_data.when is perfect
 
-        parse_datetime_point(update, context, when_infos=when, what_infos='')
+        parse_datetime_point(update, context, when_infos=context.user_data['when'], what_infos='')
         # no error: ok
 
-        context.user_data['when'] = when
         await send("What is the event about ?\nThe name of the event.\n\nExamples:\n- Party\n- /empty")
         return 'ask-where'
 
