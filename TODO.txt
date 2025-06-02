@@ -1,0 +1,19 @@
+- Countdown 
+- Auto thereis
+- Edit event by strict adding
+- /nextevent2
+- today Friday 
+- tomorrow Sunday
+- paid = rev owes
+- chat.currencies = Rub Eur Usd
+- Allow dot in DebtorName for Currencies (must match)
+- "for" to indicate comment/reason of debt
+- default location, default prefix, default prefix topic, topic filter
+- caps is not topic aware
+- answer to bot message 
+- /ru on message
+- did you mean ? 
+- 18:00:BE
+- When+Time = Whendt
+- Playlist songs
+- "at" = "@" for time
