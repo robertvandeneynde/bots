@@ -1596,18 +1596,32 @@ class InteractiveAddEvent:
     async def ask_time(update, context):
         send = make_send(update, context)
 
-        await send('What is the time of the event ?\n\nExamples:\n- 8h\n- 16h\n- 20:15\n')
+        await send('What is the time of the event ?\n\nExamples:\n- 8h\n- 16h\n- 20:15\n- /midnight\n- /empty')
 
         context.user_data['did_ask_time'] = 'on'
 
         return 'ask-what'
+    @staticmethod
+    async def ask_what_empty(update, context):
+        if 'did_ask_time' in context.user_data:
+            context.user_data['time'] = ''
+        else:
+            pass
+
+        return await InteractiveAddEvent.ask_what(update, context)
     
     @staticmethod
     async def ask_what(update, context):
         send = make_send(update, context)
         if 'did_ask_time' in context.user_data:
-            time = update.message.text
-            context.user_data['when'] += ' ' + time
+            if 'time' in context.user_data:
+                time = context.user_data['time']
+            else:
+                time = update.message.text
+            if time.strip():
+                context.user_data['when'] += ' ' + time
+            else:
+                pass # user_data.when is perfect
         else:
             pass # user_data.when is perfect
 
@@ -3765,7 +3779,9 @@ if __name__ == '__main__':
                 MessageHandler(filters.TEXT & ~filters.COMMAND, InteractiveAddEvent.ask_time),
             ],
             'ask-what': [
-                MessageHandler(filters.TEXT & ~filters.COMMAND, InteractiveAddEvent.ask_what)
+                MessageHandler(filters.TEXT & ~filters.COMMAND, InteractiveAddEvent.ask_what),
+                CommandHandler('empty', InteractiveAddEvent.ask_what_empty),
+                CommandHandler('midnight', InteractiveAddEvent.ask_what_empty),
             ],
             'ask-where': [
                 MessageHandler(filters.TEXT & ~filters.COMMAND, InteractiveAddEvent.ask_where),
