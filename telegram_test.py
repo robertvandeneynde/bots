@@ -1574,12 +1574,42 @@ class InteractiveAddEvent:
     async def ask_when(update, context):
         send = make_send(update, context)
         await send("When is the event ?\n\nExamples:\n- Today\n- Tomorrow\n- Sunday\n- 25.11\n- 31.12.2000")
+        return 'ask-what-or-time'
+    
+    @staticmethod
+    async def ask_what_or_time(update, context):
+        send = make_send(update, context)
+
+        when = update.message.text
+
+        event: ParsedEventFinal = parse_datetime_point(update, context, when_infos=when, what_infos='')
+        # no error: ok
+
+        context.user_data['when'] = when
+
+        if event.time:
+            return await InteractiveAddEvent.ask_what(update, context)
+        else:
+            return 'ask-time'
+        
+    @staticmethod
+    async def ask_time(update, context):
+        send = make_send(update, context)
+
+        await send('What is the time of the event ?\n\nExamples:\n- 8h\n- 16h\n- 20:15\n')
+
+        context.user_data['did_ask_time'] = 'on'
+
         return 'ask-what'
     
     @staticmethod
     async def ask_what(update, context):
         send = make_send(update, context)
-        when = update.message.text
+        if 'did_ask_time' in context.user_data:
+            time = update.message.text
+            context.user_data['when'] += ' ' + time
+        else:
+            pass # user_data.when is perfect
 
         parse_datetime_point(update, context, when_infos=when, what_infos='')
         # no error: ok
@@ -3729,7 +3759,15 @@ if __name__ == '__main__':
     application.add_handler(ConversationHandler(
         entry_points=[CommandHandler('iaddevent', InteractiveAddEvent.ask_when)],
         states={
-            'ask-what': [MessageHandler(filters.TEXT & ~filters.COMMAND, InteractiveAddEvent.ask_what)],
+            'ask-what-or-time': [
+                MessageHandler(filters.TEXT & ~filters.COMMAND, InteractiveAddEvent.ask_what_or_time),
+            ],
+            'ask-time': [
+
+            ],
+            'ask-what': [
+                MessageHandler(filters.TEXT & ~filters.COMMAND, InteractiveAddEvent.ask_what)
+            ],
             'ask-where': [
                 MessageHandler(filters.TEXT & ~filters.COMMAND, InteractiveAddEvent.ask_where),
                 CommandHandler('empty', InteractiveAddEvent.ask_where_empty),
