@@ -3,7 +3,6 @@ import logging
 from telegram import Update, Message, Chat, InlineKeyboardMarkup, InlineKeyboardButton
 from telegram.ext import ApplicationBuilder, CallbackContext, CommandHandler, MessageHandler, ContextTypes, CallbackQueryHandler
 from telegram.ext import filters
-from telegram.constants import ChatType
 from telegram_settings_local import TOKEN
 from telegram_settings_local import FRIENDS_USER
 
@@ -16,6 +15,8 @@ class FriendsUser(enum.StrEnum):
     LOUKOUM = 'loukoum'
     JOKÈRE = 'jokère'
     SHOKO = 'shoko'
+    QSNAKES = 'QSNAKES'.lower()
+    KERRICYBERGOOSE = 'KERRICYBERGOOSE'.lower()
 
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
@@ -110,6 +111,12 @@ async def hello_responder(msg:str, send: AsyncSend, *, update, context):
         if (english := msg.lower().startswith("hello")) or (russian := msg.lower().startswith("привет")):
             assert english or russian
             await send("Do you want some lezhunki ? Or some Tango ? It seems like you do !" if english else "Хочешь лежунки или Танго? Мне кстати Да !")
+    elif user.id == FRIENDS_USER.get(FriendsUser.QSNAKES):
+        if msg.lower().startswith("hello"):
+            await send("Santa Claus and Heisenberg say... hello")
+    elif user.id == FRIENDS_USER.get(FriendsUser.KERRICYBERGOOSE):
+        if msg.lower().startswith("hello"):
+            await send("Wanna protecc ?")
     else:
         if msg.lower().startswith("hello"):
             await send("Hello ! :3")
