@@ -1654,7 +1654,7 @@ class InteractiveAddEvent:
         source_user_id = update.message.from_user.id
         chat_id = update.effective_chat.id
 
-        real_what = what if not where else what + ' @ ' + where 
+        real_what = (what if not where else what + ' @ ' + where).strip()
 
         date_str, time, name, date, date_end, datetime, datetime_utc, tz = parse_datetime_point(update, context, when_infos=when, what_infos=real_what)
         
