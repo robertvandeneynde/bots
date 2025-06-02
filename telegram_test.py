@@ -1594,7 +1594,7 @@ class InteractiveAddEvent:
         what = update.message.text
         context.user_data['what'] = what
 
-        return InteractiveAddEvent.really_ask_where(update, context)
+        return await InteractiveAddEvent.really_ask_where(update, context)
     
     @staticmethod
     async def ask_where_empty(update, context):
@@ -1602,7 +1602,7 @@ class InteractiveAddEvent:
         what = ''
         context.user_data['what'] = what
 
-        return InteractiveAddEvent.really_ask_where(update, context)
+        return await InteractiveAddEvent.really_ask_where(update, context)
 
     @staticmethod
     async def really_ask_where(update, context):
