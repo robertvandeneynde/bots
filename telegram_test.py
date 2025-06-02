@@ -3791,6 +3791,7 @@ if __name__ == '__main__':
             'ask-confirm': [
                 MessageHandler(filters.TEXT & ~filters.COMMAND, InteractiveAddEvent.ask_confirm),
                 CommandHandler('empty', InteractiveAddEvent.ask_confirm_empty),
+                CommandHandler('skip', InteractiveAddEvent.ask_confirm_empty),
             ],
             'do-add-event': [MessageHandler(filters.TEXT & ~filters.COMMAND, InteractiveAddEvent.do_add_event)]
         },
