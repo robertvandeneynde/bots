@@ -1590,7 +1590,7 @@ class InteractiveAddEvent:
         if event.time:
             return await InteractiveAddEvent.ask_what(update, context)
         else:
-            return 'ask-time'
+            return await InteractiveAddEvent.ask_time(update, context)
         
     @staticmethod
     async def ask_time(update, context):
