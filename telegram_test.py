@@ -1586,25 +1586,50 @@ class InteractiveAddEvent:
 
         context.user_data['when'] = when
         await send("What is the event about ?\nThe name of the event.\n\nExamples:\n- Party\n- /empty")
+        return 'ask-where'
+
+    @staticmethod
+    async def ask_where(update, context):
+        send = make_send(update, context)
+        what = update.message.text
+        context.user_data['what'] = what
+
+        return InteractiveAddEvent.really_ask_where(update, context)
+    
+    @staticmethod
+    async def ask_where_empty(update, context):
+        send = make_send(update, context)
+        what = ''
+        context.user_data['what'] = what
+
+        return InteractiveAddEvent.really_ask_where(update, context)
+
+    @staticmethod
+    async def really_ask_where(update, context):
+        send = make_send(update, context)
+
+        await send("Where is the event ?\n\nExamples:\n- My house\n- Miami Beach (123 Ocean Drive)\n- /skip\n- /empty")
+
         return 'ask-confirm'
     
     @staticmethod
     async def ask_confirm(update, context):
-        what = update.message.text
-        return await InteractiveAddEvent.continue_ask_confirm(update, context, what=what)
+        where = update.message.text
+        return await InteractiveAddEvent.continue_ask_confirm(update, context, where=where)
     
     @staticmethod
     async def ask_confirm_empty(update, context):
-        what = ''
-        return await InteractiveAddEvent.continue_ask_confirm(update, context, what=what)
+        where = ''
+        return await InteractiveAddEvent.continue_ask_confirm(update, context, where=where)
     
     @staticmethod
-    async def continue_ask_confirm(update, context, what):
+    async def continue_ask_confirm(update, context, where):
         send = make_send(update, context)
 
-        context.user_data['what'] = what
+        context.user_data['where'] = where
         when = context.user_data['when']
-        await send(f"Do you want to add this event ?\nWhen: {when}\nWhat: {what}\n")
+        what = context.user_data['what']
+        await send(f"Do you want to add this event ?\nWhen: {when}\nWhat: {what}\nWhere: {where}\n")
         return 'do-add-event'
     
     @staticmethod
@@ -3702,6 +3727,11 @@ if __name__ == '__main__':
         entry_points=[CommandHandler('iaddevent', InteractiveAddEvent.ask_when)],
         states={
             'ask-what': [MessageHandler(filters.TEXT & ~filters.COMMAND, InteractiveAddEvent.ask_what)],
+            'ask-where': [
+                MessageHandler(filters.TEXT & ~filters.COMMAND, InteractiveAddEvent.ask_where),
+                CommandHandler('empty', InteractiveAddEvent.ask_where_empty),
+                CommandHandler('skip', InteractiveAddEvent.ask_where_empty),
+            ],
             'ask-confirm': [
                 MessageHandler(filters.TEXT & ~filters.COMMAND, InteractiveAddEvent.ask_confirm),
                 CommandHandler('empty', InteractiveAddEvent.ask_confirm_empty),
