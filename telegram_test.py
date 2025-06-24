@@ -1035,6 +1035,15 @@ class DatetimeText:
         if name in ('past', 'passé'):
             return date.min + timedelta(days=7), today
         
+        if name in ('yesterday', 'hier'):
+            return today - timedelta(days=1), today
+        
+        if name in ('ereyesterday', 'avant-hier', 'avanthier'):
+            return today - timedelta(days=2), today - timedelta(days=1)
+        
+        if name in ('overmorrow', 'après-demain', 'apres-demain', 'apresdemain', 'aprèsdemain'):
+            return today + timedelta(days=2), today + timedelta(days=3)
+        
         if not DatetimeText.is_valid_weekday(name):
             raise UnknownDateError(f"Unknown date {name}")
 
