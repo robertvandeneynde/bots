@@ -2098,6 +2098,34 @@ class listsmodule:
                 await self.send(self.it(conn=conn, chat_id=self.get_chat_id()))
                 conn.execute('end transaction')
 
+    class dellist(GeneralAction):
+        @staticmethod
+        def do_it(*, conn, chat_id, name):
+            my_simple_sql = partial(simple_sql, connection=conn)
+            listsmodule.clearlist.do_it(conn=conn, chat_id=chat_id, name=name)
+            my_simple_sql(('''delete from list where chat_id=? and lower(name)=lower(?)''', (chat_id, name)))
+
+        async def run(self):
+            with sqlite3.connect("db.sqlite") as conn:
+                conn.execute('begin transaction')
+                
+                my_simple_sql = partial(simple_sql, connection=conn)
+                
+                match self.Args[0]:
+                    case "":
+                        name = "list"
+                    case _ as x:
+                        if my_simple_sql((''' select 1 from List where chat_id=? and lower(name)=lower(?) ''', (self.get_chat_id(), x,) )):
+                            name = x
+                        else:
+                            self.send(f"List '{x}' does not exist")
+                            return
+                
+                self.do_it(conn=conn, chat_id=self.get_chat_id(), name=name)
+                await self.send(f"List named {name!r} deleted")
+                conn.execute('end transaction')
+
+
 def list_del(li, i):
     copy = list(li)
     del copy[i]
@@ -3716,6 +3744,7 @@ COMMAND_DESC = {
     'deletefromlist': 'Alias for removefromlist',
     'printlist': 'Print a list using dashes',
     'dirlist': 'List all lists',
+    'dellist': 'Delete a list from all lists',
 }
 
 import itertools
@@ -3731,6 +3760,7 @@ BOT_FATHER_HIDDEN_COMMANDS = (
     'addtolist',
     'removefromlist', 'delfromlist', 'deletefromlist',
     'printlist',
+
 )
 
 COMMAND_LIST = (
@@ -3754,6 +3784,7 @@ COMMAND_LIST = (
     'removefromlist', 'delfromlist', 'deletefromlist',
     'printlist',
     'dirlist',
+    'dellist',
 )
 
 
@@ -3880,6 +3911,7 @@ if __name__ == '__main__':
     application.add_handler(CommandHandler('deletefromlist', listsmodule.removefromlist()))
     application.add_handler(CommandHandler('printlist', listsmodule.printlist()))
     application.add_handler(CommandHandler('dirlist', listsmodule.dirlist()))
+    application.add_handler(CommandHandler('dellist', listsmodule.dellist()))
 
     application.add_error_handler(general_error_callback)
     
