@@ -2095,7 +2095,7 @@ class listsmodule:
         async def run(self):
             with sqlite3.connect("db.sqlite") as conn:
                 conn.execute('begin transaction')
-                await self.send(self.it(conn=conn, chat_id=self.get_chat_id()))
+                await self.send(self.it(conn=conn, chat_id=self.get_chat_id()) or '/')
                 conn.execute('end transaction')
 
     class dellist(GeneralAction):
