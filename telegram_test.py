@@ -1061,13 +1061,25 @@ class DatetimeText:
         return beg, end
     
     @classmethod
-    def format_td_T_minus(cls, td:timedelta):
+    def format_td_T_minus(cls, td:timedelta, *, format='unit'):
+        assert format in ('unit', 'short', 'long')
         from datetime import timedelta
         sign = "-" if td >= timedelta(seconds=0) else "+"
         td = abs(td)
         d,rem = divmod(td, timedelta(days=1))
         m,s = divmod(rem.seconds, 60)
         h,m = divmod(m, 60)
+        days, hours, minutes = (timedelta(**{x:1}) for x in 'days hours minutes'.split())
+        if format == 'short':
+            return (f"D{sign}{d}" if td > 5 * days else 
+                    f"H{sign}{h + d*24}" if td > 3 * hours and else 
+                    f"M{sign}{m + h*60 + d*24}" if td > 10 * minutes else 
+                    f"S{sign}{s + m*60 + h*60 + d*24}")
+        if format == 'long':
+            return (f"D{sign}{d}" if td > 10 * days else 
+                    f"H{sign}{h + d*24}" if td > 10 * hours and else 
+                    f"M{sign}{m + h*60 + d*24}" if td > 60 * minutes else 
+                    f"S{sign}{s + m*60 + h*60 + d*24}")
         return (
             "D{}{}".format(sign, d) if d else
             "H{}{}".format(sign, h) if h else 
