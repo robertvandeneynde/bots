@@ -1995,6 +1995,19 @@ class listsmodule:
         
         async def print_usage(self):
             return await self.send("/createlist\n/createlist name")
+        
+    class deletelist(GeneralAction):
+        async def run(self):
+            match len(selfg.Args):
+                case 0:
+                    name = "list"
+                case 1:
+                    name = self.Args[0]
+                case _:
+                    raise UsageError
+                
+            import regex
+            NAME = regex.compile(r""
 
     class addtolist(GeneralAction):
         @staticmethod
@@ -3569,7 +3582,8 @@ async def help(update, context):
     fmt = ('{} - {}' if bot_father else
            '/{} {}')
     
-    li = ordered_set_remove(COMMAND_LIST, BOT_FATHER_HIDDEN_COMMANDS) if bot_father else ordered_set_union(COMMAND_LIST, BOT_FATHER_HIDDEN_COMMANDS)
+    li = (ordered_set_remove(COMMAND_LIST, BOT_FATHER_HIDDEN_COMMANDS) if bot_father else
+          ordered_set_union(COMMAND_LIST, BOT_FATHER_HIDDEN_COMMANDS))
     
     return await send('\n'.join(fmt.format(command, COMMAND_DESC.get(command, command)) for command in li))
 
@@ -3765,14 +3779,13 @@ def ordered_set_remove(A, B):
     return (''.join if isinstance(A, str) else type(A))(x for x in A if x not in B)
 
 def ordered_set_union(A, B):
-    return (''.join if isinstance(A, str) else type(A))(x for x in itertools.chain(A, B) if x in A and x in B)
+    return (''.join if isinstance(A, str) else type(A))(x for x in itertools.chain(A, B))
 
 BOT_FATHER_HIDDEN_COMMANDS = (
-    'createlist',
-    'addtolist',
+    # 'createlist',
+    # 'addtolist',
     'removefromlist', 'delfromlist', 'deletefromlist',
-    'printlist',
-
+    # 'printlist',
 )
 
 COMMAND_LIST = (
@@ -3796,7 +3809,7 @@ COMMAND_LIST = (
     'removefromlist', 'delfromlist', 'deletefromlist',
     'printlist',
     'dirlist',
-    'dellist',
+    'dellist', 'delist',
 )
 
 
@@ -3916,6 +3929,8 @@ if __name__ == '__main__':
     application.add_handler(CommandHandler('listdebts', listdebts))
 
     application.add_handler(CommandHandler('createlist', listsmodule.createlist()))
+    application.add_handler(CommandHandler('dellist', listsmodule.deletelist()))
+    application.add_handler(CommandHandler('delist', listsmodule.deletelist()))
     application.add_handler(CommandHandler('addtolist', listsmodule.addtolist()))
     application.add_handler(CommandHandler('appendtolist', listsmodule.addtolist()))
     application.add_handler(CommandHandler('removefromlist', listsmodule.removefromlist()))
