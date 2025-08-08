@@ -1072,12 +1072,12 @@ class DatetimeText:
         days, hours, minutes = (timedelta(**{x:1}) for x in 'days hours minutes'.split())
         if format == 'short':
             return (f"D{sign}{d}" if td > 5 * days else 
-                    f"H{sign}{h + d*24}" if td > 3 * hours and else 
+                    f"H{sign}{h + d*24}" if td > 3 * hours else 
                     f"M{sign}{m + h*60 + d*24}" if td > 10 * minutes else 
                     f"S{sign}{s + m*60 + h*60 + d*24}")
         if format == 'long':
             return (f"D{sign}{d}" if td > 10 * days else 
-                    f"H{sign}{h + d*24}" if td > 10 * hours and else 
+                    f"H{sign}{h + d*24}" if td > 10 * hours else 
                     f"M{sign}{m + h*60 + d*24}" if td > 60 * minutes else 
                     f"S{sign}{s + m*60 + h*60 + d*24}")
         return (
@@ -2005,9 +2005,10 @@ class listsmodule:
                     name = self.Args[0]
                 case _:
                     raise UsageError
-                
+
+            raise NotImplementedError("Not implemented yet")   
             import regex
-            NAME = regex.compile(r""
+            #NAME = regex.compile(r""
 
     class addtolist(GeneralAction):
         @staticmethod
