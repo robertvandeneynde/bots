@@ -2852,6 +2852,22 @@ async def timedifference(update, context, command):
         delta = -delta
     await send('{:.2f} {}'.format(delta / dtunits, units))
 
+async def timein(update, context):
+    from datetime import datetime
+    send = make_send(update, context)
+
+    if not context.args or len(context.args) != 1:
+        return await send("Usage: /timein [timezone]\nExample: /timein Europe/Brussels")
+
+    try:
+        tz = ZoneInfo(context.args[0])
+    except (ZoneInfoNotFoundError, IsADirectoryError):
+        raise UserError(f"{context.args[0]!r} is not a timezone")
+    
+    dt = datetime.now().astimezone(tz).replace(tzinfo=None)
+
+    return await send(DatetimeDbSerializer.strftime(dt))
+
 async def timeuntil(update, context):
     return await timedifference(update, context, command='timeuntil')
 
@@ -3910,6 +3926,7 @@ if __name__ == '__main__':
     application.add_handler(CommandHandler('help', help))
     application.add_handler(CommandHandler('uniline', uniline))
     application.add_handler(CommandHandler('nuniline', nuniline))
+    application.add_handler(CommandHandler('timein', timein))
     application.add_handler(CommandHandler('timeuntil', timeuntil))
     application.add_handler(CommandHandler('timesince', timesince))
     #application.add_handler(CommandHandler('sleep', sleep_))
