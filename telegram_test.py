@@ -1996,20 +1996,6 @@ class listsmodule:
         async def print_usage(self):
             return await self.send("/createlist\n/createlist name")
         
-    class deletelist(GeneralAction):
-        async def run(self):
-            match len(selfg.Args):
-                case 0:
-                    name = "list"
-                case 1:
-                    name = self.Args[0]
-                case _:
-                    raise UsageError
-
-            raise NotImplementedError("Not implemented yet")   
-            import regex
-            #NAME = regex.compile(r""
-
     class addtolist(GeneralAction):
         @staticmethod
         def do_it(*, conn, chat_id, name, value):
@@ -3930,8 +3916,6 @@ if __name__ == '__main__':
     application.add_handler(CommandHandler('listdebts', listdebts))
 
     application.add_handler(CommandHandler('createlist', listsmodule.createlist()))
-    application.add_handler(CommandHandler('dellist', listsmodule.deletelist()))
-    application.add_handler(CommandHandler('delist', listsmodule.deletelist()))
     application.add_handler(CommandHandler('addtolist', listsmodule.addtolist()))
     application.add_handler(CommandHandler('appendtolist', listsmodule.addtolist()))
     application.add_handler(CommandHandler('removefromlist', listsmodule.removefromlist()))
