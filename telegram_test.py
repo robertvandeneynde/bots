@@ -1270,6 +1270,7 @@ class ParseEvents:
                 
             bit = it[0]
             event, it = cls.parse_event_timed(it)
+
             try:
                 DatetimeText.to_date_range(event.date, tz=tz)
             except UnknownDateError:
@@ -1300,6 +1301,10 @@ class ParseEvents:
                     out.append(event._replace(date=str(date_obj + timedelta(weeks=i))))
             else:
                 out.append(event)
+
+        if sum(event.time is not None for event in out) == 1:
+            the_time = next(event.time for event in out if event.time is not None)
+            out = [event._replace(time=the_time) for event in out]
 
         name_fmt = ' '.join(it)
         return [ParsedEventMiddle.from_no_name(event, name=safe_format(name_fmt, n=n)) for event, n in zip(out, irange(1, len(out)))]
@@ -1362,6 +1367,9 @@ def parse_datetime_point(update, context, when_infos=None, what_infos=None) -> P
     return ParsedEventFinal(**{x: Loc[x] for x in ParsedEventFinal._fields})
 
 def parse_datetime_schedule(*, tz, args) -> list[ParsedEventFinal]:
+    # monday 15h tuesday 16h Party -> [[monday 15h Party], [tuesday 16h Party]]
+    # monday tuesday 15h Party -> [[monday 15h Party], [tuesday 15h Party]]
+    
     out = []
     event: ParsedEventMiddle
     date: datetime
