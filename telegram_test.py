@@ -1317,6 +1317,17 @@ def safe_format(fmt, **kwargs):
     Re = re.compile(re.escape('{') + '[a-zA-Z_][a-zA-Z_[0-9]*' + re.escape('}'))
     return Re.sub(lambda m: str(kwargs.get(m.group(0)[1:-1], m.group(0))), fmt)
 
+def split_bracket_comma_format(fmt):
+    """
+    split_bracket_comma_format("Hello {World, Life}") -> ["Hello World", "Hello Life"]
+    split_bracket_comma_format("Hello World") -> ["Hello World"]
+    """
+    Re = re.compile(re.escape('{') + '(.*?)' + re.escape('}'))
+    if m := Re.search(fmt):
+        bits = [x.strip() for x in m.group(1).split(',')]
+        return [Re.sub(lambda p:bits[i], fmt) for i in range(len(bits))]
+    return [fmt]
+
 def raise_error(error):
     raise error
 
@@ -1369,6 +1380,8 @@ def parse_datetime_point(update, context, when_infos=None, what_infos=None) -> P
 def parse_datetime_schedule(*, tz, args) -> list[ParsedEventFinal]:
     # monday 15h tuesday 16h Party -> [[monday 15h Party], [tuesday 16h Party]]
     # monday tuesday 15h Party -> [[monday 15h Party], [tuesday 15h Party]]
+    # monday 15h tuesday 16h Party {n} -> [[monday 15h Party 1], [tuesday 16h Party 2]]
+    # todo: monday 15h tuesday 16h Name is {Party, Sleep} -> [[monday 15h Name is Party], [tuesday 16h Name is Sleep]]
     
     out = []
     event: ParsedEventMiddle
