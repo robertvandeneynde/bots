@@ -1883,6 +1883,8 @@ class events(GeneralAction):
         match self.Args[0].lower():
             case 'deldups' | 'deldup' | 'deleteduplicates' | 'removeduplicates':
                 return await self.delete_duplicates(args=self.Args[1:])
+            case 'mergetimeduplicates':
+                return await self.merge_time_duplicates(args=self.Args[1:])
             case 'add':
                 return self.send("Not implements yet: use /addevent")
             case _:
@@ -1912,6 +1914,64 @@ class events(GeneralAction):
         assert_true(result['rowcount'] == len(to_delete), ValueError("Wrong deletion"))
 
         return await self.send(f"{len(to_delete)} event(s) deleted")
+    
+    async def merge_time_duplicates(self, args):
+        datetime_range = parse_datetime_range(self.update, args=args)
+        beg, end, tz, when = (datetime_range[x] for x in ('beg_utc', 'end_utc', 'tz', 'when'))
+
+        events = simple_sql_dict(('''
+            SELECT rowid, date, name
+            FROM Events
+            WHERE ? <= date AND date < ?
+            AND chat_id=?
+            ORDER BY date''',
+            (DatetimeDbSerializer.strftime(beg), DatetimeDbSerializer.strftime(end), self.update.effective_chat.id,)))
+        
+        def merge_names(names:list[str]):
+            if not names:
+                return ''
+            if len(S := set(names)) == 1:
+                return next(iter(S))
+            return ' | '.join(names)  # will be better later, like analyzing locations (do not repeat locations)
+
+        to_delete = []
+        to_update = []
+        i = 0
+        while i < len(events) - 1:
+            span = [i, None]
+            while i < len(events) - 1 and events[i]['date'] == events[i+1]['date']:
+                i += 1
+            span[1] = i+1
+
+            print(f"{span=}")
+
+            if span[1] - span[0] > 1:
+                to_delete.extend(events[i]['rowid'] for i in range(1+span[0], span[1]))
+                to_update.append((
+                    events[span[0]]['rowid'],
+                    merge_names([events[i]['name'] for i in range(*span)])
+                ))
+            else:
+                i += 1
+        
+        print(to_delete, to_update)
+
+        do_event_admin_check('del', setting=self.chat_settings('events.admins'), user_id=self.get_user_id())
+        do_event_admin_check('edit', setting=self.chat_settings('events.admins'), user_id=self.get_user_id())
+
+        with sqlite3.connect('db.sqlite') as conn:
+            my_simple_sql_modify = partial(simple_sql_modify, connection=conn)
+            conn.execute('begin transaction')
+
+            result = my_simple_sql_modify(('''DELETE FROM Events where rowid IN ({qmarks})'''.format(qmarks=','.join('?' * len(to_delete))), (*to_delete, ),))
+            assert_true(result['rowcount'] == len(to_delete), ValueError("Wrong deletion"))
+
+            for rowid, name in to_update:
+                my_simple_sql_modify(('''UPDATE Events SET name=? WHERE rowid=?''', (name, rowid)))
+
+            conn.execute('end transaction')
+
+        return await self.send(f"{len(to_delete)} event(s) deleted, {len(to_update)} event(s) group found")
 
     async def print_usage(self):
         match self.exception:
