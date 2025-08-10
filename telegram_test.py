@@ -163,7 +163,7 @@ async def whereisanswer_responder(msg:str, send: AsyncSend, *, update, context):
 
 async def list_responder(msg: str, send: AsyncSend, *, update, context):
     import regex
-    LIST_OP_RE = regex.compile(r"(\p{L}+)(\s*[.]\s*|\s+)(add|append|clear|print|shuffle|[=])\s*(.*)")
+    LIST_OP_RE = regex.compile(r"(\p{L}+)(\s*[.]\s*|\s+)(add|append|clear|print|list|shuffle|[=])\s*(.*)")
     LIST_OP_RE_MULTI = regex.compile(r"(\p{L}+)\s*([=]|[+][=])\s*\n(.*)", regex.MULTILINE | regex.DOTALL)
     if (match := LIST_OP_RE.fullmatch(msg)) or (match_multi := LIST_OP_RE_MULTI.fullmatch(msg)):
         if match:
@@ -203,7 +203,7 @@ async def list_responder(msg: str, send: AsyncSend, *, update, context):
                 conn.execute('end transaction')
                 await send(f"List named {list_name!r} created")
 
-        elif operation in ('add', 'append', 'print', 'clear', 'extendmulti', 'shuffle'):
+        elif operation in ('add', 'append', 'print', 'list', 'clear', 'extendmulti', 'shuffle'):
             with sqlite3.connect("db.sqlite") as conn:
                 conn.execute('begin transaction')
 
@@ -213,7 +213,7 @@ async def list_responder(msg: str, send: AsyncSend, *, update, context):
                         listsmodule.addtolist.do_it(conn=conn, name=list_name, chat_id=chat_id, value=parameters)
                         await send(f"List {list_name!r} edited")
 
-                    elif operation in ('print', ):
+                    elif operation in ('print', 'list', ):
                         await send(listsmodule.printlist.it(conn=conn, chat_id=chat_id, name=list_name))
 
                     elif operation in ('clear', ):
@@ -227,7 +227,7 @@ async def list_responder(msg: str, send: AsyncSend, *, update, context):
                     elif operation in ('shuffle', ):
                         listsmodule.shuffle.do_it(conn=conn, name=list_name, chat_id=chat_id)
                         await send(f"List {list_name!r} edited")
-                        
+                    
                     else:
                         raise AssertionError(f"On operation {operation}")
                     
