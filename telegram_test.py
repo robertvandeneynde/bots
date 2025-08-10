@@ -1964,8 +1964,6 @@ class events(GeneralAction):
                 i += 1
             span[1] = i+1
 
-            print(f"{span=}")
-
             if span[1] - span[0] > 1:
                 to_delete.extend(events[i]['rowid'] for i in range(1+span[0], span[1]))
                 to_update.append((
@@ -1975,8 +1973,6 @@ class events(GeneralAction):
             else:
                 i += 1
         
-        print(to_delete, to_update)
-
         do_event_admin_check('del', setting=self.chat_settings('events.admins'), user_id=self.get_user_id())
         do_event_admin_check('edit', setting=self.chat_settings('events.admins'), user_id=self.get_user_id())
 
