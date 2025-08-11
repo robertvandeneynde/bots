@@ -163,7 +163,7 @@ async def whereisanswer_responder(msg:str, send: AsyncSend, *, update, context):
 
 async def list_responder(msg: str, send: AsyncSend, *, update, context):
     import regex
-    LIST_OP_RE = regex.compile(r"(\p{L}+)(\s*[.]\s*|\s+)(add|append|clear|print|list|shuffle|enumerate|enum|delete|del|[=])\s*(.*)")
+    LIST_OP_RE = regex.compile(r"(\p{L}+)(\s*[.]\s*|\s+)(add|append|clear|print|list|shuffle|enumerate|enum|delete|del|insert|[=])\s*(.*)")
     LIST_OP_RE_MULTI = regex.compile(r"(\p{L}+)\s*([=]|[+][=])\s*\n(.*)", regex.MULTILINE | regex.DOTALL)
     if (match := LIST_OP_RE.fullmatch(msg)) or (match_multi := LIST_OP_RE_MULTI.fullmatch(msg)):
         if match:
@@ -203,7 +203,7 @@ async def list_responder(msg: str, send: AsyncSend, *, update, context):
                 conn.execute('end transaction')
                 await send(f"List named {list_name!r} created")
 
-        elif operation in ('add', 'append', 'print', 'list', 'clear', 'extendmulti', 'shuffle', 'enum', 'enumerate', 'del', 'delete'):
+        elif operation in ('add', 'append', 'print', 'list', 'clear', 'extendmulti', 'shuffle', 'enum', 'enumerate', 'del', 'delete', 'insert'):
             with sqlite3.connect("db.sqlite") as conn:
                 conn.execute('begin transaction')
 
@@ -233,6 +233,10 @@ async def list_responder(msg: str, send: AsyncSend, *, update, context):
                     
                     elif operation in ('del', 'delete'):
                         listsmodule.delinlist.do_it(conn=conn, name=list_name, chat_id=chat_id, value=parameters)
+                        await send(f"List {list_name!r} edited")
+                    
+                    elif operation in ('insert', ):
+                        listsmodule.insertinlist.do_it(conn=conn, name=list_name, chat_id=chat_id, parameters=parameters)
                         await send(f"List {list_name!r} edited")
 
                     else:
@@ -2123,6 +2127,36 @@ class listsmodule:
         async def print_usage(self):
             return await self.send("/createlist\n/createlist name")
     
+
+    class insertinlist(GeneralAction):
+        @staticmethod
+        def do_it(*, conn, chat_id, name, parameters):
+            i, to_add = parameters.split(maxsplit=1)
+            value = i
+            
+            my_simple_sql = partial(simple_sql, connection=conn)
+
+            listid, = only_one(my_simple_sql(('''select rowid from List where chat_id=? and lower(name)=lower(?)''', (chat_id, name,))))
+
+            rowids = my_simple_sql((''' select rowid, value from ListElement where listid=? ''', (listid, )))
+
+            value = int(value)
+
+            assert int(value) in range(-len(rowids)-1, len(rowids)+1+1)
+            assert int(value) != 0
+
+            if int(value) < 0:
+                value = len(rowids) + int(value) + 1
+
+            value -= 1
+
+            for (rowid, v), (nextrowid, nextv) in zip(rowids[value:], rowids[value+1:]):
+                my_simple_sql((''' update ListElement set value=? where rowid=? ''' , (v, nextrowid, )))
+
+            my_simple_sql((''' update ListElement set value=? where rowid=? ''', (to_add, rowids[value][0], )))
+            my_simple_sql((''' insert into ListElement(listid, value) values(?,?)''', (listid, rowids[-1][1], )))
+
+
     class delinlist(GeneralAction):
         @staticmethod
         def do_it(*, conn, chat_id, name, value):
