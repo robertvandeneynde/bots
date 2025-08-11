@@ -1331,10 +1331,13 @@ def split_bracket_comma_format(fmt):
             bits = [x.strip() for x in p.split(',')]
             all_bits.append(bits)
         
+        def get_modulo(L, i):
+            return L[i % len(L)]
+
         def make(i):
             counter = itertools.count(0)
             def sub(p):
-                return all_bits[next(counter)][i]
+                return get_modulo(all_bits[next(counter)], i)
             return sub
 
         return [Re.sub(make(i), fmt) for i in range(max(len(b) for b in all_bits))]
