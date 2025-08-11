@@ -1321,11 +1321,23 @@ def split_bracket_comma_format(fmt):
     """
     split_bracket_comma_format("Hello {World, Life}") -> ["Hello World", "Hello Life"]
     split_bracket_comma_format("Hello World") -> ["Hello World"]
+    split_bracket_comma_format("Hello {A,B} {C,D}") -> ["Hello A C", "Hello B D"]
+    split_bracket_comma_format("Hello {A,B,C} {D,E}") -> ["Hello A D", "Hello B E", "Hello C D"]  # looping
     """
     Re = re.compile(re.escape('{') + '(.*?)' + re.escape('}'))
-    if m := Re.search(fmt):
-        bits = [x.strip() for x in m.group(1).split(',')]
-        return [Re.sub(lambda p:bits[i], fmt) for i in range(len(bits))]
+    if m := Re.findall(fmt):
+        all_bits = []
+        for p in m:
+            bits = [x.strip() for x in p.split(',')]
+            all_bits.append(bits)
+        
+        def make(i):
+            counter = itertools.count(0)
+            def sub(p):
+                return all_bits[next(counter)][i]
+            return sub
+
+        return [Re.sub(make(i), fmt) for i in range(max(len(b) for b in all_bits))]
     return [fmt]
 
 def raise_error(error):
