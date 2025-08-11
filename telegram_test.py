@@ -1410,8 +1410,22 @@ def parse_datetime_schedule(*, tz, args) -> list[ParsedEventFinal]:
     # monday 15h tuesday 16h Party -> [[monday 15h Party], [tuesday 16h Party]]
     # monday tuesday 15h Party -> [[monday 15h Party], [tuesday 15h Party]]
     # monday 15h tuesday 16h Party {n} -> [[monday 15h Party 1], [tuesday 16h Party 2]]
-    # todo: monday 15h tuesday 16h Name is {Party, Sleep} -> [[monday 15h Name is Party], [tuesday 16h Name is Sleep]]
+    # monday 15h tuesday 16h Name is {Party, Sleep} -> [[monday 15h Name is Party], [tuesday 16h Name is Sleep]]
     
+    commands_i = [i for i in range(len(args)) if args[i] == '//']
+
+    if commands_i:
+        intervals = [[0, None]]
+        for i in commands_i:
+            intervals[-1][1] = i
+            intervals.append([i+1, None])
+        intervals[-1][1] = len(args)
+
+        all_events = []
+        for a,b in intervals:
+            all_events.extend(parse_datetime_schedule(tz=tz, args=args[a:b]))
+        return all_events
+
     out = []
     event: ParsedEventMiddle
     date: datetime
