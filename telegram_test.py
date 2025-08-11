@@ -1323,6 +1323,7 @@ def split_bracket_comma_format(fmt):
     split_bracket_comma_format("Hello World") -> ["Hello World"]
     split_bracket_comma_format("Hello {A,B} {C,D}") -> ["Hello A C", "Hello B D"]
     split_bracket_comma_format("Hello {A,B,C} {D,E}") -> ["Hello A D", "Hello B E", "Hello C D"]  # looping
+    split_bracket_comma_format("Hello {A}") -> ["Hello {A}"]
     """
     Re = re.compile(re.escape('{') + '(.*?)' + re.escape('}'))
     if m := Re.findall(fmt):
@@ -1337,7 +1338,11 @@ def split_bracket_comma_format(fmt):
         def make(i):
             counter = itertools.count(0)
             def sub(p):
-                return get_modulo(all_bits[next(counter)], i)
+                bits = all_bits[next(counter)]
+                if len(bits) > 1:
+                    return get_modulo(bits, i)
+                else:
+                    return '{' + (bits[0] if bits else '') + '}'
             return sub
 
         return [Re.sub(make(i), fmt) for i in range(max(len(b) for b in all_bits))]
