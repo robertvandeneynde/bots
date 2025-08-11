@@ -1307,7 +1307,19 @@ class ParseEvents:
             out = [event._replace(time=the_time) for event in out]
 
         name_fmt = ' '.join(it)
-        return [ParsedEventMiddle.from_no_name(event, name=safe_format(name_fmt, n=n)) for event, n in zip(out, irange(1, len(out)))]
+
+        bracket_extension = split_bracket_comma_format(name_fmt)
+
+        to_return = []
+        for event, n in zip(out, irange(1, len(out))):
+            current_format = get_modulo(bracket_extension, n-1)
+            name = safe_format(current_format, n=n)
+            to_return.append( ParsedEventMiddle.from_no_name(event, name=name) )
+
+        return to_return
+
+def get_modulo(L, i):
+    return L[i % len(L)]
 
 def safe_format(fmt, **kwargs):
     """
@@ -1332,9 +1344,6 @@ def split_bracket_comma_format(fmt):
             bits = [x.strip() for x in p.split(',')]
             all_bits.append(bits)
         
-        def get_modulo(L, i):
-            return L[i % len(L)]
-
         def make(i):
             counter = itertools.count(0)
             def sub(p):
