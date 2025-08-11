@@ -2142,19 +2142,22 @@ class listsmodule:
 
             value = int(value)
 
-            assert int(value) in range(-len(rowids)-1, len(rowids)+1+1)
-            assert int(value) != 0
+            assert value in range(-len(rowids)-1, len(rowids)+1+1)
+            assert value != 0
 
-            if int(value) < 0:
-                value = len(rowids) + int(value) + 1
+            if value < 0:
+                value = len(rowids) + value + 1 + 1
 
             value -= 1
 
             for (rowid, v), (nextrowid, nextv) in zip(rowids[value:], rowids[value+1:]):
                 my_simple_sql((''' update ListElement set value=? where rowid=? ''' , (v, nextrowid, )))
 
-            my_simple_sql((''' update ListElement set value=? where rowid=? ''', (to_add, rowids[value][0], )))
-            my_simple_sql((''' insert into ListElement(listid, value) values(?,?)''', (listid, rowids[-1][1], )))
+            if value < len(rowids):
+                my_simple_sql((''' update ListElement set value=? where rowid=? ''', (to_add, rowids[value][0], )))
+                my_simple_sql((''' insert into ListElement(listid, value) values(?,?)''', (listid, rowids[-1][1], )))
+            else:
+                my_simple_sql((''' insert into ListElement(listid, value) values(?,?)''', (listid, to_add, )))
 
 
     class delinlist(GeneralAction):
