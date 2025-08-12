@@ -199,6 +199,10 @@ async def list_responder(msg: str, send: AsyncSend, *, update, context):
                         # name = copy from other
                         _, _, copy_from_name = param_match.groups()
                         type_list = ('copy', copy_from_name)
+
+                    elif parameters.lower() in ('tasklist', ):
+                        type_list = parameters.lower()
+
                     else:
                         raise UserError("Operation for list creation not implemented, use = list, for example")
                 elif operation == 'editmulti':
@@ -2087,16 +2091,32 @@ class listsmodule:
         def do_it(*, conn, chat_id, name, user_id, type_list: object):
             my_simple_sql = partial(simple_sql, connection=conn)
 
+            # pre creation operation : clear list if exists
             if listsmodule.list_exists(conn=conn, chat_id=chat_id, name=name):
                 listsmodule.clearlist.do_it(conn=conn, chat_id=chat_id, name=name)
                 listid = listsmodule.get_list_id(conn=conn, chat_id=chat_id, name=name)
                 my_simple_sql(('delete from ListElement where listid=?', (listid, )))
                 my_simple_sql(('delete from List where rowid=?', (listid, )))
 
-            my_simple_sql(('insert into List(name, chat_id, source_user_id) VALUES (?,?,?)', (name, chat_id, user_id)))
-
+            # pre creation operation : determine the type of the new list
+            # - in case of copy, verify the other list exists, and save it's type
             match type_list:
-                case 'list':
+                case 'copy', copy_from_name:
+                    if listsmodule.list_exists(conn=conn, chat_id=chat_id, name=copy_from_name):
+                        actual_type = only_one(only_one(my_simple_sql((''' select type from List where lower(name)=lower(?) ''', (name, )))))
+                    else:
+                        raise UserError(f'List {copy_from_name!r} does not exist')  # transaction will rollback
+                
+                case _:
+                    assert isinstance(type_list, str)
+                    actual_type = type_list.lower()
+
+            # creation operation
+            my_simple_sql(('insert into List(name, chat_id, source_user_id, type) VALUES (?,?,?,?)', (name, chat_id, user_id, actual_type)))
+
+            # post creation operation
+            match type_list:
+                case 'list' | 'tasklist':
                     pass # nothing to do more
 
                 case 'copy', copy_from_name:
