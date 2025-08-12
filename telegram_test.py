@@ -163,7 +163,7 @@ async def whereisanswer_responder(msg:str, send: AsyncSend, *, update, context):
 
 async def list_responder(msg: str, send: AsyncSend, *, update, context):
     import regex
-    LIST_OP_RE = regex.compile(r"(\p{L}+)(\s*[.]\s*|\s+)(add|append|clear|print|list|shuffle|enumerate|enum|delete|del|insert|[=])\s*(.*)")
+    LIST_OP_RE = regex.compile(r"(\p{L}+)(\s*[.]\s*|\s+)(add|append|clear|print|list|shuffle|enumerate|enum|delete|del|insert|check|uncheck|[=])\s*(.*)")
     LIST_OP_RE_MULTI = regex.compile(r"(\p{L}+)\s*([=]|[+][=])\s*\n(.*)", regex.MULTILINE | regex.DOTALL)
     if (match := LIST_OP_RE.fullmatch(msg)) or (match_multi := LIST_OP_RE_MULTI.fullmatch(msg)):
         if match: # one line operation
@@ -216,14 +216,25 @@ async def list_responder(msg: str, send: AsyncSend, *, update, context):
                 conn.execute('end transaction')
                 await send(f"List named {list_name!r} created")
 
-        elif operation in ('add', 'append', 'print', 'list', 'clear', 'extendmulti', 'shuffle', 'enum', 'enumerate', 'del', 'delete', 'insert'):
+        elif operation in ('add', 'append', 'print', 'list', 'clear', 'extendmulti', 'shuffle', 'enum', 'enumerate', 'del', 'delete', 'insert', 'check', 'uncheck'):
             with sqlite3.connect("db.sqlite") as conn:
                 conn.execute('begin transaction')
 
                 chat_id = update.effective_chat.id
                 if listsmodule.list_exists(conn=conn, chat_id=chat_id, name=list_name):
+                    list_type = listsmodule.get_list_type(conn=conn, chat_id=chat_id, name=list_name)
+
                     if operation in ('add', 'append'):
-                        listsmodule.addtolist.do_it(conn=conn, name=list_name, chat_id=chat_id, value=parameters)
+                        match list_type:
+                            case 'list':
+                                listsmodule.addtolist.do_it(conn=conn, name=list_name, chat_id=chat_id, value=parameters)
+                            case 'tasklist':
+                                IsTask = re.compile("^\\[\\s*(x|)\\s*\\].*$")
+                                if IsTask.fullmatch(parameters):
+                                    modified_value = parameters.strip()
+                                else:
+                                    modified_value = '[ ]' + ' ' + parameters.strip()
+                                listsmodule.addtolist.do_it(conn=conn, name=list_name, chat_id=chat_id, value=modified_value)
                         await send(f"List {list_name!r} edited")
 
                     elif operation in ('print', 'list', ):
@@ -251,6 +262,14 @@ async def list_responder(msg: str, send: AsyncSend, *, update, context):
                     elif operation in ('insert', ):
                         listsmodule.insertinlist.do_it(conn=conn, name=list_name, chat_id=chat_id, parameters=parameters)
                         await send(f"List {list_name!r} edited")
+                    
+                    elif operation in ('check', 'uncheck', ):
+                        if list_type in ('tasklist', ):
+                            if operation == 'check':
+                                listsmodule.tasklistcheck.do_it(conn=conn, name=list_name, chat_id=chat_id, value=parameters, direction='x')
+                            elif operation == 'uncheck':
+                                listsmodule.tasklistcheck.do_it(conn=conn, name=list_name, chat_id=chat_id, value=parameters, direction=' ')
+                            await send(f"List {list_name!r} edited")
 
                     else:
                         raise AssertionError(f"On operation {operation}")
@@ -2069,6 +2088,12 @@ class listsmodule:
         return bool(my_simple_sql((''' select 1 from List where chat_id=? and lower(name)=lower(?) ''', (chat_id, name,) )))
     
     @staticmethod
+    def get_list_type(*, chat_id, name, conn):
+        my_simple_sql = partial(simple_sql, connection=conn)
+
+        return only_one(only_one(my_simple_sql(('''select type from List where chat_id=? and lower(name)=lower(?)''', (chat_id, name,)))))
+
+    @staticmethod
     def get_list_id(*, chat_id, name, conn):
         my_simple_sql = partial(simple_sql, connection=conn)
 
@@ -2188,6 +2213,37 @@ class listsmodule:
             else:
                 my_simple_sql((''' insert into ListElement(listid, value) values(?,?)''', (listid, to_add, )))
 
+    class tasklistcheck:
+        @staticmethod
+        def do_it(*, conn, chat_id, name, value, direction:Literal['x', '', 'toggle']):
+            direction = direction.strip()
+            assert direction in ('x', '', 'toggle')
+            direction = ' ' if direction == '' else direction
+
+            my_simple_sql = partial(simple_sql, connection=conn)
+
+            listid, = only_one(my_simple_sql(('''select rowid from List where chat_id=? and lower(name)=lower(?)''', (chat_id, name,))))
+
+            rowids = my_simple_sql((''' select rowid, value from ListElement where listid=? ''', (listid, )))
+
+            assert int(value) in range(-len(rowids), len(rowids))
+            assert int(value) != 0
+
+            if int(value) < 0:
+                value = len(rowids) + int(value)
+            else:
+                value = int(value) - 1
+
+            rowid, old_value = rowids[int(value)]
+
+            IsTask = re.compile("^\\[\\s*(x|)\\s*\\](.*)$")
+            if m := IsTask.fullmatch(old_value):
+                new_check = direction if direction != 'toggle' else ('' if m.group(1) == 'x' else 'x')
+                new_value = '[' + new_check + ']' + m.group(2)
+            else:
+                raise AssertionError('A non task is stored in a tasklist')
+            
+            my_simple_sql((''' update ListElement set value=? where rowid=?''', (new_value, rowid)))
 
     class delinlist(GeneralAction):
         @staticmethod
