@@ -166,10 +166,10 @@ async def list_responder(msg: str, send: AsyncSend, *, update, context):
     LIST_OP_RE = regex.compile(r"(\p{L}+)(\s*[.]\s*|\s+)(add|append|clear|print|list|shuffle|enumerate|enum|delete|del|insert|[=])\s*(.*)")
     LIST_OP_RE_MULTI = regex.compile(r"(\p{L}+)\s*([=]|[+][=])\s*\n(.*)", regex.MULTILINE | regex.DOTALL)
     if (match := LIST_OP_RE.fullmatch(msg)) or (match_multi := LIST_OP_RE_MULTI.fullmatch(msg)):
-        if match:
+        if match: # one line operation
             list_name, _, operation, parameters = match.groups()
 
-        elif match_multi:
+        elif match_multi: # multi line operation
             list_name, operation_symbol, parameters_text = match_multi.groups()
             operation = {'=':'editmulti', '+=': 'extendmulti'}[operation_symbol]
             parameters_lines = parameters_text.splitlines()
@@ -180,14 +180,23 @@ async def list_responder(msg: str, send: AsyncSend, *, update, context):
             parameters_lines = list(filter(None, parameters_lines))
             parameters = parameters_lines
 
+        list_name: str
+        operation: str
+        parameters: str | list[str]  # list in case of multiline operation
+
         if operation in ('=', 'editmulti'):
             with sqlite3.connect("db.sqlite") as conn:
                 conn.execute('begin transaction')
                 chat_id, user_id = update.effective_chat.id, update.effective_user.id
                 if operation == '=':
-                    if parameters.lower() == 'list' or re.match(re.escape('[') + '\s*' + re.escape(']'), parameters):
+                    if parameters.lower() == 'list' or re.fullmatch(re.escape('[') + '\s*' + re.escape(']'), parameters):
+                        # name = list
+                        # name = []
+                        # name = [ ]
                         type_list = 'list'
                     elif param_match := regex.compile('copy\s*((of|from)\s*)?(\p{L}+)').fullmatch(parameters):
+                        # name = copy of other
+                        # name = copy from other
                         _, _, copy_from_name = param_match.groups()
                         type_list = ('copy', copy_from_name)
                     else:
@@ -3593,6 +3602,12 @@ def migration13():
         conn.execute('begin transaction')
         conn.execute('create table List(name, chat_id, source_user_id)')
         conn.execute('create table ListElement(listid, value)')
+        conn.execute('end transaction')
+
+def migration14():
+    with sqlite3.connect('db.sqlite') as conn:
+        conn.execute('begin transaction')
+        conn.execute('alter table List add column type DEFAULT "list"')
         conn.execute('end transaction')
 
 def get_latest_euro_rates_from_api() -> json:
