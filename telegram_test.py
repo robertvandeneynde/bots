@@ -245,9 +245,13 @@ async def list_responder(msg: str, send: AsyncSend, *, update, context):
                         await send(f"List {list_name!r} edited")
 
                     elif operation in ('extendmulti', ):
-                        listsmodule.extendmultilist.do_it(conn=conn, name=list_name, chat_id=chat_id, values=parameters)
-                        await send(f"List {list_name!r} edited")
-                    
+                        if list_type in ('list', ):
+                            listsmodule.extendmultilist.do_it(conn=conn, name=list_name, chat_id=chat_id, values=parameters)
+                            await send(f"List {list_name!r} edited")
+                        elif list_type in ('tasklist', ):
+                            listsmodule.extendmultitasklist.do_it(conn=conn, name=list_name, chat_id=chat_id, values=parameters)
+                            await send(f"List {list_name!r} edited")
+
                     elif operation in ('shuffle', ):
                         listsmodule.shuffle.do_it(conn=conn, name=list_name, chat_id=chat_id)
                         await send(f"List {list_name!r} edited")
@@ -2340,6 +2344,19 @@ class listsmodule:
             listid, = only_one(my_simple_sql(('''select rowid from List where chat_id=? and lower(name)=lower(?)''', (chat_id, name,))))
             for value in values:
                 my_simple_sql(('''insert into ListElement(listid, value) values (?,?)''', (listid, value)))
+    
+    class extendmultitasklist:
+        @staticmethod
+        def do_it(*, conn, chat_id, name, values):
+            def Task(x):
+                IsTask = re.compile("^\\[\\s*(x|)\\s*\\].*$")
+                if IsTask.fullmatch(x):
+                    return x.strip()
+                else:
+                    return '[ ]' + ' ' + x.strip()
+            
+            new_values = list(map(Task, values))
+            listsmodule.extendmultilist.do_it(values=new_values, conn=conn, name=name, chat_id=chat_id)
 
     class shuffle:
         @staticmethod
