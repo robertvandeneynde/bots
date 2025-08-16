@@ -260,8 +260,13 @@ async def list_responder(msg: str, send: AsyncSend, *, update, context):
                         await send(f"List {list_name!r} edited")
                     
                     elif operation in ('insert', ):
-                        listsmodule.insertinlist.do_it(conn=conn, name=list_name, chat_id=chat_id, parameters=parameters)
-                        await send(f"List {list_name!r} edited")
+                        if list_type in ('list', ):
+                            listsmodule.insertinlist.do_it(conn=conn, name=list_name, chat_id=chat_id, parameters=parameters)
+                            await send(f"List {list_name!r} edited")
+
+                        elif list_type in ('tasklist', ):
+                            listsmodule.insertintasklist.do_it(conn=conn, name=list_name, chat_id=chat_id, parameters=parameters)
+                            await send(f"List {list_name!r} edited")
                     
                     elif operation in ('check', 'uncheck', ):
                         if list_type in ('tasklist', ):
@@ -2181,6 +2186,18 @@ class listsmodule:
         async def print_usage(self):
             return await self.send("/createlist\n/createlist name")
     
+    class insertintasklist:
+        @staticmethod
+        def do_it(*, conn, chat_id, name, parameters):
+            i, to_add = parameters.split(maxsplit=1)
+
+            IsTask = re.compile("^\\[\\s*(x|)\\s*\\].*$")
+            if IsTask.fullmatch(to_add):
+                modified_value = to_add.strip()
+            else:
+                modified_value = '[ ]' + ' ' + to_add.strip()
+
+            listsmodule.insertinlist.do_it(conn=conn, chat_id=chat_id, name=name, parameters=i + ' ' + modified_value)
 
     class insertinlist(GeneralAction):
         @staticmethod
