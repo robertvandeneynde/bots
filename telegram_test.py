@@ -2137,7 +2137,7 @@ class listsmodule:
             match type_list:
                 case 'copy', copy_from_name:
                     if listsmodule.list_exists(conn=conn, chat_id=chat_id, name=copy_from_name):
-                        actual_type = only_one(only_one(my_simple_sql((''' select type from List where lower(name)=lower(?) ''', (chat_id, name, )))))
+                        actual_type = only_one(only_one(my_simple_sql((''' select type from List where chat_id=? AND lower(name)=lower(?) ''', (chat_id, name, )))))
                     else:
                         raise UserError(f'List {copy_from_name!r} does not exist')  # transaction will rollback
                 
