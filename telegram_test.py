@@ -2137,7 +2137,7 @@ class listsmodule:
             match type_list:
                 case 'copy', copy_from_name:
                     if listsmodule.list_exists(conn=conn, chat_id=chat_id, name=copy_from_name):
-                        actual_type = only_one(only_one(my_simple_sql((''' select type from List where lower(name)=lower(?) ''', (name, )))))
+                        actual_type = only_one(only_one(my_simple_sql((''' select type from List where lower(name)=lower(?) ''', (chat_id, name, )))))
                     else:
                         raise UserError(f'List {copy_from_name!r} does not exist')  # transaction will rollback
                 
@@ -3864,6 +3864,17 @@ async def sharemoney(update, context):
     except UsageError:
         return await send('Usage: /sharemoney on|off')
 
+async def detaildebts(update, context):
+    send = make_send(update, context)
+    chat_id = update.effective_chat.id
+
+    lines = simple_sql_dict(('select chat_id, debitor_id, creditor_id, amount, currency from NamedChatDebt where chat_id=?', (chat_id,)))
+
+    return await send('\n'.join(
+        "{} owes {} {}".format(d.debitor_id, d.creditor_id, d.amount)
+        for d in (NamedChatDebt(**x) for x in lines)
+    ))
+
 async def listdebts(update, context):
     send = make_send(update, context)
     chat_id = update.effective_chat.id
@@ -4246,6 +4257,7 @@ if __name__ == '__main__':
     application.add_handler(CommandHandler('timesince', timesince))
     #application.add_handler(CommandHandler('sleep', sleep_))
     application.add_handler(CommandHandler('listdebts', listdebts))
+    application.add_handler(CommandHandler('detaildebts', detaildebts))
 
     application.add_handler(CommandHandler('createlist', listsmodule.createlist()))
     application.add_handler(CommandHandler('addtolist', listsmodule.addtolist()))
