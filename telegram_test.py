@@ -2221,7 +2221,7 @@ class listsmodule:
             assert value != 0
 
             if value < 0:
-                value = len(rowids) + value + 1 + 1
+                value = len(rowids) + value + 1
 
             value -= 1
 
