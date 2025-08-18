@@ -2217,7 +2217,7 @@ class listsmodule:
 
             value = int(value)
 
-            assert value in irange(-len(rowids)-1, len(rowids)+1)
+            assert value in irange(-len(rowids), len(rowids)+1)
             assert value != 0
 
             if value < 0:
