@@ -2247,7 +2247,7 @@ class listsmodule:
 
             rowids = my_simple_sql((''' select rowid, value from ListElement where listid=? ''', (listid, )))
 
-            assert int(value) in range(-len(rowids), len(rowids))
+            assert int(value) in irange(-len(rowids), len(rowids))
             assert int(value) != 0
 
             if int(value) < 0:
