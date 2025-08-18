@@ -2221,9 +2221,9 @@ class listsmodule:
             assert value != 0
 
             if value < 0:
-                value = len(rowids) + value + 1
-
-            value -= 1
+                value = len(rowids) + value
+            else:
+                value = value - 1
 
             for (rowid, v), (nextrowid, nextv) in zip(rowids[value:], rowids[value+1:]):
                 my_simple_sql((''' update ListElement set value=? where rowid=? ''' , (v, nextrowid, )))
