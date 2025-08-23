@@ -1903,8 +1903,29 @@ async def add_event(update: Update, context: CallbackContext):
     do_event_admin_check('add', setting=read_chat_settings('event.admins'), user_id=update.effective_user.id)
 
     add_event_to_db(chat_timezones=chat_timezones, tz=tz, datetime_utc=datetime_utc, name=name, chat_id=chat_id, source_user_id=source_user_id)
+
+    await implicit_thereis(what=name, update=update, context=context)
     
     await post_event(update, context, name=name, datetime=datetime, time=time, date_str=date_str, chat_timezones=chat_timezones, tz=tz, chat_id=chat_id, datetime_utc=datetime_utc)
+
+async def implicit_thereis(*, what:str, update, context):
+    what = what or ''
+    _, *where = what.split("@", maxsplit=1)
+    if not where:
+        return
+    where, = where
+    Re = re.compile("(.*)\\((.*)\\).*")
+    if not(m := Re.fullmatch(where)):
+        return
+
+    location, address = map(str.strip, m.groups())
+
+    def exists(a,b):
+        return False
+
+    print(location, address)
+    if not exists(location, address):
+        await save_thereis(location, address, update=update, context=context)
 
 async def post_event(update, context, *, name, datetime, time, date_str, chat_timezones, tz, chat_id, datetime_utc):
     send = make_send(update, context)
