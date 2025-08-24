@@ -1898,15 +1898,35 @@ async def add_event(update: Update, context: CallbackContext):
 
     date_str, time, name, date, date_end, datetime, datetime_utc, tz = parse_datetime_point(update, context, when_infos=when_infos, what_infos=what_infos)
     
+    name = update_name_using_locations(name, chat_id=chat_id)
+
     chat_timezones = read_chat_settings("event.timezones")
 
     do_event_admin_check('add', setting=read_chat_settings('event.admins'), user_id=update.effective_user.id)
 
     add_event_to_db(chat_timezones=chat_timezones, tz=tz, datetime_utc=datetime_utc, name=name, chat_id=chat_id, source_user_id=source_user_id)
 
-    implicit_thereis(what=name, chat_id=update.effective_chat.id)
+    implicit_thereis(what=name, chat_id=chat_id)
     
     await post_event(update, context, name=name, datetime=datetime, time=time, date_str=date_str, chat_timezones=chat_timezones, tz=tz, chat_id=chat_id, datetime_utc=datetime_utc)
+
+class ImplicitLocations:
+    Parens = re.compile("(.*)\\((.*)\\).*")
+
+def update_name_using_locations(what, *, chat_id):
+    event = enrich_event_with_where({'what': what})
+    if where := event.get('where'):
+        results = simple_sql(('select value from EventLocation where chat_id=? and LOWER(key)=LOWER(?)', (chat_id, where,)))
+        
+        if results:
+            long_location = only_one(results)[0]
+        else:
+            long_location = None
+
+        if long_location:
+            return event.get('what') + ' @ ' + where + ' ' + '(' + long_location + ')'
+        
+    return what
 
 def implicit_thereis(*, what:str, chat_id):
     what = what or ''
@@ -1916,7 +1936,7 @@ def implicit_thereis(*, what:str, chat_id):
         return
     
     where, = where
-    Re = re.compile("(.*)\\((.*)\\).*")
+    Re = ImplicitLocations.Parens
     
     if not(m := Re.fullmatch(where)):
         return
