@@ -1904,27 +1904,29 @@ async def add_event(update: Update, context: CallbackContext):
 
     add_event_to_db(chat_timezones=chat_timezones, tz=tz, datetime_utc=datetime_utc, name=name, chat_id=chat_id, source_user_id=source_user_id)
 
-    await implicit_thereis(what=name, update=update, context=context)
+    implicit_thereis(what=name, chat_id=update.effective_chat.id)
     
     await post_event(update, context, name=name, datetime=datetime, time=time, date_str=date_str, chat_timezones=chat_timezones, tz=tz, chat_id=chat_id, datetime_utc=datetime_utc)
 
-async def implicit_thereis(*, what:str, update, context):
+def implicit_thereis(*, what:str, chat_id):
     what = what or ''
     _, *where = what.split("@", maxsplit=1)
+
     if not where:
         return
+    
     where, = where
     Re = re.compile("(.*)\\((.*)\\).*")
+    
     if not(m := Re.fullmatch(where)):
         return
 
     location, address = map(str.strip, m.groups())
+    
+    if not(location and address):
+        return
 
-    def exists(a,b):
-        return False
-
-    if not exists(location, address):
-        do_save_thereis_db(location, address, update=update.effective_chat.id)
+    do_update_thereis_db(location, address, chat_id=chat_id)
 
 async def post_event(update, context, *, name, datetime, time, date_str, chat_timezones, tz, chat_id, datetime_utc):
     send = make_send(update, context)
@@ -2791,6 +2793,17 @@ def do_save_thereis_db(key, value, *, chat_id):
         
         my_simple_sql(('delete from EventLocation where chat_id=? and LOWER(key)=LOWER(?)', (chat_id, key)))
         my_simple_sql(('insert into EventLocation(key, value, chat_id) VALUES (?,?,?)', (key, value, chat_id)))
+        conn.execute('end transaction')
+
+def do_update_thereis_db(key, value, *, chat_id):
+    assert_true(key and value, UserError("Key and Values must be non null"))
+    
+    with sqlite3.connect("db.sqlite") as conn:
+        my_simple_sql = partial(simple_sql, connection=conn)
+        conn.execute('begin transaction')
+        if not my_simple_sql(('select 1 from EventLocation where chat_id=? and LOWER(key)=LOWER(?)', (chat_id, key))):
+            my_simple_sql(('delete from EventLocation where chat_id=? and LOWER(key)=LOWER(?)', (chat_id, key)))
+            my_simple_sql(('insert into EventLocation(key, value, chat_id) VALUES (?,?,?)', (key, value, chat_id)))
         conn.execute('end transaction')
 
 async def save_thereis(key, value, *, update, context):
