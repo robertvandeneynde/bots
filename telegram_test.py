@@ -1923,9 +1923,8 @@ async def implicit_thereis(*, what:str, update, context):
     def exists(a,b):
         return False
 
-    print(location, address)
     if not exists(location, address):
-        await save_thereis(location, address, update=update, context=context)
+        do_save_thereis_db(location, address, update=update.effective_chat.id)
 
 async def post_event(update, context, *, name, datetime, time, date_str, chat_timezones, tz, chat_id, datetime_utc):
     send = make_send(update, context)
@@ -2783,10 +2782,7 @@ async def thereis(update:Update, context:CallbackContext):
     for i, key in enumerate(keys):
         await save_thereis(key, values[0] if len(values) == 1 else values[i], update=update, context=context)
 
-async def save_thereis(key, value, *, update, context):
-    send = make_send(update, context)
-    chat_id = update.effective_chat.id
-    
+def do_save_thereis_db(key, value, *, chat_id):
     assert_true(key and value, UserError("Key and Values must be non null"))
     
     with sqlite3.connect("db.sqlite") as conn:
@@ -2796,6 +2792,11 @@ async def save_thereis(key, value, *, update, context):
         my_simple_sql(('delete from EventLocation where chat_id=? and LOWER(key)=LOWER(?)', (chat_id, key)))
         my_simple_sql(('insert into EventLocation(key, value, chat_id) VALUES (?,?,?)', (key, value, chat_id)))
         conn.execute('end transaction')
+
+async def save_thereis(key, value, *, update, context):
+    send = make_send(update, context)
+
+    do_save_thereis_db(key, value, chat_id=update.effective_chat.id)
 
     await send(f"Elephant remembers location:\n{key!r}\n→ {value!r}")
 
