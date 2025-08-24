@@ -1898,7 +1898,8 @@ async def add_event(update: Update, context: CallbackContext):
 
     date_str, time, name, date, date_end, datetime, datetime_utc, tz = parse_datetime_point(update, context, when_infos=when_infos, what_infos=what_infos)
     
-    name = update_name_using_locations(name, chat_id=chat_id)
+    if not do_if_setting_on(read_chat_settings('event.location.autocomplete')):
+        name = update_name_using_locations(name, chat_id=chat_id)
 
     chat_timezones = read_chat_settings("event.timezones")
 
@@ -1906,7 +1907,8 @@ async def add_event(update: Update, context: CallbackContext):
 
     add_event_to_db(chat_timezones=chat_timezones, tz=tz, datetime_utc=datetime_utc, name=name, chat_id=chat_id, source_user_id=source_user_id)
 
-    implicit_thereis(what=name, chat_id=chat_id)
+    if not do_if_setting_on(read_chat_settings('event.location.autocomplete')):
+        implicit_thereis(what=name, chat_id=chat_id)
     
     await post_event(update, context, name=name, datetime=datetime, time=time, date_str=date_str, chat_timezones=chat_timezones, tz=tz, chat_id=chat_id, datetime_utc=datetime_utc)
 
@@ -1914,7 +1916,7 @@ class ImplicitLocations:
     Parens = re.compile("(.*)\\((.*)\\).*")
 
 def update_name_using_locations(what, *, chat_id):
-    event = enrich_event_with_where({'what': what})
+    event = split_event_with_where_etc({'what': what})
     if where := event.get('where'):
         results = simple_sql(('select value from EventLocation where chat_id=? and LOWER(key)=LOWER(?)', (chat_id, where,)))
         
@@ -2636,6 +2638,13 @@ def enrich_event_with_where(event):
         return event
     event = dict(event)
     event['where'] = GetOrEmpty(re.compile('(?:[ ]|^)[@][ ]').split(event['what']))[1]
+    if not event.get('where'):
+        del event['where']
+    return event
+
+def split_event_with_where_etc(event):
+    event = dict(event)
+    event['what'], event['where'] = GetOrEmpty(re.compile('(?:[ ]|^)[@][ ]').split(event['what'], maxsplit=1))
     if not event.get('where'):
         del event['where']
     return event
@@ -3368,6 +3377,7 @@ ACCEPTED_SETTINGS_CHAT = (
     'event.addevent.display_forwarded_infos',
     'event.listtoday.display_time_marker',
     'event.delevent.display',
+    'event.location.autocomplete',
 ) + tuple(
     remove_dup_keep_order(setting + '.active' for _, setting, _ in RESPONDERS)
 )
