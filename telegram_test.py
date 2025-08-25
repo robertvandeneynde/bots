@@ -51,9 +51,16 @@ from telegram.ext.filters import MessageFilter
 class CrazyJamFilter(MessageFilter):
     def filter(self, message: Message):
         return message.chat.id == SPECIAL_ENTITIES[SpecialUsers.CRAZY_JAM]
-    
+
 async def on_crazy_jam_message(update: Update, context):
-    await update.message.forward(SPECIAL_ENTITIES[SpecialUsers.CRAZY_JAM_BACKEND], message_thread_id=SPECIAL_ENTITIES[SpecialUsers.CRAZY_JAM_BACKEND_THREAD_IN])
+
+    original_message_id = update.effective_message.id
+    sent_message = await update.message.forward(SPECIAL_ENTITIES[SpecialUsers.CRAZY_JAM_BACKEND], message_thread_id=SPECIAL_ENTITIES[SpecialUsers.CRAZY_JAM_BACKEND_THREAD_IN])
+    new_message_id = sent_message.id
+
+    simple_sql(('''insert into CrazyJamFwdRelation(original_message_id, fwd_message_id) VALUES (?,?)''', (original_message_id, new_message_id)))
+
+    # silent bot in the main channel
 
 import re
 from functools import partial
@@ -891,8 +898,9 @@ SendSaveInfo = namedtuple('SendSaveInfo', 'chat_id thread_id')
 def make_send(update: Update, context: CallbackContext, *, save_info: SendSaveInfo = None) -> AsyncSend:
     if not save_info:
         save_info = make_send_save_info(update, context)
+
     async def send(m, **kwargs):
-        await context.bot.send_message(
+        return await context.bot.send_message(
             text=m,
             chat_id=save_info.chat_id,
             message_thread_id=save_info.thread_id,
@@ -3808,6 +3816,12 @@ def migration14():
     with sqlite3.connect('db.sqlite') as conn:
         conn.execute('begin transaction')
         conn.execute('alter table List add column type DEFAULT "list"')
+        conn.execute('end transaction')
+
+def migration15():
+    with sqlite3.connect('db.sqlite') as conn:
+        conn.execute('begin transaction')
+        conn.execute('create table CrazyJamFwdRelation(original_message_id, fwd_message_id)')
         conn.execute('end transaction')
 
 def get_latest_euro_rates_from_api() -> json:
