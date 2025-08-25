@@ -1464,7 +1464,7 @@ def parse_datetime_point(update, context, when_infos=None, what_infos=None) -> P
     from datetime import datetime as Datetime, time as Time, date as Date, timedelta
     tz = induce_my_timezone(user_id=update.message.from_user.id, chat_id=update.effective_chat.id)
     
-    if when_infos is None and what_infos is None:
+    if not (when_infos or what_infos):
         date_str, time, name, day_of_week, relative_day_keyword = ParseEvents.parse_event(context.args)
     else:
         date_str, time, name_from_when_part, day_of_week, relative_day_keyword = ParseEvents.parse_event(when_infos.split())
@@ -1913,15 +1913,25 @@ async def add_event(update: Update, context: CallbackContext):
 
     if reply:
         if (update.message.chat.id, update.message.message_thread_id) == (SPECIAL_ENTITIES[SpecialUsers.CRAZY_JAM_BACKEND], SPECIAL_ENTITIES[SpecialUsers.CRAZY_JAM_BACKEND_THREAD_IN]):
-            orig_id_tuple = simple_sql(( ''' select original_message_id from CrazyJamFwdRelation where fwd_message_id = ?''', (update.message.chat.id, )))
+            orig_id_tuple = simple_sql(( ''' select original_message_id from CrazyJamFwdRelation where fwd_message_id = ?''', (reply.id, )))
             if orig_id_tuple:
-                link = f't.me/jamcrazy/{orig_id_tuple[0]}'
+                link = f't.me/jamcrazy/{orig_id_tuple[0][0]}'
             else:
                 link = None
         if not link:
-            link = f't.me/{update.chat.id}/{reply.id}'
-        
+            channel_pos_id = (abs(update.effective_chat.id) - 10**12 if update.effective_chat.id < 0 and abs(update.effective_chat.id) - 10**12 > 0 else 
+                              abs(update.effective_chat.id) if update.effective_chat.id < 0 else 
+                              update.effective_chat.id)
+            
+            link = (f't.me/c/{channel_pos_id}/{reply.message_thread_id}/{reply.id}' if reply.message_thread_id else 
+                    f't.me/c/{channel_pos_id}/{reply.id}')
+             
+        if not infos_event:
+            infos_event = {}
+
         infos_event['link'] = link
+
+    print("infos_event", infos_event)
 
     if infos_event is not None:
         other_infos = {k: infos_event[k] for k in infos_event.keys() - {'when', 'what', 'where', 'link'}}
