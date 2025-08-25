@@ -5,6 +5,7 @@ from telegram.ext import ApplicationBuilder, CallbackContext, CommandHandler, Me
 from telegram.ext import filters
 from telegram_settings_local import TOKEN
 from telegram_settings_local import FRIENDS_USER
+from telegram_settings_local import SPECIAL_USERS
 
 import json
 
@@ -17,6 +18,10 @@ class FriendsUser(enum.StrEnum):
     SHOKO = 'shoko'
     QSNAKES = 'QSNAKES'.lower()
     KERRICYBERGOOSE = 'KERRICYBERGOOSE'.lower()
+
+class SpecialUsers(enum.StrEnum):
+    CRAZY_JAM = 'CRAZY_JAM'.lower().replace('_', '-')  # Crazy Jam Channel
+    CRAZY_JAM_BACKEND = 'CRAZY_JAM_BACKEND'.lower().replace('_', '-') # Utka Banda
 
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
