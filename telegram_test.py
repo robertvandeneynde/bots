@@ -1902,16 +1902,29 @@ async def add_event(update: Update, context: CallbackContext):
     read_chat_settings = make_read_chat_settings(update, context)
     read_my_settings = make_read_my_settings(update, context)
 
+    reply = get_reply(update.message)
     if not context.args:
-        if reply := get_reply(update.message):
+        if reply:
             infos_event = addevent_analyse(update, context)
         else:
             return await send("Usage: /addevent date name\nUsage: /addevent date hour name\nInteractive version: /iaddevent")
     else:
         infos_event = None
 
+    if reply:
+        if (update.message.chat.id, update.message.message_thread_id) == (SPECIAL_ENTITIES[SpecialUsers.CRAZY_JAM_BACKEND], SPECIAL_ENTITIES[SpecialUsers.CRAZY_JAM_BACKEND_THREAD_IN]):
+            orig_id_tuple = simple_sql(( ''' select original_message_id from CrazyJamFwdRelation where fwd_message_id = ?''', (update.message.chat.id, )))
+            if orig_id_tuple:
+                link = f't.me/jamcrazy/{orig_id_tuple[0]}'
+            else:
+                link = None
+        if not link:
+            link = f't.me/{update.chat.id}/{reply.id}'
+        
+        infos_event['link'] = link
+
     if infos_event is not None:
-        other_infos = {k: infos_event[k] for k in infos_event.keys() - {'when', 'what', 'where'}}        
+        other_infos = {k: infos_event[k] for k in infos_event.keys() - {'when', 'what', 'where', 'link'}}
         when_infos = infos_event.get('when') or ''
         what_infos = ' '.join(natural_filter([
             infos_event.get('what') or '',
