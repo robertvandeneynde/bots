@@ -5,7 +5,7 @@ from telegram.ext import ApplicationBuilder, CallbackContext, CommandHandler, Me
 from telegram.ext import filters
 from telegram_settings_local import TOKEN
 from telegram_settings_local import FRIENDS_USER
-from telegram_settings_local import SPECIAL_USERS
+from telegram_settings_local import SPECIAL_ENTITIES
 
 import json
 
@@ -35,6 +35,23 @@ async def start(update: Update, context: CallbackContext):
         chat_id=update.effective_chat.id,
         text="I'm a bot, please talk to me! To get a tour of functionalities, send a message to my creator t.me/robertvend")
     print("Someone started me!")
+
+
+async def ids(update, context):
+    send = make_send(update, context)
+
+    await send(str(dict(
+        user_id=update.effective_user.id,
+        chat_id=update.effective_chat.id)))
+
+from telegram.ext.filters import MessageFilter
+
+class CrazyJamFilter(MessageFilter):
+    def filter(self, message: Message):
+        return message.chat.id == SPECIAL_ENTITIES[SpecialUsers.CRAZY_JAM]
+    
+async def on_crazy_jam_message(update: Update, context):
+    await update.message.forward(SPECIAL_ENTITIES[SpecialUsers.CRAZY_JAM_BACKEND], message_thread_id=None)
 
 import re
 from functools import partial
@@ -4219,6 +4236,8 @@ if __name__ == '__main__':
     start_handler = CommandHandler('start', start)
     application.add_handler(start_handler)
 
+    application.add_handler(MessageHandler(CrazyJamFilter(), on_crazy_jam_message))
+
     message_handler = MessageHandler(filters.TEXT & (~filters.COMMAND), on_message)
     application.add_handler(message_handler)
     
@@ -4232,6 +4251,7 @@ if __name__ == '__main__':
         ]
     ))
     application.add_handler(CommandHandler('caps', caps))
+    application.add_handler(CommandHandler('ids', ids))
     application.add_handler(CommandHandler('addevent', add_event))
     application.add_handler(CommandHandler('iameventadmin', iameventadmin))
     application.add_handler(ConversationHandler(
