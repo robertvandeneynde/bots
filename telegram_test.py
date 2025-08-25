@@ -22,6 +22,7 @@ class FriendsUser(enum.StrEnum):
 class SpecialUsers(enum.StrEnum):
     CRAZY_JAM = 'CRAZY_JAM'.lower().replace('_', '-')  # Crazy Jam Channel
     CRAZY_JAM_BACKEND = 'CRAZY_JAM_BACKEND'.lower().replace('_', '-') # Utka Banda
+    CRAZY_JAM_BACKEND_THREAD_IN = 'CRAZY_JAM_BACKEND_THREAD_IN'.lower().replace('_', '-')
 
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
@@ -37,12 +38,13 @@ async def start(update: Update, context: CallbackContext):
     print("Someone started me!")
 
 
-async def ids(update, context):
+async def ids(update:Update, context):
     send = make_send(update, context)
 
     await send(str(dict(
         user_id=update.effective_user.id,
-        chat_id=update.effective_chat.id)))
+        chat_id=update.effective_chat.id,
+        thread_id=update.effective_message.message_thread_id)))
 
 from telegram.ext.filters import MessageFilter
 
@@ -51,7 +53,7 @@ class CrazyJamFilter(MessageFilter):
         return message.chat.id == SPECIAL_ENTITIES[SpecialUsers.CRAZY_JAM]
     
 async def on_crazy_jam_message(update: Update, context):
-    await update.message.forward(SPECIAL_ENTITIES[SpecialUsers.CRAZY_JAM_BACKEND], message_thread_id=None)
+    await update.message.forward(SPECIAL_ENTITIES[SpecialUsers.CRAZY_JAM_BACKEND], message_thread_id=SPECIAL_ENTITIES[SpecialUsers.CRAZY_JAM_BACKEND_THREAD_IN])
 
 import re
 from functools import partial
