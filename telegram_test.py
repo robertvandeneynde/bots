@@ -1985,7 +1985,7 @@ async def add_event(update: Update, context: CallbackContext):
     if not do_if_setting_on(read_chat_settings('event.location.autocomplete')):
         implicit_thereis(what=name, chat_id=chat_id)
     
-    await post_event(update, context, name=name, datetime=datetime, time=time, date_str=date_str, chat_timezones=chat_timezones, tz=tz, chat_id=chat_id, datetime_utc=datetime_utc)
+    await post_event(update, context, name=name, datetime=datetime, time=time, date_str=date_str, chat_timezones=chat_timezones, tz=tz, chat_id=chat_id, datetime_utc=datetime_utc, link=infos_event.get('link'))
 
 class ImplicitLocations:
     Parens = re.compile("(.*)\\((.*)\\).*")
@@ -2025,7 +2025,7 @@ def implicit_thereis(*, what:str, chat_id):
 
     do_update_thereis_db(location, address, chat_id=chat_id)
 
-async def post_event(update, context, *, name, datetime, time, date_str, chat_timezones, tz, chat_id, datetime_utc):
+async def post_event(update, context, *, name, datetime, time, link, date_str, chat_timezones, tz, chat_id, datetime_utc):
     send = make_send(update, context)
     read_chat_settings = make_read_chat_settings(update, context)
 
@@ -2045,7 +2045,9 @@ async def post_event(update, context, *, name, datetime, time, date_str, chat_ti
         for timezone in chat_timezones or []
         if timezone != tz
         for datetime_tz in [datetime.astimezone(timezone)]
-    ] if time else []))))
+    ] if time else []) + ([
+        f"{emojis.Link} {link}"
+    ] * (bool(link) and do_if_setting_on(read_chat_settings('event.addevent.display_link')))))))
     
     if do_unless_setting_off(read_chat_settings('event.addevent.display_file')):
         # 2. Send info as clickable ics file to add to calendar
@@ -3152,7 +3154,7 @@ async def list_days_or_today(update: Update, context: CallbackContext, mode: Lit
                 for event_date, event_name in days[day]
                 for marker in ['>' if display_time_marker and is_past(event_date) else '']))
     
-    msg = '\n\n'.join(days_as_lines)
+    msg = ('\n' if formatting == 'crazyjamdays' else '\n\n').join(days_as_lines)
     
     if formatting == 'crazyjamdays':
         msg = 'CRAZY JAM\n' + msg
@@ -3478,6 +3480,7 @@ ACCEPTED_SETTINGS_CHAT = (
     'event.timezones',
     'event.admins',
     'event.addevent.help_file',
+    'event.addevent.display_link',
     'event.addevent.display_file',
     'event.addevent.display_forwarded_infos',
     'event.listtoday.display_time_marker',
@@ -3633,6 +3636,7 @@ def CONVERSION_SETTINGS_BUILDER():
         'money.currencies': list_of_currencies_serializer,
         'event.timezones': list_of_timezone_serializer,
         'event.admins': list_of_event_admins,
+        'event.addevent.display_link': on_off_serializer,
         'event.addevent.display_file': on_off_serializer,
         'event.delevent.display': on_off_serializer,
         'event.addevent.display_forwarded_infos': on_off_serializer,
@@ -4121,6 +4125,7 @@ class EventFormatting:
          Time="⌚",
          Date="🗓️",
          Location="📍",
+         Link="🔗",
     )
 
 class EventInfosAnalyse:
