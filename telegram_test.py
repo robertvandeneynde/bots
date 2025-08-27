@@ -2830,9 +2830,9 @@ def do_update_thereis_db(key, value, *, chat_id):
     with sqlite3.connect("db.sqlite") as conn:
         my_simple_sql = partial(simple_sql, connection=conn)
         conn.execute('begin transaction')
-        if not my_simple_sql(('select 1 from EventLocation where chat_id=? and LOWER(key)=LOWER(?)', (chat_id, key))):
-            my_simple_sql(('delete from EventLocation where chat_id=? and LOWER(key)=LOWER(?)', (chat_id, key)))
-            my_simple_sql(('insert into EventLocation(key, value, chat_id) VALUES (?,?,?)', (key, value, chat_id)))
+        # if not my_simple_sql(('select 1 from EventLocation where chat_id=? and LOWER(key)=LOWER(?)', (chat_id, key))):
+        my_simple_sql(('delete from EventLocation where chat_id=? and LOWER(key)=LOWER(?)', (chat_id, key)))
+        my_simple_sql(('insert into EventLocation(key, value, chat_id) VALUES (?,?,?)', (key, value, chat_id)))
         conn.execute('end transaction')
 
 async def save_thereis(key, value, *, update, context):
