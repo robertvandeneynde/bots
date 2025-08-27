@@ -994,6 +994,7 @@ class DatetimeText:
     _days_russian = "понедельник вторник среда четверг пятница суббота воскресенье".split()
     _days_russian_short = "пн вт ср чт пт сб вс".split()
     _days_russian_short_dotted = "пн. вт. ср. чт. пт. сб. вс.".split()
+    days_russian_short = _days_russian_short
 
     months_english = [
         "january",
@@ -1025,9 +1026,16 @@ class DatetimeText:
         "décembre"
     ]
 
-    _other_months_list = [
-        'январь февраль март апрель май июнь июль август сентябрь октябрь ноябрь декабрь'.split()
+    month_in_russian = [
+        *'январь февраль март апрель май июнь июль август сентябрь октябрь ноябрь декабрь'.split(),
     ]
+
+    _other_months_list = month_in_russian
+
+    @classmethod
+    def padezh_month(cls, month: int, day: int):
+        """ padezh_month(8, 11) -> 11th of August -> августа """
+        return cls.month_in_russian[month-1]
 
     months_value = functools.reduce(dict.__or__, ({
         x: i for i, x in enumerate(months_list, start=1)
@@ -3046,8 +3054,8 @@ async def last_event(update, context, *, relative=False):
 async def next_event(update, context, *, relative=False):
     return await next_or_last_event(update, context, 1, relative=relative)
 
-async def list_days(update: Update, context: CallbackContext, relative=False):
-    return await list_days_or_today(update, context, mode='list', relative=relative)
+async def list_days(update: Update, context: CallbackContext, relative=False, formatting='normal'):
+    return await list_days_or_today(update, context, mode='list', relative=relative, formatting=formatting)
 
 def setting_on_off(s, default):
     return (s if isinstance(s, bool) else
@@ -3063,8 +3071,12 @@ def do_unless_setting_off(setting):
     return setting_on_off(setting, default=True)
 
 from typing import Literal
-async def list_days_or_today(update: Update, context: CallbackContext, mode: Literal['list', 'today'], relative=False):
+async def list_days_or_today(update: Update, context: CallbackContext, mode: Literal['list', 'today'], relative=False, formatting:Literal['normal', 'crazyjamdays']='normal'):
+    from datetime import time as Time
     assert mode in ('list', 'today')
+    assert formatting in ('normal', 'crazyjamdays')
+    if formatting == 'crazyjamdays':
+        assert not relative
 
     send = make_send(update, context)
     read_chat_settings = make_read_chat_settings(update, context)
@@ -3078,19 +3090,31 @@ async def list_days_or_today(update: Update, context: CallbackContext, mode: Lit
     strftime = DatetimeDbSerializer.strftime
 
     events = simple_sql_dict(('''
-        SELECT date, name
+        SELECT date, name, rowid
         FROM Events
         WHERE ? <= date AND date < ?
         AND chat_id=?
         ORDER BY date''',
         (strftime(beg), strftime(end), update.effective_chat.id,)))
+    
+    if formatting == 'crazyjamdays':
+        list_of_ids = [events['rowid'] for events in events]
+        list_of_ids = ','.join(map(str, map(int, list_of_ids)))
+        link_of_event = dict(simple_sql_dict((f'''
+            SELECT event_id, link
+            FROM EventLinkAttr
+            WHERE event_id IN ({list_of_ids}) ''', ())))
 
     from collections import defaultdict
     days = defaultdict(list)
     for event in events:
         date = strptime(event['date']).replace(tzinfo=ZoneInfo("UTC")).astimezone(tz)
         event_name = event['name']
-        days[date.timetuple()[:3]].append((date, event_name))
+
+        if formatting == 'crazyjamdays':
+            event_link = link_of_event.get(event['rowid'], '?')
+
+        days[date.timetuple()[:3]].append((date, event_name) if formatting == 'normal' else (date, event_name, event_link))
 
     display_time_marker = False if mode == 'list' else do_unless_setting_off(read_chat_settings('event.listtoday.display_time_marker'))
 
@@ -3101,8 +3125,19 @@ async def list_days_or_today(update: Update, context: CallbackContext, mode: Lit
     days_as_lines = []
     for day in sorted(days):
         date = days[day][0][0]
-        day_of_week = DatetimeText.days_english[date.weekday()]
-        days_as_lines.append(
+        if formatting == 'crazyjamdays':
+          day_of_week = DatetimeText._days_russian_short[date.weekday()]
+          month_ru = DatetimeText.padezh_month(date.month, date.day)
+          days_as_lines.append(
+            f"\n    {date:%d} {month_ru} ({day_of_week})\n\n"
+            + "\n\n".join(
+                 f"{n}) {event_link}\n" +
+                 f"{event_name}"
+                for n, (event_date, event_name, event_link) in enumerate(days[day], start=1)
+            ))
+        else:
+          day_of_week = DatetimeText.days_english[date.weekday()]
+          days_as_lines.append(
             f"{day_of_week.capitalize()} {date:%d/%m}"
             + "\n"
             + "\n".join(
@@ -3112,6 +3147,9 @@ async def list_days_or_today(update: Update, context: CallbackContext, mode: Lit
                 for marker in ['>' if display_time_marker and is_past(event_date) else '']))
     
     msg = '\n\n'.join(days_as_lines)
+    
+    if formatting == 'crazyjamdays':
+        msg = 'CRAZY JAM\n' + msg
 
     chat_timezones = read_chat_settings("event.timezones")
 
@@ -4346,6 +4384,7 @@ if __name__ == '__main__':
     application.add_handler(CommandHandler('listevents', list_events))
     application.add_handler(CommandHandler('rlistevents', partial(list_events, relative=True)))
     application.add_handler(CommandHandler('listdays', list_days))
+    application.add_handler(CommandHandler('crazyjamdays',  partial(list_days,formatting='crazyjamdays')))
     application.add_handler(CommandHandler('rlistdays', partial(list_days, relative=True)))
     application.add_handler(CommandHandler('listoday', list_today)) # hidden command, for typo
     application.add_handler(CommandHandler('rlistoday', partial(list_today, relative=True))) # hidden command, for typo
