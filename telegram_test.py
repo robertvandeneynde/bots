@@ -5,6 +5,7 @@ from telegram.ext import ApplicationBuilder, CallbackContext, CommandHandler, Me
 from telegram.ext import filters
 from telegram_settings_local import TOKEN
 from telegram_settings_local import FRIENDS_USER
+from telegram_settings_local import SPECIAL_ENTITIES
 
 import json
 
@@ -18,6 +19,11 @@ class FriendsUser(enum.StrEnum):
     QSNAKES = 'QSNAKES'.lower()
     KERRICYBERGOOSE = 'KERRICYBERGOOSE'.lower()
 
+class SpecialUsers(enum.StrEnum):
+    CRAZY_JAM = 'CRAZY_JAM'.lower().replace('_', '-')  # Crazy Jam Channel
+    CRAZY_JAM_BACKEND = 'CRAZY_JAM_BACKEND'.lower().replace('_', '-') # Utka Banda
+    CRAZY_JAM_BACKEND_THREAD_IN = 'CRAZY_JAM_BACKEND_THREAD_IN'.lower().replace('_', '-')
+
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     level=logging.INFO
@@ -30,6 +36,31 @@ async def start(update: Update, context: CallbackContext):
         chat_id=update.effective_chat.id,
         text="I'm a bot, please talk to me! To get a tour of functionalities, send a message to my creator t.me/robertvend")
     print("Someone started me!")
+
+
+async def ids(update:Update, context):
+    send = make_send(update, context)
+
+    await send(str(dict(
+        user_id=update.effective_user.id,
+        chat_id=update.effective_chat.id,
+        thread_id=update.effective_message.message_thread_id)))
+
+from telegram.ext.filters import MessageFilter
+
+class CrazyJamFilter(MessageFilter):
+    def filter(self, message: Message):
+        return message.chat.id == SPECIAL_ENTITIES[SpecialUsers.CRAZY_JAM]
+
+async def on_crazy_jam_message(update: Update, context):
+
+    original_message_id = update.effective_message.id
+    sent_message = await update.message.forward(SPECIAL_ENTITIES[SpecialUsers.CRAZY_JAM_BACKEND], message_thread_id=SPECIAL_ENTITIES[SpecialUsers.CRAZY_JAM_BACKEND_THREAD_IN])
+    new_message_id = sent_message.id
+
+    simple_sql(('''insert into FwdRelation(original_message_id, fwd_message_id, original_chat_id, original_chat_username) VALUES (?,?,?,?)''', (original_message_id, new_message_id, update.effective_chat.id, update.effective_chat.username)))
+
+    # silent bot in the main channel
 
 import re
 from functools import partial
@@ -867,8 +898,9 @@ SendSaveInfo = namedtuple('SendSaveInfo', 'chat_id thread_id')
 def make_send(update: Update, context: CallbackContext, *, save_info: SendSaveInfo = None) -> AsyncSend:
     if not save_info:
         save_info = make_send_save_info(update, context)
+
     async def send(m, **kwargs):
-        await context.bot.send_message(
+        return await context.bot.send_message(
             text=m,
             chat_id=save_info.chat_id,
             message_thread_id=save_info.thread_id,
@@ -962,6 +994,7 @@ class DatetimeText:
     _days_russian = "понедельник вторник среда четверг пятница суббота воскресенье".split()
     _days_russian_short = "пн вт ср чт пт сб вс".split()
     _days_russian_short_dotted = "пн. вт. ср. чт. пт. сб. вс.".split()
+    days_russian_short = _days_russian_short
 
     months_english = [
         "january",
@@ -993,9 +1026,16 @@ class DatetimeText:
         "décembre"
     ]
 
-    _other_months_list = [
-        'январь февраль март апрель май июнь июль август сентябрь октябрь ноябрь декабрь'.split()
+    month_in_russian = [
+        *'январь февраль март апрель май июнь июль август сентябрь октябрь ноябрь декабрь'.split(),
     ]
+
+    _other_months_list = month_in_russian
+
+    @classmethod
+    def padezh_month(cls, month: int, day: int):
+        """ padezh_month(8, 11) -> 11th of August -> августа """
+        return cls.month_in_russian[month-1]
 
     months_value = functools.reduce(dict.__or__, ({
         x: i for i, x in enumerate(months_list, start=1)
@@ -1432,7 +1472,7 @@ def parse_datetime_point(update, context, when_infos=None, what_infos=None) -> P
     from datetime import datetime as Datetime, time as Time, date as Date, timedelta
     tz = induce_my_timezone(user_id=update.message.from_user.id, chat_id=update.effective_chat.id)
     
-    if when_infos is None and what_infos is None:
+    if not (when_infos or what_infos):
         date_str, time, name, day_of_week, relative_day_keyword = ParseEvents.parse_event(context.args)
     else:
         date_str, time, name_from_when_part, day_of_week, relative_day_keyword = ParseEvents.parse_event(when_infos.split())
@@ -1692,7 +1732,7 @@ async def addschedule(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     return await send(f"{len(events)} event(s) added")
     
-def add_event_to_db(*, chat_timezones, tz, datetime_utc, name, chat_id, source_user_id):
+def add_event_to_db(*, chat_timezones, tz, datetime_utc, name, chat_id, source_user_id) -> 'id':
     if chat_timezones and tz and tz not in chat_timezones:
         raise UserError('\n'.join([
             'Your timezone is not in chat timezones, this can be confusing, change your timezone or add your timezone to the chat timezones.',
@@ -1706,6 +1746,8 @@ def add_event_to_db(*, chat_timezones, tz, datetime_utc, name, chat_id, source_u
         strftime = DatetimeDbSerializer.strftime
 
         cursor.execute("INSERT INTO Events(date, name, chat_id, source_user_id) VALUES (?,?,?,?)", (strftime(datetime_utc), name, chat_id, source_user_id))
+
+        return cursor.lastrowid
 
 class InteractiveAddEvent:
     @staticmethod
@@ -1864,22 +1906,52 @@ def do_event_admin_check(type: Literal['add', 'del', 'edit', 'list'], *, setting
         # no setting set = everyone is admin
         pass
 
+def tg_url_id_from_chat_id(chat_id):
+    """ chat_id negative and big into normal """
+    return (abs(chat_id) - 10**12 if chat_id < 0 and abs(chat_id) - 10**12 > 0 else 
+            abs(chat_id) if chat_id < 0 else 
+            chat_id)
+
 import sqlite3
 async def add_event(update: Update, context: CallbackContext):
     send = make_send(update, context)
     read_chat_settings = make_read_chat_settings(update, context)
     read_my_settings = make_read_my_settings(update, context)
 
+    reply = get_reply(update.message)
     if not context.args:
-        if reply := get_reply(update.message):
+        if reply:
             infos_event = addevent_analyse(update, context)
         else:
             return await send("Usage: /addevent date name\nUsage: /addevent date hour name\nInteractive version: /iaddevent")
     else:
         infos_event = None
 
+    if reply:
+        if (update.message.chat.id, update.message.message_thread_id) == (SPECIAL_ENTITIES[SpecialUsers.CRAZY_JAM_BACKEND], SPECIAL_ENTITIES[SpecialUsers.CRAZY_JAM_BACKEND_THREAD_IN]):
+            orig_id_tuple = simple_sql(( ''' select original_message_id, original_chat_username, original_chat_id from FwdRelation where fwd_message_id = ?''', (reply.id, )))
+            if orig_id_tuple:
+                message_id, username, chat_id = only_one(orig_id_tuple)
+                link = (f't.me/{username}/{message_id}' if username else 
+                        f't.me/c/{tg_url_id_from_chat_id(chat_id)}/{message_id}')
+            else:
+                link = None
+        else:
+            link = None
+
+        if not link:
+            channel_pos_id = tg_url_id_from_chat_id(update.effective_chat.id)
+
+            link = (f't.me/c/{channel_pos_id}/{reply.message_thread_id}/{reply.id}' if reply.message_thread_id else 
+                    f't.me/c/{channel_pos_id}/{reply.id}')
+             
+        if not infos_event:
+            infos_event = {}
+
+        infos_event['link'] = link
+
     if infos_event is not None:
-        other_infos = {k: infos_event[k] for k in infos_event.keys() - {'when', 'what', 'where'}}        
+        other_infos = {k: infos_event[k] for k in infos_event.keys() - {'when', 'what', 'where', 'link'}}
         when_infos = infos_event.get('when') or ''
         what_infos = ' '.join(natural_filter([
             infos_event.get('what') or '',
@@ -1905,12 +1977,15 @@ async def add_event(update: Update, context: CallbackContext):
 
     do_event_admin_check('add', setting=read_chat_settings('event.admins'), user_id=update.effective_user.id)
 
-    add_event_to_db(chat_timezones=chat_timezones, tz=tz, datetime_utc=datetime_utc, name=name, chat_id=chat_id, source_user_id=source_user_id)
+    new_event_id = add_event_to_db(chat_timezones=chat_timezones, tz=tz, datetime_utc=datetime_utc, name=name, chat_id=chat_id, source_user_id=source_user_id)
+
+    if infos_event and infos_event.get('link'):
+        simple_sql((''' insert into EventLinkAttr(event_id, link) VALUES (?,?)''', (new_event_id, infos_event['link'])))
 
     if not do_if_setting_on(read_chat_settings('event.location.autocomplete')):
         implicit_thereis(what=name, chat_id=chat_id)
     
-    await post_event(update, context, name=name, datetime=datetime, time=time, date_str=date_str, chat_timezones=chat_timezones, tz=tz, chat_id=chat_id, datetime_utc=datetime_utc)
+    await post_event(update, context, name=name, datetime=datetime, time=time, date_str=date_str, chat_timezones=chat_timezones, tz=tz, chat_id=chat_id, datetime_utc=datetime_utc, link=infos_event.get('link'))
 
 class ImplicitLocations:
     Parens = re.compile("(.*)\\((.*)\\).*")
@@ -1950,7 +2025,7 @@ def implicit_thereis(*, what:str, chat_id):
 
     do_update_thereis_db(location, address, chat_id=chat_id)
 
-async def post_event(update, context, *, name, datetime, time, date_str, chat_timezones, tz, chat_id, datetime_utc):
+async def post_event(update, context, *, name, datetime, time, link, date_str, chat_timezones, tz, chat_id, datetime_utc):
     send = make_send(update, context)
     read_chat_settings = make_read_chat_settings(update, context)
 
@@ -1970,7 +2045,9 @@ async def post_event(update, context, *, name, datetime, time, date_str, chat_ti
         for timezone in chat_timezones or []
         if timezone != tz
         for datetime_tz in [datetime.astimezone(timezone)]
-    ] if time else []))))
+    ] if time else []) + ([
+        f"{emojis.Link} {link}"
+    ] * (bool(link) and do_if_setting_on(read_chat_settings('event.addevent.display_link')))))))
     
     if do_unless_setting_off(read_chat_settings('event.addevent.display_file')):
         # 2. Send info as clickable ics file to add to calendar
@@ -2985,8 +3062,8 @@ async def last_event(update, context, *, relative=False):
 async def next_event(update, context, *, relative=False):
     return await next_or_last_event(update, context, 1, relative=relative)
 
-async def list_days(update: Update, context: CallbackContext, relative=False):
-    return await list_days_or_today(update, context, mode='list', relative=relative)
+async def list_days(update: Update, context: CallbackContext, relative=False, formatting='normal'):
+    return await list_days_or_today(update, context, mode='list', relative=relative, formatting=formatting)
 
 def setting_on_off(s, default):
     return (s if isinstance(s, bool) else
@@ -3002,8 +3079,12 @@ def do_unless_setting_off(setting):
     return setting_on_off(setting, default=True)
 
 from typing import Literal
-async def list_days_or_today(update: Update, context: CallbackContext, mode: Literal['list', 'today'], relative=False):
+async def list_days_or_today(update: Update, context: CallbackContext, mode: Literal['list', 'today'], relative=False, formatting:Literal['normal', 'crazyjamdays']='normal'):
+    from datetime import time as Time
     assert mode in ('list', 'today')
+    assert formatting in ('normal', 'crazyjamdays')
+    if formatting == 'crazyjamdays':
+        assert not relative
 
     send = make_send(update, context)
     read_chat_settings = make_read_chat_settings(update, context)
@@ -3017,19 +3098,31 @@ async def list_days_or_today(update: Update, context: CallbackContext, mode: Lit
     strftime = DatetimeDbSerializer.strftime
 
     events = simple_sql_dict(('''
-        SELECT date, name
+        SELECT date, name, rowid
         FROM Events
         WHERE ? <= date AND date < ?
         AND chat_id=?
         ORDER BY date''',
         (strftime(beg), strftime(end), update.effective_chat.id,)))
+    
+    if formatting == 'crazyjamdays':
+        list_of_ids = [events['rowid'] for events in events]
+        list_of_ids = ','.join(map(str, map(int, list_of_ids)))
+        link_of_event = dict(simple_sql_dict((f'''
+            SELECT event_id, link
+            FROM EventLinkAttr
+            WHERE event_id IN ({list_of_ids}) ''', ())))
 
     from collections import defaultdict
     days = defaultdict(list)
     for event in events:
         date = strptime(event['date']).replace(tzinfo=ZoneInfo("UTC")).astimezone(tz)
         event_name = event['name']
-        days[date.timetuple()[:3]].append((date, event_name))
+
+        if formatting == 'crazyjamdays':
+            event_link = link_of_event.get(event['rowid'], '?')
+
+        days[date.timetuple()[:3]].append((date, event_name) if formatting == 'normal' else (date, event_name, event_link))
 
     display_time_marker = False if mode == 'list' else do_unless_setting_off(read_chat_settings('event.listtoday.display_time_marker'))
 
@@ -3040,8 +3133,19 @@ async def list_days_or_today(update: Update, context: CallbackContext, mode: Lit
     days_as_lines = []
     for day in sorted(days):
         date = days[day][0][0]
-        day_of_week = DatetimeText.days_english[date.weekday()]
-        days_as_lines.append(
+        if formatting == 'crazyjamdays':
+          day_of_week = DatetimeText._days_russian_short[date.weekday()]
+          month_ru = DatetimeText.padezh_month(date.month, date.day)
+          days_as_lines.append(
+            f"\n    {date:%d} {month_ru} ({day_of_week})\n\n"
+            + "\n\n".join(
+                 f"{n}) {event_link}\n" +
+                 f"{event_name}"
+                for n, (event_date, event_name, event_link) in enumerate(days[day], start=1)
+            ))
+        else:
+          day_of_week = DatetimeText.days_english[date.weekday()]
+          days_as_lines.append(
             f"{day_of_week.capitalize()} {date:%d/%m}"
             + "\n"
             + "\n".join(
@@ -3050,7 +3154,10 @@ async def list_days_or_today(update: Update, context: CallbackContext, mode: Lit
                 for event_date, event_name in days[day]
                 for marker in ['>' if display_time_marker and is_past(event_date) else '']))
     
-    msg = '\n\n'.join(days_as_lines)
+    msg = ('\n' if formatting == 'crazyjamdays' else '\n\n').join(days_as_lines)
+    
+    if formatting == 'crazyjamdays':
+        msg = 'CRAZY JAM\n' + msg
 
     chat_timezones = read_chat_settings("event.timezones")
 
@@ -3373,6 +3480,7 @@ ACCEPTED_SETTINGS_CHAT = (
     'event.timezones',
     'event.admins',
     'event.addevent.help_file',
+    'event.addevent.display_link',
     'event.addevent.display_file',
     'event.addevent.display_forwarded_infos',
     'event.listtoday.display_time_marker',
@@ -3528,6 +3636,7 @@ def CONVERSION_SETTINGS_BUILDER():
         'money.currencies': list_of_currencies_serializer,
         'event.timezones': list_of_timezone_serializer,
         'event.admins': list_of_event_admins,
+        'event.addevent.display_link': on_off_serializer,
         'event.addevent.display_file': on_off_serializer,
         'event.delevent.display': on_off_serializer,
         'event.addevent.display_forwarded_infos': on_off_serializer,
@@ -3786,6 +3895,18 @@ def migration14():
         conn.execute('alter table List add column type DEFAULT "list"')
         conn.execute('end transaction')
 
+def migration15():
+    with sqlite3.connect('db.sqlite') as conn:
+        conn.execute('begin transaction')
+        conn.execute('create table FwdRelation(original_message_id, fwd_message_id, original_chat_id, original_chat_username)')
+        conn.execute('end transaction')
+
+def migration16():
+    with sqlite3.connect('db.sqlite') as conn:
+        conn.execute('begin transaction')
+        conn.execute('create table EventLinkAttr(event_id REFERENCES Events(rowid), link)')
+        conn.execute('end transaction')
+
 def get_latest_euro_rates_from_api() -> json:
     import requests
     from telegram_settings_local import FIXER_TOKEN
@@ -4004,6 +4125,7 @@ class EventFormatting:
          Time="⌚",
          Date="🗓️",
          Location="📍",
+         Link="🔗",
     )
 
 class EventInfosAnalyse:
@@ -4214,6 +4336,8 @@ if __name__ == '__main__':
     start_handler = CommandHandler('start', start)
     application.add_handler(start_handler)
 
+    application.add_handler(MessageHandler(CrazyJamFilter(), on_crazy_jam_message))
+
     message_handler = MessageHandler(filters.TEXT & (~filters.COMMAND), on_message)
     application.add_handler(message_handler)
     
@@ -4227,6 +4351,7 @@ if __name__ == '__main__':
         ]
     ))
     application.add_handler(CommandHandler('caps', caps))
+    application.add_handler(CommandHandler('ids', ids))
     application.add_handler(CommandHandler('addevent', add_event))
     application.add_handler(CommandHandler('iameventadmin', iameventadmin))
     application.add_handler(ConversationHandler(
@@ -4270,6 +4395,7 @@ if __name__ == '__main__':
     application.add_handler(CommandHandler('listevents', list_events))
     application.add_handler(CommandHandler('rlistevents', partial(list_events, relative=True)))
     application.add_handler(CommandHandler('listdays', list_days))
+    application.add_handler(CommandHandler('crazyjamdays',  partial(list_days,formatting='crazyjamdays')))
     application.add_handler(CommandHandler('rlistdays', partial(list_days, relative=True)))
     application.add_handler(CommandHandler('listoday', list_today)) # hidden command, for typo
     application.add_handler(CommandHandler('rlistoday', partial(list_today, relative=True))) # hidden command, for typo
