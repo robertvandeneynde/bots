@@ -58,7 +58,7 @@ async def on_crazy_jam_message(update: Update, context):
     sent_message = await update.message.forward(SPECIAL_ENTITIES[SpecialUsers.CRAZY_JAM_BACKEND], message_thread_id=SPECIAL_ENTITIES[SpecialUsers.CRAZY_JAM_BACKEND_THREAD_IN])
     new_message_id = sent_message.id
 
-    simple_sql(('''insert into CrazyJamFwdRelation(original_message_id, fwd_message_id) VALUES (?,?)''', (original_message_id, new_message_id)))
+    simple_sql(('''insert into FwdRelation(original_message_id, fwd_message_id, original_chat_id, original_chat_username) VALUES (?,?,?,?)''', (original_message_id, new_message_id, update.effective_chat.id, update.effective_chat.username)))
 
     # silent bot in the main channel
 
@@ -1906,6 +1906,12 @@ def do_event_admin_check(type: Literal['add', 'del', 'edit', 'list'], *, setting
         # no setting set = everyone is admin
         pass
 
+def tg_url_id_from_chat_id(chat_id):
+    """ chat_id negative and big into normal """
+    return (abs(chat_id) - 10**12 if chat_id < 0 and abs(chat_id) - 10**12 > 0 else 
+            abs(chat_id) if chat_id < 0 else 
+            chat_id)
+
 import sqlite3
 async def add_event(update: Update, context: CallbackContext):
     send = make_send(update, context)
@@ -1923,19 +1929,19 @@ async def add_event(update: Update, context: CallbackContext):
 
     if reply:
         if (update.message.chat.id, update.message.message_thread_id) == (SPECIAL_ENTITIES[SpecialUsers.CRAZY_JAM_BACKEND], SPECIAL_ENTITIES[SpecialUsers.CRAZY_JAM_BACKEND_THREAD_IN]):
-            orig_id_tuple = simple_sql(( ''' select original_message_id from CrazyJamFwdRelation where fwd_message_id = ?''', (reply.id, )))
+            orig_id_tuple = simple_sql(( ''' select original_message_id, original_chat_username, original_chat_id from FwdRelation where fwd_message_id = ?''', (reply.id, )))
             if orig_id_tuple:
-                link = f't.me/jamcrazy/{orig_id_tuple[0][0]}'
+                message_id, username, chat_id = only_one(orig_id_tuple)
+                link = (f't.me/{username}/{message_id}' if username else 
+                        f't.me/c/{tg_url_id_from_chat_id(chat_id)}/{message_id}')
             else:
                 link = None
         else:
             link = None
 
         if not link:
-            channel_pos_id = (abs(update.effective_chat.id) - 10**12 if update.effective_chat.id < 0 and abs(update.effective_chat.id) - 10**12 > 0 else 
-                              abs(update.effective_chat.id) if update.effective_chat.id < 0 else 
-                              update.effective_chat.id)
-            
+            channel_pos_id = tg_url_id_from_chat_id(update.effective_chat.id)
+
             link = (f't.me/c/{channel_pos_id}/{reply.message_thread_id}/{reply.id}' if reply.message_thread_id else 
                     f't.me/c/{channel_pos_id}/{reply.id}')
              
@@ -3888,7 +3894,7 @@ def migration14():
 def migration15():
     with sqlite3.connect('db.sqlite') as conn:
         conn.execute('begin transaction')
-        conn.execute('create table CrazyJamFwdRelation(original_message_id, fwd_message_id)')
+        conn.execute('create table FwdRelation(original_message_id, fwd_message_id, original_chat_id, original_chat_username)')
         conn.execute('end transaction')
 
 def migration16():
