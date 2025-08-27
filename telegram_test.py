@@ -1724,7 +1724,7 @@ async def addschedule(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     return await send(f"{len(events)} event(s) added")
     
-def add_event_to_db(*, chat_timezones, tz, datetime_utc, name, chat_id, source_user_id):
+def add_event_to_db(*, chat_timezones, tz, datetime_utc, name, chat_id, source_user_id) -> 'id':
     if chat_timezones and tz and tz not in chat_timezones:
         raise UserError('\n'.join([
             'Your timezone is not in chat timezones, this can be confusing, change your timezone or add your timezone to the chat timezones.',
@@ -1738,6 +1738,8 @@ def add_event_to_db(*, chat_timezones, tz, datetime_utc, name, chat_id, source_u
         strftime = DatetimeDbSerializer.strftime
 
         cursor.execute("INSERT INTO Events(date, name, chat_id, source_user_id) VALUES (?,?,?,?)", (strftime(datetime_utc), name, chat_id, source_user_id))
+
+        return cursor.lastrowid
 
 class InteractiveAddEvent:
     @staticmethod
@@ -1918,6 +1920,9 @@ async def add_event(update: Update, context: CallbackContext):
                 link = f't.me/jamcrazy/{orig_id_tuple[0][0]}'
             else:
                 link = None
+        else:
+            link = None
+
         if not link:
             channel_pos_id = (abs(update.effective_chat.id) - 10**12 if update.effective_chat.id < 0 and abs(update.effective_chat.id) - 10**12 > 0 else 
                               abs(update.effective_chat.id) if update.effective_chat.id < 0 else 
@@ -1930,8 +1935,6 @@ async def add_event(update: Update, context: CallbackContext):
             infos_event = {}
 
         infos_event['link'] = link
-
-    print("infos_event", infos_event)
 
     if infos_event is not None:
         other_infos = {k: infos_event[k] for k in infos_event.keys() - {'when', 'what', 'where', 'link'}}
@@ -1960,7 +1963,10 @@ async def add_event(update: Update, context: CallbackContext):
 
     do_event_admin_check('add', setting=read_chat_settings('event.admins'), user_id=update.effective_user.id)
 
-    add_event_to_db(chat_timezones=chat_timezones, tz=tz, datetime_utc=datetime_utc, name=name, chat_id=chat_id, source_user_id=source_user_id)
+    new_event_id = add_event_to_db(chat_timezones=chat_timezones, tz=tz, datetime_utc=datetime_utc, name=name, chat_id=chat_id, source_user_id=source_user_id)
+
+    if infos_event and infos_event.get('link'):
+        simple_sql((''' insert into EventLinkAttr(event_id, link) VALUES (?,?)''', (new_event_id, infos_event['link'])))
 
     if not do_if_setting_on(read_chat_settings('event.location.autocomplete')):
         implicit_thereis(what=name, chat_id=chat_id)
@@ -3845,6 +3851,12 @@ def migration15():
     with sqlite3.connect('db.sqlite') as conn:
         conn.execute('begin transaction')
         conn.execute('create table CrazyJamFwdRelation(original_message_id, fwd_message_id)')
+        conn.execute('end transaction')
+
+def migration16():
+    with sqlite3.connect('db.sqlite') as conn:
+        conn.execute('begin transaction')
+        conn.execute('create table EventLinkAttr(event_id REFERENCES Events(rowid), link)')
         conn.execute('end transaction')
 
 def get_latest_euro_rates_from_api() -> json:
