@@ -216,16 +216,27 @@ assert a == ["[ ] b", "[ ] c"]
 
 async def list_responder(msg: str, send: AsyncSend, *, update, context):
     import regex
-    LIST_OP_RE = regex.compile(r"(\p{L}+)(\s*[.]\s*|\s+)(add|append|clear|print|list|shuffle|enumerate|enum|delete|del|insert|check|uncheck|[=])\s*(.*)", regex.IGNORECASE)
-    LIST_OP_RE_MULTI = regex.compile(r"(\p{L}+)\s*([=]|[+][=])\s*\n(.*)", regex.MULTILINE | regex.DOTALL)
-    if (match := LIST_OP_RE.fullmatch(msg)) or (match_multi := LIST_OP_RE_MULTI.fullmatch(msg)):
+    
+    RE_ONE_LINE, RE_OP_MULTI_LINE, RE_MULTI_EQUALS_PLUS_TYPE = (
+        regex.compile(r"(\p{L}+)(\s*[.]\s*|\s+)(add|append|clear|print|list|shuffle|enumerate|enum|delete|del|insert|check|uncheck|[=])\s*(.*?)", regex.IGNORECASE),
+        regex.compile(r"(\p{L}+)\s*([+][=]|[=])\s*()\s*\n(.*)", regex.DOTALL),
+        regex.compile(r"(\p{L}+)\s*([=])\s*(.*?)\s*\n(.*)", regex.DOTALL))
+    
+    if (match := RE_ONE_LINE.fullmatch(msg)) or (match_multi := RE_OP_MULTI_LINE.fullmatch(msg)) or (match_multi_equals_plus_type := RE_MULTI_EQUALS_PLUS_TYPE.fullmatch(msg)):
         if match: # one line operation
             list_name, _, operation, parameters = match.groups()
+
+            requested_type = parameters
             operation = operation.lower()
 
-        elif match_multi: # multi line operation
-            list_name, operation_symbol, parameters_text = match_multi.groups()
-            operation = {'=':'editmulti', '+=': 'extendmulti'}[operation_symbol]
+        elif match_multi or match_multi_equals_plus_type: # multi line operation
+            list_name, operation_symbol, post_operation_symbol, parameters_text = (match_multi or match_multi_equals_plus_type).groups()
+            if match_multi:
+                operation = {'=':'editmulti', '+=': 'extendmulti'}[operation_symbol]
+            else:
+                operation = 'createassign'
+                requested_type = post_operation_symbol
+
             parameters_lines = parameters_text.splitlines()
             if any(map(lambda x:x.startswith("-"), parameters_lines)) and not all(map(lambda x:x.startswith("-"), parameters_lines)):
                 raise UserError("Either use dash notation or don't, not a mix")
@@ -237,37 +248,38 @@ async def list_responder(msg: str, send: AsyncSend, *, update, context):
         list_name: str
         operation: str
         parameters: str | list[str]  # list in case of multiline operation
+        requested_type: str # in case of new list creation (a = list; or multi-line variant)
 
-        if operation in ('=', ):
+        if operation in ('=', 'createassign'):
             with sqlite3.connect("db.sqlite") as conn:
                 conn.execute('begin transaction')
                 chat_id, user_id = update.effective_chat.id, update.effective_user.id
-                if operation == '=':
-                    if parameters[-1:] == '!':
-                        # name = list!
-                        # name = []!
-                        # name = copy from other!
-                        parameters = parameters[:-1]
-                        force_creation = True
-                    else:
-                        force_creation = False
+                
+                if requested_type[-1:] == '!':
+                    # name = list!
+                    # name = []!
+                    # name = copy from other!
+                    requested_type = requested_type[:-1]
+                    force_creation = True
+                else:
+                    force_creation = False
 
-                    if parameters.lower() == 'list' or re.fullmatch(re.escape('[') + '\s*' + re.escape(']'), parameters):
-                        # name = list
-                        # name = []
-                        # name = [ ]
-                        type_list = 'list'
-                    elif param_match := regex.compile('copy\s*((of|from)\s*)?(\p{L}+)').fullmatch(parameters):
-                        # name = copy of other
-                        # name = copy from other
-                        _, _, copy_from_name = param_match.groups()
-                        type_list = ('copy', copy_from_name)
+                if requested_type.lower() == 'list' or re.fullmatch(re.escape('[') + '\s*' + re.escape(']'), requested_type):
+                    # name = list
+                    # name = []
+                    # name = [ ]
+                    type_list = 'list'
+                elif param_match := regex.compile('copy\s*((of|from)\s*)?(\p{L}+)').fullmatch(requested_type):
+                    # name = copy of other
+                    # name = copy from other
+                    _, _, copy_from_name = param_match.groups()
+                    type_list = ('copy', copy_from_name)
 
-                    elif parameters.lower() in ('tasklist', ):
-                        type_list = parameters.lower()
+                elif requested_type.lower() in ('tasklist', ):
+                    type_list = requested_type.lower()
 
-                    else:
-                        raise UserError("Operation for list creation not implemented, use = list, for example")
+                else:
+                    raise UserError("Operation for list creation not implemented, use = list, for example")
 
                 type_list: str | tuple[str, ...]
                 force_creation: bool
@@ -275,7 +287,13 @@ async def list_responder(msg: str, send: AsyncSend, *, update, context):
                 try:
                     listsmodule.forcecreatelist.do_it(conn=conn, chat_id=chat_id, name=list_name, user_id=user_id, type_list=type_list, force_creation=force_creation)
                 except listsmodule.ListAlreadyExist:
-                    raise UserError(f"List already exist, use {parameters+'!'!r} to delete old list and force creation of new list")
+                    raise UserError(f"List already exist, use {requested_type+'!'!r} to delete old list and force creation of new list")
+                
+                if operation == 'createassign':
+                    if requested_type == 'tasklist':
+                        listsmodule.extendmultitasklist.do_it(conn=conn, chat_id=chat_id, name=list_name, values=parameters) 
+                    else:
+                        listsmodule.extendmultilist.do_it(conn=conn, chat_id=chat_id, name=list_name, values=parameters) 
 
                 conn.execute('end transaction')
                 await send(f"List named {list_name!r} created")
