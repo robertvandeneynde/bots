@@ -1028,7 +1028,7 @@ async def export_event(update, context, *, name, datetime_utc):
     from datetime import date, time, datetime, timedelta
     
     file_content_str = EVENT_ICS_TEMPLATE.format(
-        dt_created_utc=datetime.utcnow(),
+        dt_created_utc=datetime.now(UTC),
         dt_start_utc=datetime_utc,
         dt_end_utc=datetime_utc + timedelta(hours=1),
         name_ical_formatted=name)
@@ -4050,7 +4050,7 @@ def get_database_euro_rates() -> Rates:
         latest_date: Datetime = latest_date_string and DatetimeDbSerializer().from_db(latest_date_string)
         rates: json = rates_string and JsonDbSerializer().from_db(rates_string)
     
-    now = Datetime.utcnow()
+    now = Datetime.now(UTC)
     if latest_date is None or now - latest_date > Timedelta(days=1):
         rates = get_latest_euro_rates_from_api()
         with sqlite3.connect('db.sqlite') as conn:
