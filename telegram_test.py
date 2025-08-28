@@ -221,6 +221,15 @@ async def list_responder(msg: str, send: AsyncSend, *, update, context):
                 conn.execute('begin transaction')
                 chat_id, user_id = update.effective_chat.id, update.effective_user.id
                 if operation == '=':
+                    if parameters[-1:] == '!':
+                        # name = list!
+                        # name = []!
+                        # name = copy from other!
+                        parameters = parameters[:-1]
+                        force_creation = True
+                    else:
+                        force_creation = False
+
                     if parameters.lower() == 'list' or re.fullmatch(re.escape('[') + '\s*' + re.escape(']'), parameters):
                         # name = list
                         # name = []
@@ -238,9 +247,12 @@ async def list_responder(msg: str, send: AsyncSend, *, update, context):
                     else:
                         raise UserError("Operation for list creation not implemented, use = list, for example")
                 elif operation == 'editmulti':
-                    type_list = 'list'
+                    type_list = 'list'  # should soon change
                 
-                listsmodule.forcecreatelist.do_it(conn=conn, chat_id=chat_id, name=list_name, user_id=user_id, type_list=type_list)
+                try:
+                    listsmodule.forcecreatelist.do_it(conn=conn, chat_id=chat_id, name=list_name, user_id=user_id, type_list=type_list, force_creation=force_creation)
+                except listsmodule.ListAlreadyExist:
+                    raise UserError(f"List already exist, use {parameters+'!'!r} to delete old list and force creation of new list")
 
                 if operation == 'editmulti':
                     listsmodule.editmultilist.do_it(conn=conn, name=list_name, chat_id=chat_id, values=parameters)
@@ -2212,6 +2224,10 @@ class events(GeneralAction):
                 return await self.send("Usage:\n/events add when [time] [what]\n/events removeduplicates [when]\n")
 
 class listsmodule:
+
+    class ListAlreadyExist(ValueError):
+        pass
+
     @staticmethod
     def list_exists(*, chat_id, name, conn):
         my_simple_sql = partial(simple_sql, connection=conn)
@@ -2244,15 +2260,18 @@ class listsmodule:
 
     class forcecreatelist:
         @staticmethod
-        def do_it(*, conn, chat_id, name, user_id, type_list: object):
+        def do_it(*, conn, chat_id, name, user_id, type_list: object, force_creation: bool):
             my_simple_sql = partial(simple_sql, connection=conn)
 
             # pre creation operation : clear list if exists
             if listsmodule.list_exists(conn=conn, chat_id=chat_id, name=name):
-                listsmodule.clearlist.do_it(conn=conn, chat_id=chat_id, name=name)
-                listid = listsmodule.get_list_id(conn=conn, chat_id=chat_id, name=name)
-                my_simple_sql(('delete from ListElement where listid=?', (listid, )))
-                my_simple_sql(('delete from List where rowid=?', (listid, )))
+                if force_creation:
+                    listsmodule.clearlist.do_it(conn=conn, chat_id=chat_id, name=name)
+                    listid = listsmodule.get_list_id(conn=conn, chat_id=chat_id, name=name)
+                    my_simple_sql(('delete from ListElement where listid=?', (listid, )))
+                    my_simple_sql(('delete from List where rowid=?', (listid, )))
+                else:
+                    raise listsmodule.ListAlreadyExist
 
             # pre creation operation : determine the type of the new list
             # - in case of copy, verify the other list exists, and save it's type
@@ -2721,7 +2740,7 @@ def enrich_event_with_where(event):
 
 def split_event_with_where_etc(event):
     event = dict(event)
-    
+
     X = GetOrEmpty(re.compile('(?:[ ]|^)[@][ ]').split(event['what'], maxsplit=1))
     event['what'] = X[0]
     event['where'] = X[1] # Can be empty
