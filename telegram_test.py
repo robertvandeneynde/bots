@@ -2721,7 +2721,11 @@ def enrich_event_with_where(event):
 
 def split_event_with_where_etc(event):
     event = dict(event)
-    event['what'], event['where'] = GetOrEmpty(re.compile('(?:[ ]|^)[@][ ]').split(event['what'], maxsplit=1))
+    
+    X = GetOrEmpty(re.compile('(?:[ ]|^)[@][ ]').split(event['what'], maxsplit=1))
+    event['what'] = X[0]
+    event['where'] = X[1] # Can be empty
+
     if not event.get('where'):
         del event['where']
     return event
