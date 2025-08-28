@@ -254,7 +254,7 @@ async def list_responder(msg: str, send: AsyncSend, *, update, context):
             with sqlite3.connect("db.sqlite") as conn:
                 conn.execute('begin transaction')
                 chat_id, user_id = update.effective_chat.id, update.effective_user.id
-                
+
                 if requested_type[-1:] == '!':
                     # name = list!
                     # name = []!
@@ -388,6 +388,7 @@ async def eventedit_responder(msg:str, send: AsyncSend, *, update, context):
         raise DoNotAnswer
     
     if match_postpone := re.match('([+]|[-])\s*(\d+)\s*(h|hours|min|minute|minutes|day|days|week|weeks)', msg):
+        print("Event.what", event['what'])
         event_db = retrieve_event_from_db(update=update, context=context, what=event['what'], when=event['when'])
         
         sign, amount, units = match_postpone.groups()
@@ -2089,11 +2090,16 @@ async def post_event(update, context, *, name, datetime, time, link, date_str, c
 
     emojis = EventFormatting.emojis
 
+    infos = split_event_with_where_etc({'what': name, 'link': link})
+
     # 1. Send info in text
 
     await send(event_text := '\n'.join(filter(None, [
         f"Event added:",
-        f"{emojis.Name} {name}",
+        f"{emojis.Name} {infos['what']}",
+    ] + ([
+        f"{emojis.Location} {infos['where']}",
+    ] if infos.get('where') else []) + [
         f"{emojis.Date} {datetime:%A} {datetime.date():%d/%m/%Y} ({date_str})",
         (f"{emojis.Time} {time:%H:%M} ({tz})" if chat_timezones and set(chat_timezones) != {tz} else
          f"{emojis.Time} {time:%H:%M}") if time else None
@@ -2748,6 +2754,7 @@ def addevent_analyse_from_bot(update, context, text:str) -> {'what': str, 'when'
     infos_raw = reduce_multi_values(infos_raw)
 
     what = infos_raw.get('name', '')
+    where = infos_raw.get('location', '')
     try:
         when = infos_raw['date'] + ((' ' + infos_raw['time']) if infos_raw.get('time') else '')
     except KeyError:
@@ -2765,7 +2772,7 @@ def addevent_analyse_from_bot(update, context, text:str) -> {'what': str, 'when'
     when = when.strip()
 
     return {
-        'what': what,
+        'what': what + ' @ ' + where if where else what,
         'when': when,
     }
 
@@ -2798,8 +2805,10 @@ def split_event_with_where_etc(event):
     event['what'] = X[0]
     event['where'] = X[1] # Can be empty
 
-    if not event.get('where'):
+    if not event.get('where') and 'where' in event:
         del event['where']
+    if not event.get('link') and 'link' in event:
+        del event['link']
     return event
 
 def addevent_analyse(update, context):
@@ -3097,11 +3106,15 @@ async def next_or_last_event(update: Update, context: CallbackContext, n:int, *,
     date_utc, name = events[0]
     datetime = strptime(date_utc).replace(tzinfo=ZoneInfo('UTC')).astimezone(tz)
     date, time = datetime.date(), datetime.time()
+    infos = split_event_with_where_etc({'what': name})
 
     emojis = EventFormatting.emojis
     await send('\n'.join(natural_filter([
         f"Event!",
-        f"{emojis.Name} {name}",
+        f"{emojis.Name} {infos['what']}",
+    ] + ([
+        f"{emojis.Location} {infos['where']}",
+    ] if infos.get('where') else []) + [
         f"{emojis.Date} {datetime:%A} {datetime.date():%d/%m/%Y}",
         (f"{emojis.Time} {time:%H:%M} ({tz})" if chat_timezones and set(chat_timezones) != {tz} else
          f"{emojis.Time} {time:%H:%M}") if time else None
@@ -3118,9 +3131,14 @@ async def next_or_last_event(update: Update, context: CallbackContext, n:int, *,
     ])))
 
 def format_event_emoji_style(*, name, datetime, date, time, tz, chat_timezones):
+    infos = split_event_with_where_etc({'what': name})
+
     emojis = EventFormatting.emojis
     return '\n'.join(natural_filter([
-        f"{emojis.Name} {name}",
+        f"{emojis.Name} {infos['what']}",
+    ] + ([
+        f"{emojis.Location} {infos['where']}",
+    ] if infos.get('where') else []) + [
         f"{emojis.Date} {datetime:%A} {datetime.date():%d/%m/%Y}",
         (f"{emojis.Time} {time:%H:%M} ({tz})" if chat_timezones and set(chat_timezones) != {tz} else
          f"{emojis.Time} {time:%H:%M}") if time else None
