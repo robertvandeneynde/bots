@@ -1985,7 +1985,7 @@ async def add_event(update: Update, context: CallbackContext):
     if not do_if_setting_on(read_chat_settings('event.location.autocomplete')):
         implicit_thereis(what=name, chat_id=chat_id)
     
-    await post_event(update, context, name=name, datetime=datetime, time=time, date_str=date_str, chat_timezones=chat_timezones, tz=tz, chat_id=chat_id, datetime_utc=datetime_utc, link=infos_event.get('link'))
+    await post_event(update, context, name=name, datetime=datetime, time=time, date_str=date_str, chat_timezones=chat_timezones, tz=tz, chat_id=chat_id, datetime_utc=datetime_utc, link=infos_event and infos_event.get('link'))
 
 class ImplicitLocations:
     Parens = re.compile("(.*)\\((.*)\\).*")
