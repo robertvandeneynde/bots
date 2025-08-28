@@ -249,6 +249,7 @@ async def list_responder(msg: str, send: AsyncSend, *, update, context):
         operation: str
         parameters: str | list[str]  # list in case of multiline operation
         requested_type: str # in case of new list creation (a = list; or multi-line variant)
+        requested_type = requested_type.lower()
 
         if operation in ('=', 'createassign'):
             with sqlite3.connect("db.sqlite") as conn:
@@ -275,8 +276,8 @@ async def list_responder(msg: str, send: AsyncSend, *, update, context):
                     _, _, copy_from_name = param_match.groups()
                     type_list = ('copy', copy_from_name)
 
-                elif requested_type.lower() in ('tasklist', ):
-                    type_list = requested_type.lower()
+                elif requested_type in ('tasklist', ):
+                    type_list = requested_type
 
                 else:
                     raise UserError("Operation for list creation not implemented, use = list, for example")
