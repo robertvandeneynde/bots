@@ -192,6 +192,28 @@ async def whereisanswer_responder(msg:str, send: AsyncSend, *, update, context):
     
     await save_thereis(key, value, update=update, context=context)
 
+"""
+List doc and tests:
+
+# the equal statement with a (non empty) list
+a = list
+a = 
+- b
+- c
+assert a == ["b", "c"]
+
+a = 
+- b
+- c
+assert "a" not in globals() 
+
+a = tasklist
+a = 
+- b
+- c
+assert a == ["[ ] b", "[ ] c"]
+"""
+
 async def list_responder(msg: str, send: AsyncSend, *, update, context):
     import regex
     LIST_OP_RE = regex.compile(r"(\p{L}+)(\s*[.]\s*|\s+)(add|append|clear|print|list|shuffle|enumerate|enum|delete|del|insert|check|uncheck|[=])\s*(.*)", regex.IGNORECASE)
@@ -216,7 +238,7 @@ async def list_responder(msg: str, send: AsyncSend, *, update, context):
         operation: str
         parameters: str | list[str]  # list in case of multiline operation
 
-        if operation in ('=', 'editmulti'):
+        if operation in ('=', ):
             with sqlite3.connect("db.sqlite") as conn:
                 conn.execute('begin transaction')
                 chat_id, user_id = update.effective_chat.id, update.effective_user.id
@@ -246,21 +268,19 @@ async def list_responder(msg: str, send: AsyncSend, *, update, context):
 
                     else:
                         raise UserError("Operation for list creation not implemented, use = list, for example")
-                elif operation == 'editmulti':
-                    type_list = 'list'  # should soon change
-                
+
+                type_list: str | tuple[str, ...]
+                force_creation: bool
+
                 try:
                     listsmodule.forcecreatelist.do_it(conn=conn, chat_id=chat_id, name=list_name, user_id=user_id, type_list=type_list, force_creation=force_creation)
                 except listsmodule.ListAlreadyExist:
                     raise UserError(f"List already exist, use {parameters+'!'!r} to delete old list and force creation of new list")
 
-                if operation == 'editmulti':
-                    listsmodule.editmultilist.do_it(conn=conn, name=list_name, chat_id=chat_id, values=parameters)
-
                 conn.execute('end transaction')
                 await send(f"List named {list_name!r} created")
 
-        elif operation in ('add', 'append', 'print', 'list', 'clear', 'extendmulti', 'shuffle', 'enum', 'enumerate', 'del', 'delete', 'insert', 'check', 'uncheck'):
+        elif operation in ('add', 'append', 'print', 'list', 'clear', 'extendmulti', 'editmulti', 'shuffle', 'enum', 'enumerate', 'del', 'delete', 'insert', 'check', 'uncheck'):
             with sqlite3.connect("db.sqlite") as conn:
                 conn.execute('begin transaction')
 
@@ -294,6 +314,14 @@ async def list_responder(msg: str, send: AsyncSend, *, update, context):
                             await send(f"List {list_name!r} edited")
                         elif list_type in ('tasklist', ):
                             listsmodule.extendmultitasklist.do_it(conn=conn, name=list_name, chat_id=chat_id, values=parameters)
+                            await send(f"List {list_name!r} edited")
+                    
+                    elif operation in ('editmulti', ):
+                        if list_type in ('list', ):
+                            listsmodule.editmultilist.do_it(conn=conn, name=list_name, chat_id=chat_id, values=parameters)
+                            await send(f"List {list_name!r} edited")
+                        elif list_type in ('tasklist', ):
+                            listsmodule.editmultitasklist.do_it(conn=conn, name=list_name, chat_id=chat_id, values=parameters)
                             await send(f"List {list_name!r} edited")
 
                     elif operation in ('shuffle', ):
@@ -2478,6 +2506,13 @@ class listsmodule:
             # 2: set (in transaction)
             listsmodule.extendmultilist.do_it(conn=conn, chat_id=chat_id, name=name, values=values)
 
+    class editmultitasklist:
+        @staticmethod
+        def do_it(*, conn, chat_id, name, values):
+            # 1: clear (in transaction)
+            listsmodule.clearlist.do_it(conn=conn, chat_id=chat_id, name=name)
+            # 2: set (in transaction)
+            listsmodule.extendmultitasklist.do_it(conn=conn, chat_id=chat_id, name=name, values=values)
     class extendmultilist:
         @staticmethod
         def do_it(*, conn, chat_id, name, values):
