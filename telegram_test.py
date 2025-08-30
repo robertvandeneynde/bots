@@ -361,7 +361,10 @@ async def list_responder(msg: str, send: AsyncSend, *, update, context):
                                 listsmodule.addtolist.do_it(conn=conn, name=list_name, chat_id=chat_id, value=parameters)
                             
                     elif operation in ('print', 'list', ):
-                        await send(listsmodule.printlist.it(conn=conn, chat_id=chat_id, name=list_name))
+                        if list_type in ('tree', ):
+                            await send(listsmodule.printtree.it(**P()))    
+                        else:
+                            await send(listsmodule.printlist.it(conn=conn, chat_id=chat_id, name=list_name))
                         did_edit = False
 
                     elif operation in ('clear', ):
@@ -2711,6 +2714,26 @@ class listsmodule:
                 await self.send(listsmodule.printlist.it(conn=conn, chat_id=self.get_chat_id(), name=name))
                 conn.execute('end transaction')
     
+    class printtree(GeneralAction):
+        @staticmethod
+        def it(*, conn, chat_id, name):
+            my_simple_sql = partial(simple_sql, connection=conn)
+            
+            (listid,), = my_simple_sql(('''select rowid from List where chat_id=? and lower(name)=lower(?)''', (chat_id, name,)))
+            
+            bits = []
+
+            def run_on(rowid, level):
+                for x, xv in my_simple_sql((''' select rowid, value from ListElement where listid=? and tree_parent IS ? ''', (listid, rowid, ))):
+                    bits.append((level, xv))
+                    run_on(x, level+1)
+            
+            for x, xv in my_simple_sql((''' select rowid, value from ListElement where listid=? and tree_parent IS NULL ''', (listid, ))):
+                bits.append((0, xv))
+                run_on(x, 1)
+
+            return '\n'.join('{}- {}'.format(x * '  ', y) for x, y in bits) if bits else '/'
+
     class enumeratelist(GeneralAction):
         @staticmethod
         def it(*, conn, chat_id, name):
