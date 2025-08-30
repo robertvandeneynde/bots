@@ -214,11 +214,33 @@ a =
 assert a == ["[ ] b", "[ ] c"]
 """
 
+class ListLang:
+    OPERATIONS_ONE_LINE = sorted((
+        # crud
+        "add", "append",
+        "delete", "del",
+        "insert",
+        "replace", "rep",
+        # list
+        "clear",
+        "shuffle",
+        # reading
+        "print", "list",
+        "enumerate", "enum",
+        # tasklist
+        "check",
+        "uncheck",
+    ), key=len, reverse=True)
+
+    OPS_1L = '|'.join(map(re.escape, OPERATIONS_ONE_LINE))
+
+    IsTask = re.compile("^\\[\\s*(x|)\\s*\\].*$")
+
 async def list_responder(msg: str, send: AsyncSend, *, update, context):
     import regex
     
     RE_ONE_LINE, RE_OP_MULTI_LINE, RE_MULTI_EQUALS_PLUS_TYPE = (
-        regex.compile(r"(\p{L}+)(\s*[.]\s*|\s+)(add|append|clear|print|list|shuffle|enumerate|enum|delete|del|insert|check|uncheck|[=])\s*(.*?)", regex.IGNORECASE),
+        regex.compile(r"(\p{L}+)(\s*[.]\s*|\s+)(" + ListLang.OPS_1L + "|[=])\s*(.*?)", regex.IGNORECASE),
         regex.compile(r"(\p{L}+)\s*([+][=]|[=])\s*()\s*\n(.*)", regex.DOTALL),
         regex.compile(r"(\p{L}+)\s*([=])\s*(.*?)\s*\n(.*)", regex.DOTALL))
     
@@ -253,6 +275,7 @@ async def list_responder(msg: str, send: AsyncSend, *, update, context):
         requested_type: None | str # in case of new list creation (a = list; or multi-line variant)
 
         if operation in ('createempty', 'createassign'):
+            # the list should be (re) created
             requested_type = requested_type.lower()
 
             with sqlite3.connect("db.sqlite") as conn:
@@ -302,13 +325,16 @@ async def list_responder(msg: str, send: AsyncSend, *, update, context):
                 conn.execute('end transaction')
                 await send(f"List named {list_name!r} created")
 
-        elif operation in ('add', 'append', 'print', 'list', 'clear', 'extendmulti', 'editmulti', 'shuffle', 'enum', 'enumerate', 'del', 'delete', 'insert', 'check', 'uncheck'):
+        elif operation in ListLang.OPERATIONS_ONE_LINE + ['extendmulti', 'editmulti', ]:
+            # simple operation on the list
             with sqlite3.connect("db.sqlite") as conn:
                 conn.execute('begin transaction')
 
                 chat_id = update.effective_chat.id
                 if listsmodule.list_exists(conn=conn, chat_id=chat_id, name=list_name):
                     list_type = listsmodule.get_list_type(conn=conn, chat_id=chat_id, name=list_name)
+                    P = lambda: dict(conn=conn, name=list_name, chat_id=chat_id)
+                    PP = lambda: P() | dict(parameters=parameters)
 
                     if operation in ('add', 'append'):
                         match list_type:
@@ -366,6 +392,15 @@ async def list_responder(msg: str, send: AsyncSend, *, update, context):
                             listsmodule.insertintasklist.do_it(conn=conn, name=list_name, chat_id=chat_id, parameters=parameters)
                             await send(f"List {list_name!r} edited")
                     
+                    elif operation in ('rep', 'replace'):
+                        if list_type in ('list', ):
+                            listsmodule.replaceinlist.do_it(**PP())
+                            await send(f"List {list_name!r} edited")
+
+                        elif list_type in ('tasklist', ):
+                            listsmodule.replaceintasklist.do_it(**PP())
+                            await send(f"List {list_name!r} edited")
+
                     elif operation in ('check', 'uncheck', ):
                         if list_type in ('tasklist', ):
                             if operation == 'check':
@@ -392,7 +427,6 @@ async def eventedit_responder(msg:str, send: AsyncSend, *, update, context):
         raise DoNotAnswer
     
     if match_postpone := re.match('([+]|[-])\s*(\d+)\s*(h|hours|min|minute|minutes|day|days|week|weeks)', msg):
-        print("Event.what", event['what'])
         event_db = retrieve_event_from_db(update=update, context=context, what=event['what'], when=event['when'])
         
         sign, amount, units = match_postpone.groups()
@@ -2400,6 +2434,19 @@ class listsmodule:
 
             listsmodule.insertinlist.do_it(conn=conn, chat_id=chat_id, name=name, parameters=i + ' ' + modified_value)
 
+    class replaceintasklist:
+        @staticmethod
+        def do_it(*, parameters, **P):
+            i, to_rep = parameters.split(maxsplit=1)
+
+            IsTask = ListLang.IsTask
+            if IsTask.fullmatch(to_rep):
+                mv = to_rep.strip()
+            else:
+                mv = '[ ]' + ' ' + to_rep.strip()
+            
+            listsmodule.replaceinlist.do_it(parameters=' '.join([i, mv]), **P)
+
     class insertinlist(GeneralAction):
         @staticmethod
         def do_it(*, conn, chat_id, name, parameters):
@@ -2430,6 +2477,30 @@ class listsmodule:
                 my_simple_sql((''' insert into ListElement(listid, value) values(?,?)''', (listid, rowids[-1][1], )))
             else:
                 my_simple_sql((''' insert into ListElement(listid, value) values(?,?)''', (listid, to_add, )))
+
+    class replaceinlist(GeneralAction):
+        @staticmethod
+        def do_it(*, conn, chat_id, name, parameters):
+            i, to_rep = parameters.split(maxsplit=1)
+            value = i
+            
+            my_simple_sql = partial(simple_sql, connection=conn)
+
+            listid, = only_one(my_simple_sql(('''select rowid from List where chat_id=? and lower(name)=lower(?)''', (chat_id, name,))))
+
+            N = only_one(only_one(my_simple_sql(('''select count(*) from ListElement where listid=?''', (listid,)))))
+
+            value = int(value)
+
+            assert value in irange(-N, +N)
+            assert value != 0
+
+            if value < 0:
+                value = N + value
+            else:
+                value = value - 1
+
+            my_simple_sql(('''update ListElement set value=? where listid=? LIMIT 1 OFFSET ? ''', (to_rep, listid, value)))
 
     class tasklistcheck:
         @staticmethod
