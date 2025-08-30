@@ -230,7 +230,15 @@ class ListLang:
         # tasklist
         "check",
         "uncheck",
+        # tree
+        'addchild', 'insertchild', 
     ), key=len, reverse=True)
+
+    POSSIBLE_TYPES = [
+        'list',
+        'tasklist',
+        'tree',
+    ]
 
     OPS_1L = '|'.join(map(re.escape, OPERATIONS_ONE_LINE))
 
@@ -291,22 +299,23 @@ async def list_responder(msg: str, send: AsyncSend, *, update, context):
                 else:
                     force_creation = False
 
-                if requested_type.lower() == 'list' or re.fullmatch(re.escape('[') + '\s*' + re.escape(']'), requested_type):
+                if re.fullmatch(re.escape('[') + '\s*' + re.escape(']'), requested_type):
                     # name = list
                     # name = []
                     # name = [ ]
                     type_list = 'list'
+
                 elif param_match := regex.compile('copy\s*((of|from)\s*)?(\p{L}+)').fullmatch(requested_type):
                     # name = copy of other
                     # name = copy from other
                     _, _, copy_from_name = param_match.groups()
                     type_list = ('copy', copy_from_name)
 
-                elif requested_type in ('tasklist', ):
+                elif requested_type in set(ListLang.POSSIBLE_TYPES):
                     type_list = requested_type
 
                 else:
-                    raise UserError("Operation for list creation not implemented, use = list, for example")
+                    raise UserError(f"List creation of type {requested_type!r} not implemented, use = list, for example")
 
                 type_list: str | tuple[str, ...]
                 force_creation: bool
@@ -332,14 +341,15 @@ async def list_responder(msg: str, send: AsyncSend, *, update, context):
 
                 chat_id = update.effective_chat.id
                 if listsmodule.list_exists(conn=conn, chat_id=chat_id, name=list_name):
-                    list_type = listsmodule.get_list_type(conn=conn, chat_id=chat_id, name=list_name)
+                    
                     P = lambda: dict(conn=conn, name=list_name, chat_id=chat_id)
                     PP = lambda: P() | dict(parameters=parameters)
 
+                    list_type = listsmodule.get_list_type(**P())
+                    
+                    did_edit = True
                     if operation in ('add', 'append'):
                         match list_type:
-                            case 'list':
-                                listsmodule.addtolist.do_it(conn=conn, name=list_name, chat_id=chat_id, value=parameters)
                             case 'tasklist':
                                 IsTask = re.compile("^\\[\\s*(x|)\\s*\\].*$")
                                 if IsTask.fullmatch(parameters):
@@ -347,59 +357,61 @@ async def list_responder(msg: str, send: AsyncSend, *, update, context):
                                 else:
                                     modified_value = '[ ]' + ' ' + parameters.strip()
                                 listsmodule.addtolist.do_it(conn=conn, name=list_name, chat_id=chat_id, value=modified_value)
-                        await send(f"List {list_name!r} edited")
-
+                            case _:
+                                listsmodule.addtolist.do_it(conn=conn, name=list_name, chat_id=chat_id, value=parameters)
+                            
                     elif operation in ('print', 'list', ):
-                        await send(listsmodule.printlist.it(conn=conn, chat_id=chat_id, name=list_name))
+                        if list_type in ('tree', ):
+                            await send(listsmodule.printtree.it(**P()))    
+                        else:
+                            await send(listsmodule.printlist.it(conn=conn, chat_id=chat_id, name=list_name))
+                        did_edit = False
 
                     elif operation in ('clear', ):
                         listsmodule.clearlist.do_it(conn=conn, name=list_name, chat_id=chat_id)
-                        await send(f"List {list_name!r} edited")
 
                     elif operation in ('extendmulti', ):
-                        if list_type in ('list', ):
-                            listsmodule.extendmultilist.do_it(conn=conn, name=list_name, chat_id=chat_id, values=parameters)
-                            await send(f"List {list_name!r} edited")
-                        elif list_type in ('tasklist', ):
+                        if list_type in ('tasklist', ):
                             listsmodule.extendmultitasklist.do_it(conn=conn, name=list_name, chat_id=chat_id, values=parameters)
-                            await send(f"List {list_name!r} edited")
+                        else:
+                            listsmodule.extendmultilist.do_it(conn=conn, name=list_name, chat_id=chat_id, values=parameters)
                     
                     elif operation in ('editmulti', ):
-                        if list_type in ('list', ):
-                            listsmodule.editmultilist.do_it(conn=conn, name=list_name, chat_id=chat_id, values=parameters)
-                            await send(f"List {list_name!r} edited")
-                        elif list_type in ('tasklist', ):
+                        if list_type in ('tasklist', ):
                             listsmodule.editmultitasklist.do_it(conn=conn, name=list_name, chat_id=chat_id, values=parameters)
-                            await send(f"List {list_name!r} edited")
+                        else:
+                            listsmodule.editmultilist.do_it(conn=conn, name=list_name, chat_id=chat_id, values=parameters)
 
                     elif operation in ('shuffle', ):
                         listsmodule.shuffle.do_it(conn=conn, name=list_name, chat_id=chat_id)
                         await send(f"List {list_name!r} edited")
                     
                     elif operation in ('enum', 'enumerate', ):
-                        await send(listsmodule.enumeratelist.it(conn=conn, chat_id=chat_id, name=list_name))
+                        if list_type in ('tree', ):
+                            await send(listsmodule.enumeratetree.it(**P()))
+                        else:
+                            await send(listsmodule.enumeratelist.it(**P()))
+                        
+                        did_edit = False
                     
                     elif operation in ('del', 'delete'):
                         listsmodule.delinlist.do_it(conn=conn, name=list_name, chat_id=chat_id, value=parameters)
-                        await send(f"List {list_name!r} edited")
                     
                     elif operation in ('insert', ):
-                        if list_type in ('list', ):
-                            listsmodule.insertinlist.do_it(conn=conn, name=list_name, chat_id=chat_id, parameters=parameters)
-                            await send(f"List {list_name!r} edited")
-
-                        elif list_type in ('tasklist', ):
+                        if list_type in ('tasklist', ):
                             listsmodule.insertintasklist.do_it(conn=conn, name=list_name, chat_id=chat_id, parameters=parameters)
-                            await send(f"List {list_name!r} edited")
+                        else:
+                            listsmodule.insertinlist.do_it(conn=conn, name=list_name, chat_id=chat_id, parameters=parameters)
                     
                     elif operation in ('rep', 'replace'):
-                        if list_type in ('list', ):
-                            listsmodule.replaceinlist.do_it(**PP())
-                            await send(f"List {list_name!r} edited")
-
-                        elif list_type in ('tasklist', ):
+                        if list_type in ('tasklist', ):
                             listsmodule.replaceintasklist.do_it(**PP())
-                            await send(f"List {list_name!r} edited")
+                        else:
+                            listsmodule.replaceinlist.do_it(**PP())
+                    
+                    elif operation in ('insertchild', 'addchild', ):
+                        if list_type in ('tree', ):
+                            listsmodule.treelistinsertchild.do_it(**PP())
 
                     elif operation in ('check', 'uncheck', ):
                         if list_type in ('tasklist', ):
@@ -408,10 +420,16 @@ async def list_responder(msg: str, send: AsyncSend, *, update, context):
                             elif operation == 'uncheck':
                                 listsmodule.tasklistcheck.do_it(conn=conn, name=list_name, chat_id=chat_id, value=parameters, direction=' ')
                             await send(f"List {list_name!r} edited")
+                        else:
+                            # do nothing because the operation does not exist
+                            did_edit = False 
 
                     else:
                         raise AssertionError(f"On operation {operation}")
-                    
+                
+                    if did_edit:
+                        await send(f"List {list_name!r} edited")
+
                 conn.execute('end transaction')
             
         else:
@@ -2381,7 +2399,7 @@ class listsmodule:
 
             # post creation operation
             match type_list:
-                case 'list' | 'tasklist':
+                case 'list' | 'tasklist' | 'tree':
                     pass # nothing to do more
 
                 case 'copy', copy_from_name:
@@ -2420,6 +2438,36 @@ class listsmodule:
         
         async def print_usage(self):
             return await self.send("/createlist\n/createlist name")
+    
+    class treelistinsertchild:
+        @staticmethod
+        def do_it(*, conn, chat_id, name, parameters):
+            itree_str, value = parameters.split(maxsplit=1)
+            itree = tuple(map(int, itree_str.split('.')))
+
+
+            assert len(itree)
+            assert all(x >= 1 for x in itree)
+            my_simple_sql = partial(simple_sql, connection=conn)
+
+            listid, = only_one(my_simple_sql(('''select rowid from List where chat_id=? and lower(name)=lower(?)''', (chat_id, name,))))
+            
+            prev = None
+            for i in itree:
+                if prev is None:
+                    x = "IS NULL"
+                    p = (listid, i-1)
+                else:
+                    x = "= ?"
+                    p = (listid, prev, i-1)
+
+                rowid, = only_one(
+                    my_simple_sql((f''' select rowid from ListElement where listid=? AND tree_parent {x} LIMIT 1 OFFSET ?''', p)),
+                    none=UserError(f"{itree_str} does not exist in the tree"))
+                
+                prev = rowid
+
+            my_simple_sql((''' insert into ListElement(listid, value, tree_parent) values (?,?,?)''', (listid, value, prev) ))
     
     class insertintasklist:
         @staticmethod
@@ -2671,6 +2719,26 @@ class listsmodule:
                 await self.send(listsmodule.printlist.it(conn=conn, chat_id=self.get_chat_id(), name=name))
                 conn.execute('end transaction')
     
+    class printtree(GeneralAction):
+        @staticmethod
+        def it(*, conn, chat_id, name):
+            my_simple_sql = partial(simple_sql, connection=conn)
+            
+            (listid,), = my_simple_sql(('''select rowid from List where chat_id=? and lower(name)=lower(?)''', (chat_id, name,)))
+            
+            bits = []
+
+            def run_on(rowid, level):
+                for x, xv in my_simple_sql((''' select rowid, value from ListElement where listid=? and tree_parent IS ? ''', (listid, rowid, ))):
+                    bits.append((level, xv))
+                    run_on(x, level+1)
+            
+            for x, xv in my_simple_sql((''' select rowid, value from ListElement where listid=? and tree_parent IS NULL ''', (listid, ))):
+                bits.append((0, xv))
+                run_on(x, 1)
+
+            return '\n'.join('{}- {}'.format(x * '  ', y) for x, y in bits) if bits else '/'
+
     class enumeratelist(GeneralAction):
         @staticmethod
         def it(*, conn, chat_id, name):
@@ -2681,6 +2749,31 @@ class listsmodule:
 
             return '\n'.join(('{}. {}'.format(i, x) for i, x in enumerate(result_list, start=1))) if result_list else '/'
 
+    class enumeratetree(GeneralAction):
+        @staticmethod
+        def it(*, conn, chat_id, name):
+            my_simple_sql = partial(simple_sql, connection=conn)
+            
+            (listid,), = my_simple_sql(('''select rowid from List where chat_id=? and lower(name)=lower(?)''', (chat_id, name,)))
+            
+            bits = []
+
+            def run_on(rowid, level):
+                for i, (x, xv) in enumerate(my_simple_sql((''' select rowid, value from ListElement where listid=? and tree_parent IS ? ''', (listid, rowid, )))):
+                    trail.append(str(i+1))
+                    bits.append(('.'.join(trail), xv))
+                    run_on(x, level+1)
+                    trail.pop()
+            
+            trail = []
+            for i, (x, xv) in enumerate(my_simple_sql((''' select rowid, value from ListElement where listid=? and tree_parent IS NULL ''', (listid, )))):
+                trail.append(str(i+1))
+                bits.append(('.'.join(trail), xv))
+                run_on(x, 1)
+                trail.pop()
+
+            return '\n'.join('{}. {}'.format(x, y) for x, y in bits) if bits else '/'
+        
     class dirlist(GeneralAction):
         @staticmethod
         def it(*, conn, chat_id):
@@ -4075,6 +4168,13 @@ def migration16():
         conn.execute('begin transaction')
         conn.execute('create table EventLinkAttr(event_id REFERENCES Events(rowid), link)')
         conn.execute('end transaction')
+
+def migration17():
+    with sqlite3.connect('db.sqlite') as conn:
+        conn.execute('begin transaction')
+        conn.execute('alter table ListElement add column tree_parent REFERENCES ListElement(rowid) DEFAULT NULL')
+        conn.execute('end transaction')
+
 
 def get_latest_euro_rates_from_api() -> json:
     import requests
