@@ -224,7 +224,9 @@ async def list_responder(msg: str, send: AsyncSend, *, update, context):
     
     if (match := RE_ONE_LINE.fullmatch(msg)) or (match_multi := RE_OP_MULTI_LINE.fullmatch(msg)) or (match_multi_equals_plus_type := RE_MULTI_EQUALS_PLUS_TYPE.fullmatch(msg)):
         if match: # one line operation
-            list_name, _, operation, parameters = match.groups()
+            list_name, _, operation_raw, parameters = match.groups()
+
+            operation = 'createempty' if operation_raw == '=' else operation_raw
 
             requested_type = parameters
             operation = operation.lower()
@@ -248,10 +250,11 @@ async def list_responder(msg: str, send: AsyncSend, *, update, context):
         list_name: str
         operation: str
         parameters: str | list[str]  # list in case of multiline operation
-        requested_type: str # in case of new list creation (a = list; or multi-line variant)
-        requested_type = requested_type.lower()
+        requested_type: None | str # in case of new list creation (a = list; or multi-line variant)
 
-        if operation in ('=', 'createassign'):
+        if operation in ('createempty', 'createassign'):
+            requested_type = requested_type.lower()
+
             with sqlite3.connect("db.sqlite") as conn:
                 conn.execute('begin transaction')
                 chat_id, user_id = update.effective_chat.id, update.effective_user.id
