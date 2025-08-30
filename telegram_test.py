@@ -234,6 +234,12 @@ class ListLang:
         'addchild', 'insertchild', 
     ), key=len, reverse=True)
 
+    POSSIBLE_TYPES = [
+        'list',
+        'tasklist',
+        'tree',
+    ]
+
     OPS_1L = '|'.join(map(re.escape, OPERATIONS_ONE_LINE))
 
     IsTask = re.compile("^\\[\\s*(x|)\\s*\\].*$")
@@ -293,18 +299,19 @@ async def list_responder(msg: str, send: AsyncSend, *, update, context):
                 else:
                     force_creation = False
 
-                if requested_type.lower() == 'list' or re.fullmatch(re.escape('[') + '\s*' + re.escape(']'), requested_type):
+                if re.fullmatch(re.escape('[') + '\s*' + re.escape(']'), requested_type):
                     # name = list
                     # name = []
                     # name = [ ]
                     type_list = 'list'
+
                 elif param_match := regex.compile('copy\s*((of|from)\s*)?(\p{L}+)').fullmatch(requested_type):
                     # name = copy of other
                     # name = copy from other
                     _, _, copy_from_name = param_match.groups()
                     type_list = ('copy', copy_from_name)
 
-                elif requested_type in ('tasklist', 'tree', ):
+                elif requested_type in set(ListLang.POSSIBLE_TYPES):
                     type_list = requested_type
 
                 else:
@@ -340,7 +347,7 @@ async def list_responder(msg: str, send: AsyncSend, *, update, context):
 
                     list_type = listsmodule.get_list_type(**P())
                     
-                    did_edit = False
+                    did_edit = True
                     if operation in ('add', 'append'):
                         match list_type:
                             case 'tasklist':
@@ -397,7 +404,7 @@ async def list_responder(msg: str, send: AsyncSend, *, update, context):
                     
                     elif operation in ('insertchild', 'addchild', ):
                         if list_type in ('tree', ):
-                            listsmodule.treelistinsertchild.do_it(**P())
+                            listsmodule.treelistinsertchild.do_it(**PP())
 
                     elif operation in ('check', 'uncheck', ):
                         if list_type in ('tasklist', ):
@@ -2429,7 +2436,7 @@ class listsmodule:
         @staticmethod
         def do_it(*, conn, chat_id, name, parameters):
             itree_str, value = parameters.split(maxsplit=1)
-            itree = tuple(map(int, itree.split('.')))
+            itree = tuple(map(int, itree_str.split('.')))
 
             assert len(itree)
             assert all(x >= 1 for x in itree)
@@ -2439,12 +2446,20 @@ class listsmodule:
             
             prev = None
             for i in itree:
+                if prev is None:
+                    x = "IS NULL"
+                    p = (listid, i-1)
+                else:
+                    x = "= ?"
+                    p = (listid, prev, i-1)
+
                 rowid, = only_one(
-                    my_simple_sql((''' select rowid into ListElement where listid=? AND tree_parent=? LIMIT 1 OFFSET ?''', (listid, prev, i-1) )),
+                    my_simple_sql((f''' select rowid from ListElement where listid=? AND tree_parent {x} LIMIT 1 OFFSET ?''', p)),
                     none=UserError(f"{itree_str} does not exist in the tree"))
+                
                 prev = rowid
 
-            my_simple_sql((''' insert into ListElement(listid, value, tree_parent) values (?,?)''', (listid, value, prev) ))
+            my_simple_sql((''' insert into ListElement(listid, value, tree_parent) values (?,?,?)''', (listid, value, prev) ))
     
     class insertintasklist:
         @staticmethod
