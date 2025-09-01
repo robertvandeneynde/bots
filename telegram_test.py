@@ -52,15 +52,20 @@ class CrazyJamFilter(MessageFilter):
     def filter(self, message: Message):
         return message.chat.id == SPECIAL_ENTITIES[SpecialUsers.CRAZY_JAM]
 
+class CrazyJamFwdError(Exception):
+    pass
+
 async def on_crazy_jam_message(update: Update, context):
+    try:
+        original_message_id = update.effective_message.id
+        sent_message = await update.message.forward(SPECIAL_ENTITIES[SpecialUsers.CRAZY_JAM_BACKEND], message_thread_id=SPECIAL_ENTITIES[SpecialUsers.CRAZY_JAM_BACKEND_THREAD_IN])
+        new_message_id = sent_message.id
 
-    original_message_id = update.effective_message.id
-    sent_message = await update.message.forward(SPECIAL_ENTITIES[SpecialUsers.CRAZY_JAM_BACKEND], message_thread_id=SPECIAL_ENTITIES[SpecialUsers.CRAZY_JAM_BACKEND_THREAD_IN])
-    new_message_id = sent_message.id
+        simple_sql(('''insert into FwdRelation(original_message_id, fwd_message_id, original_chat_id, original_chat_username) VALUES (?,?,?,?)''', (original_message_id, new_message_id, update.effective_chat.id, update.effective_chat.username)))
 
-    simple_sql(('''insert into FwdRelation(original_message_id, fwd_message_id, original_chat_id, original_chat_username) VALUES (?,?,?,?)''', (original_message_id, new_message_id, update.effective_chat.id, update.effective_chat.username)))
-
-    # silent bot in the main channel
+        # silent bot in the main channel
+    except Exception as e:
+        raise CrazyJamFwdError(str(e))
 
 import re
 from functools import partial
@@ -4489,6 +4494,9 @@ class EventAnalyseMultipleError(EventAnalyseError):
 async def log_error(error, send):
     if isinstance(error, UserError):
         return await send("Error: {}".format(error))
+    elif isinstance(error, CrazyJamFwdError):
+        logging.error("Error", exc_info=error)
+        return
     else:
         logging.error("Error", exc_info=error)
         return await send("An unknown error occured in your command, ask @robertvend to fix it !")
