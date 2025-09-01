@@ -3339,11 +3339,11 @@ def do_unless_setting_off(setting):
     return setting_on_off(setting, default=True)
 
 from typing import Literal
-async def list_days_or_today(update: Update, context: CallbackContext, mode: Literal['list', 'today'], relative=False, formatting:Literal['normal', 'crazyjamdays']='normal'):
+async def list_days_or_today(update: Update, context: CallbackContext, mode: Literal['list', 'today'], relative=False, formatting:Literal['normal', 'linkdays', 'crazyjamdays']='normal'):
     from datetime import time as Time
     assert mode in ('list', 'today')
-    assert formatting in ('normal', 'crazyjamdays')
-    if formatting == 'crazyjamdays':
+    assert formatting in ('normal', 'linkdays', 'crazyjamdays')
+    if with_link := formatting in ('linkdays', 'crazyjamdays'):
         assert not relative
 
     send = make_send(update, context)
@@ -3365,7 +3365,7 @@ async def list_days_or_today(update: Update, context: CallbackContext, mode: Lit
         ORDER BY date''',
         (strftime(beg), strftime(end), update.effective_chat.id,)))
     
-    if formatting == 'crazyjamdays':
+    if with_link: 
         list_of_ids = [events['rowid'] for events in events]
         list_of_ids = ','.join(map(str, map(int, list_of_ids)))
         link_of_event = dict(simple_sql_dict((f'''
@@ -3379,7 +3379,7 @@ async def list_days_or_today(update: Update, context: CallbackContext, mode: Lit
         date = strptime(event['date']).replace(tzinfo=ZoneInfo("UTC")).astimezone(tz)
         event_name = event['name']
 
-        if formatting == 'crazyjamdays':
+        if with_link:
             event_link = link_of_event.get(event['rowid'])
 
         days[date.timetuple()[:3]].append((date, event_name) if formatting == 'normal' else (date, event_name, event_link))
@@ -3399,8 +3399,19 @@ async def list_days_or_today(update: Update, context: CallbackContext, mode: Lit
           days_as_lines.append(
             f"\n    {date:%d} {month_ru} ({day_of_week})\n\n"
             + "\n\n".join(
-                 f"{n}) {event_link or event_name}\n{event_name}" if event_link else 
+                 f"{n}) {event_link}\n{event_name}" if event_link else 
                  f"{n}) {event_name}"
+                for n, (event_date, event_name, event_link) in enumerate(days[day], start=1)
+            ))
+        elif formatting == 'linkdays':
+          day_of_week = DatetimeText.days_english[date.weekday()].capitalize()
+          days_as_lines.append(
+            f"\n    {date:%d.%m} ({day_of_week})\n\n"
+            + "\n\n".join(
+                 f"{n}) {event_link}\n{event_name}" if event_link and event_date.time() == Time(0, 0) else 
+                 f"{n}) {event_link}\n{date:%H:%M} {event_name}" if event_link and event_date.time() != Time(0, 0) else 
+                 f"{n}) {event_name}" if event_date.time() == Time(0, 0) else 
+                 f"{n}) {date:%H:%M} {event_name}"
                 for n, (event_date, event_name, event_link) in enumerate(days[day], start=1)
             ))
         else:
@@ -3414,10 +3425,12 @@ async def list_days_or_today(update: Update, context: CallbackContext, mode: Lit
                 for event_date, event_name in days[day]
                 for marker in ['>' if display_time_marker and is_past(event_date) else '']))
     
-    msg = ('\n' if formatting == 'crazyjamdays' else '\n\n').join(days_as_lines)
+    msg = ('\n' if with_link else '\n\n').join(days_as_lines)
     
     if formatting == 'crazyjamdays':
         msg = 'CRAZY JAM\n' + msg
+    elif formatting == 'linkdays':
+        msg = 'Events:\n' + msg
 
     chat_timezones = read_chat_settings("event.timezones")
 
@@ -4663,6 +4676,7 @@ if __name__ == '__main__':
     application.add_handler(CommandHandler('rlistevents', partial(list_events, relative=True)))
     application.add_handler(CommandHandler('listdays', list_days))
     application.add_handler(CommandHandler('crazyjamdays',  partial(list_days,formatting='crazyjamdays')))
+    application.add_handler(CommandHandler('listdayslink',  partial(list_days,formatting='linkdays')))
     application.add_handler(CommandHandler('rlistdays', partial(list_days, relative=True)))
     application.add_handler(CommandHandler('listoday', list_today)) # hidden command, for typo
     application.add_handler(CommandHandler('rlistoday', partial(list_today, relative=True))) # hidden command, for typo
