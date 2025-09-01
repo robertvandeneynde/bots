@@ -3380,7 +3380,7 @@ async def list_days_or_today(update: Update, context: CallbackContext, mode: Lit
         event_name = event['name']
 
         if formatting == 'crazyjamdays':
-            event_link = link_of_event.get(event['rowid'], '?')
+            event_link = link_of_event.get(event['rowid'])
 
         days[date.timetuple()[:3]].append((date, event_name) if formatting == 'normal' else (date, event_name, event_link))
 
@@ -3399,8 +3399,8 @@ async def list_days_or_today(update: Update, context: CallbackContext, mode: Lit
           days_as_lines.append(
             f"\n    {date:%d} {month_ru} ({day_of_week})\n\n"
             + "\n\n".join(
-                 f"{n}) {event_link}\n" +
-                 f"{event_name}"
+                 f"{n}) {event_link or event_name}\n{event_name}" if event_link else 
+                 f"{n}) {event_name}"
                 for n, (event_date, event_name, event_link) in enumerate(days[day], start=1)
             ))
         else:
