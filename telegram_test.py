@@ -1020,6 +1020,19 @@ def make_send(update: Update, context: CallbackContext, *, save_info: SendSaveIn
             **kwargs)
     return send
 
+def make_send_html(update: Update, context: CallbackContext, save_info: SendSaveInfo = None):
+    if not save_info:
+        save_info = make_send_save_info(update, context)
+
+    async def send(m, **kwargs):
+        return await context.bot.send_message(
+            text=m,
+            parse_mode='HTML',
+            chat_id=save_info.chat_id,
+            message_thread_id=save_info.thread_id,
+            **kwargs)
+    return send
+
 def make_send_save_info(update: Update, context: CallbackContext) -> SendSaveInfo:
     return SendSaveInfo(
         chat_id=update.effective_chat.id,
@@ -3339,14 +3352,17 @@ def do_unless_setting_off(setting):
     return setting_on_off(setting, default=True)
 
 from typing import Literal
-async def list_days_or_today(update: Update, context: CallbackContext, mode: Literal['list', 'today'], relative=False, formatting:Literal['normal', 'linkdays', 'crazyjamdays']='normal'):
+async def list_days_or_today(update: Update, context: CallbackContext, mode: Literal['list', 'today'], relative=False, formatting:Literal['normal', 'linkdays', 'crazyjamdays', 'linkdayshtml']='normal'):
     from datetime import time as Time
     assert mode in ('list', 'today')
-    assert formatting in ('normal', 'linkdays', 'crazyjamdays')
-    if with_link := formatting in ('linkdays', 'crazyjamdays'):
+    assert formatting in ('normal', 'linkdays', 'crazyjamdays', 'linkdayshtml')
+    if with_link := formatting in ('linkdays', 'crazyjamdays', 'linkdayshtml'):
         assert not relative
 
-    send = make_send(update, context)
+    if with_html := formatting in ('linkdayshtml', ):
+        send = make_send_html(update, context)
+    else:
+        send = make_send(update, context)
     read_chat_settings = make_read_chat_settings(update, context)
 
     do_event_admin_check('list', setting=read_chat_settings('event.admins'), user_id=update.effective_user.id)
@@ -3381,6 +3397,10 @@ async def list_days_or_today(update: Update, context: CallbackContext, mode: Lit
 
         if with_link:
             event_link = link_of_event.get(event['rowid'])
+        
+        if with_html and event_link:
+            if not event_link.startswith(('http://', 'https://')):
+                event_link = 'https://' + event_link
 
         days[date.timetuple()[:3]].append((date, event_name) if formatting == 'normal' else (date, event_name, event_link))
 
@@ -3412,6 +3432,17 @@ async def list_days_or_today(update: Update, context: CallbackContext, mode: Lit
                  f"{n}) {event_link}\n{date:%H:%M} {event_name}" if event_link and event_date.time() != Time(0, 0) else 
                  f"{n}) {event_name}" if event_date.time() == Time(0, 0) else 
                  f"{n}) {date:%H:%M} {event_name}"
+                for n, (event_date, event_name, event_link) in enumerate(days[day], start=1)
+            ))
+        elif formatting == 'linkdayshtml':
+            day_of_week = DatetimeText.days_english[date.weekday()]
+            days_as_lines.append(
+            f"{day_of_week.capitalize()} {date:%d/%m}\n"
+            + "\n".join(
+                 f"""- <a href="{event_link}">{event_name}</a>""" if event_link and event_date.time() == Time(0, 0) else 
+                 f"""- <a href="{event_link}">{date:%H:%M} {event_name}</a>""" if event_link and event_date.time() != Time(0, 0) else 
+                 f"""- {event_name}""" if event_date.time() == Time(0, 0) else 
+                 f"""- {date:%H:%M} {event_name}"""
                 for n, (event_date, event_name, event_link) in enumerate(days[day], start=1)
             ))
         else:
@@ -4677,6 +4708,7 @@ if __name__ == '__main__':
     application.add_handler(CommandHandler('listdays', list_days))
     application.add_handler(CommandHandler('crazyjamdays',  partial(list_days,formatting='crazyjamdays')))
     application.add_handler(CommandHandler('listdayslink',  partial(list_days,formatting='linkdays')))
+    application.add_handler(CommandHandler('listdayshtml',  partial(list_days,formatting='linkdayshtml')))
     application.add_handler(CommandHandler('rlistdays', partial(list_days, relative=True)))
     application.add_handler(CommandHandler('listoday', list_today)) # hidden command, for typo
     application.add_handler(CommandHandler('rlistoday', partial(list_today, relative=True))) # hidden command, for typo
