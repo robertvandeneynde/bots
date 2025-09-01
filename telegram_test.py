@@ -2051,45 +2051,20 @@ async def add_event(update: Update, context: CallbackContext):
         else:
             return await send("Usage: /addevent date name\nUsage: /addevent date hour name\nInteractive version: /iaddevent")
     else:
-        infos_event = None
+        infos_event = {}
 
-    if reply:
-        if (update.message.chat.id, update.message.message_thread_id) == (SPECIAL_ENTITIES[SpecialUsers.CRAZY_JAM_BACKEND], SPECIAL_ENTITIES[SpecialUsers.CRAZY_JAM_BACKEND_THREAD_IN]):
-            orig_id_tuple = simple_sql(( ''' select original_message_id, original_chat_username, original_chat_id from FwdRelation where fwd_message_id = ?''', (reply.id, )))
-            if orig_id_tuple:
-                message_id, username, chat_id = only_one(orig_id_tuple)
-                link = (f't.me/{username}/{message_id}' if username else 
-                        f't.me/c/{tg_url_id_from_chat_id(chat_id)}/{message_id}')
-            else:
-                link = None
-        else:
-            link = None
+    infos_event |= add_event_analyse_reply(update, context, reply)
 
-        if not link:
-            channel_pos_id = tg_url_id_from_chat_id(update.effective_chat.id)
-
-            link = (f't.me/c/{channel_pos_id}/{reply.message_thread_id}/{reply.id}' if reply.message_thread_id else 
-                    f't.me/c/{channel_pos_id}/{reply.id}')
-             
-        if not infos_event:
-            infos_event = {}
-
-        infos_event['link'] = link
-
-    if infos_event is not None:
-        other_infos = {k: infos_event[k] for k in infos_event.keys() - {'when', 'what', 'where', 'link'}}
-        when_infos = infos_event.get('when') or ''
-        what_infos = ' '.join(natural_filter([
-            infos_event.get('what') or '',
-        ] + [
-            '{%s: %s}' % (item[0].capitalize(), item[1])
-            for item in other_infos.items()
-        ] + [
-            "@ " + infos_event['where'] if infos_event.get('where') else '',
-        ]))
-    else:
-        when_infos = None
-        what_infos = None
+    other_infos = {k: infos_event[k] for k in infos_event.keys() - {'when', 'what', 'where', 'link'}}
+    when_infos = infos_event.get('when') or ''
+    what_infos = ' '.join(natural_filter([
+        infos_event.get('what') or '',
+    ] + [
+        '{%s: %s}' % (item[0].capitalize(), item[1])
+        for item in other_infos.items()
+    ] + [
+        "@ " + infos_event['where'] if infos_event.get('where') else '',
+    ]))
 
     source_user_id = update.message.from_user.id
     chat_id = update.effective_chat.id
@@ -2112,6 +2087,30 @@ async def add_event(update: Update, context: CallbackContext):
         implicit_thereis(what=name, chat_id=chat_id)
     
     await post_event(update, context, name=name, datetime=datetime, time=time, date_str=date_str, chat_timezones=chat_timezones, tz=tz, chat_id=chat_id, datetime_utc=datetime_utc, link=infos_event and infos_event.get('link'))
+
+def add_event_analyse_reply(update: Update, context: CallbackContext, reply):
+
+    if not reply:
+        return {}
+
+    if (update.message.chat.id, update.message.message_thread_id) == (SPECIAL_ENTITIES[SpecialUsers.CRAZY_JAM_BACKEND], SPECIAL_ENTITIES[SpecialUsers.CRAZY_JAM_BACKEND_THREAD_IN]):
+        orig_id_tuple = simple_sql(( ''' select original_message_id, original_chat_username, original_chat_id from FwdRelation where fwd_message_id = ?''', (reply.id, )))
+        if orig_id_tuple:
+            message_id, username, chat_id = only_one(orig_id_tuple)
+            link = (f't.me/{username}/{message_id}' if username else 
+                    f't.me/c/{tg_url_id_from_chat_id(chat_id)}/{message_id}')
+        else:
+            link = None
+    else:
+        link = None
+
+    if not link:
+        channel_pos_id = tg_url_id_from_chat_id(update.effective_chat.id)
+
+        link = (f't.me/c/{channel_pos_id}/{reply.message_thread_id}/{reply.id}' if reply.message_thread_id else 
+                f't.me/c/{channel_pos_id}/{reply.id}')
+            
+    return {'link': link}
 
 class ImplicitLocations:
     Parens = re.compile("(.*)\\((.*)\\).*")
@@ -2996,14 +2995,14 @@ def addevent_analyse(update, context):
 
     exceptions = []
     try:
-        return addevent_analyse_yaml(update, context, reply.text)
+        return addevent_analyse_yaml(update, context, reply.text) or {}
     except yaml.error.YAMLError as e:
         exceptions.append(EventAnalyseError("YAML Error:" + str(e)))
     except EventAnalyseError as e:
         exceptions.append(e)
     
     try:
-        return addevent_analyse_from_bot(update, context, reply.text)
+        return addevent_analyse_from_bot(update, context, reply.text) or {}
     except EventAnalyseError as e:
         exceptions.append(e)
     
