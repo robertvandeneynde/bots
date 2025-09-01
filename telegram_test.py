@@ -2055,21 +2055,12 @@ async def add_event(update: Update, context: CallbackContext):
 
     infos_event |= add_event_analyse_reply(update, context, reply)
 
-    other_infos = {k: infos_event[k] for k in infos_event.keys() - {'when', 'what', 'where', 'link'}}
-    when_infos = infos_event.get('when') or ''
-    what_infos = ' '.join(natural_filter([
-        infos_event.get('what') or '',
-    ] + [
-        '{%s: %s}' % (item[0].capitalize(), item[1])
-        for item in other_infos.items()
-    ] + [
-        "@ " + infos_event['where'] if infos_event.get('where') else '',
-    ]))
+    CanonInfo = add_event_canon_infos(infos_event=infos_event)
 
     source_user_id = update.message.from_user.id
     chat_id = update.effective_chat.id
 
-    date_str, time, name, date, date_end, datetime, datetime_utc, tz = parse_datetime_point(update, context, when_infos=when_infos, what_infos=what_infos)
+    date_str, time, name, date, date_end, datetime, datetime_utc, tz = parse_datetime_point(update, context, when_infos=CanonInfo.when_infos, what_infos=CanonInfo.what_infos)
     
     if not do_if_setting_on(read_chat_settings('event.location.autocomplete')):
         name = update_name_using_locations(name, chat_id=chat_id)
@@ -2087,6 +2078,20 @@ async def add_event(update: Update, context: CallbackContext):
         implicit_thereis(what=name, chat_id=chat_id)
     
     await post_event(update, context, name=name, datetime=datetime, time=time, date_str=date_str, chat_timezones=chat_timezones, tz=tz, chat_id=chat_id, datetime_utc=datetime_utc, link=infos_event and infos_event.get('link'))
+
+def add_event_canon_infos(*, infos_event):
+    other_infos = {k: infos_event[k] for k in infos_event.keys() - {'when', 'what', 'where', 'link'}}
+    when_infos = infos_event.get('when') or ''
+    what_infos = ' '.join(natural_filter([
+        infos_event.get('what') or '',
+    ] + [
+        '{%s: %s}' % (item[0].capitalize(), item[1])
+        for item in other_infos.items()
+    ] + [
+        "@ " + infos_event['where'] if infos_event.get('where') else '',
+    ]))
+
+    return DictJsLike(other_infos=other_infos, when_infos=when_infos, what_infos=what_infos)
 
 def add_event_analyse_reply(update: Update, context: CallbackContext, reply):
 
