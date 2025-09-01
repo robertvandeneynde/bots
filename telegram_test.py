@@ -2091,7 +2091,7 @@ async def add_event(update: Update, context: CallbackContext):
     date_str, time, name, date, date_end, datetime, datetime_utc, tz = \
         parse_datetime_point(update, context, when_infos=CanonInfo.when_infos, what_infos=CanonInfo.what_infos)
     
-    if not do_if_setting_on(read_chat_settings('event.location.autocomplete')):
+    if do_unless_setting_off(read_chat_settings('event.location.autocomplete')):
         name = update_name_using_locations(name, chat_id=chat_id)
 
     chat_timezones = read_chat_settings("event.timezones")
@@ -2103,7 +2103,7 @@ async def add_event(update: Update, context: CallbackContext):
     if infos_event and infos_event.get('link'):
         simple_sql((''' insert into EventLinkAttr(event_id, link) VALUES (?,?)''', (new_event_id, infos_event['link'])))
 
-    if not do_if_setting_on(read_chat_settings('event.location.autocomplete')):
+    if do_unless_setting_off(read_chat_settings('event.location.autocomplete')):
         implicit_thereis(what=name, chat_id=chat_id)
     
     await post_event(update, context, name=name, datetime=datetime, time=time, date_str=date_str, chat_timezones=chat_timezones, tz=tz, chat_id=chat_id, datetime_utc=datetime_utc, link=infos_event and infos_event.get('link'))
@@ -3187,6 +3187,15 @@ async def thereis(update:Update, context:CallbackContext):
     for i, key in enumerate(keys):
         await save_thereis(key, values[0] if len(values) == 1 else values[i], update=update, context=context)
 
+async def delthereis(update, context):
+    send = make_send(update, context)
+    
+    loc = " ".join(context.args)
+
+    do_delete_thereis_db(loc, chat_id=update.effective_chat.id)
+
+    return await send("Location deleted")
+
 def do_save_thereis_db(key, value, *, chat_id):
     assert_true(key and value, UserError("Key and Values must be non null"))
     
@@ -3196,6 +3205,15 @@ def do_save_thereis_db(key, value, *, chat_id):
         
         my_simple_sql(('delete from EventLocation where chat_id=? and LOWER(key)=LOWER(?)', (chat_id, key)))
         my_simple_sql(('insert into EventLocation(key, value, chat_id) VALUES (?,?,?)', (key, value, chat_id)))
+        conn.execute('end transaction')
+
+def do_delete_thereis_db(key, *, chat_id):
+    assert_true(key, UserError("Key and Values must be non null"))
+    
+    with sqlite3.connect("db.sqlite") as conn:
+        my_simple_sql = partial(simple_sql, connection=conn)
+        conn.execute('begin transaction')
+        my_simple_sql(('delete from EventLocation where chat_id=? and LOWER(key)=LOWER(?)', (chat_id, key)))
         conn.execute('end transaction')
 
 def do_update_thereis_db(key, value, *, chat_id):
@@ -3384,6 +3402,44 @@ def do_if_setting_on(setting):
 def do_unless_setting_off(setting):
     return setting_on_off(setting, default=True)
 
+def enrich_location_with_db(events, *, chat_id):
+    new_events = []
+    for event in events:
+        new_event = event # by default
+
+        event_obj = split_event_with_where_etc({'what': event['name']})
+        if 'where' in event_obj and event_obj.get('where'):
+            location_key = event_obj['where']
+
+            if match := ImplicitLocations.Parens.fullmatch(location_key):
+                base_loc, extension_loc = match.groups()
+                if not extension_loc.strip():
+                    ok = True # matches "Something ()" (empty parens)
+                else:
+                    ok = False # matches "Something (Extension)"
+            else:
+                base_loc = location_key
+                ok = True
+            
+            if ok:
+                mapped_loc = simple_sql(("""
+                    SELECT value
+                    FROM EventLocation
+                    WHERE chat_id=?
+                    AND LOWER(key) = LOWER(?)
+                    """,
+                    (chat_id, base_loc)))
+                
+                if mapped_loc:
+                    value, = only_one(mapped_loc)
+                    event_obj['where'] += f' ({value})'
+                    Canon = add_event_canon_infos(infos_event=event_obj)
+
+                    new_event = {'date': event['date'], 'rowid': event['rowid'], 'name': Canon.what_infos}
+
+        new_events.append(new_event)
+    return new_events
+
 from typing import Literal
 async def list_days_or_today(update: Update, context: CallbackContext, mode: Literal['list', 'today'], relative=False, formatting:Literal['normal', 'linkdays', 'crazyjamdays', 'linkdayshtml']='normal'):
     from datetime import time as Time
@@ -3421,6 +3477,9 @@ async def list_days_or_today(update: Update, context: CallbackContext, mode: Lit
             SELECT event_id, link
             FROM EventLinkAttr
             WHERE event_id IN ({list_of_ids}) ''', ())))
+    
+    if do_unless_setting_off(read_chat_settings('event.location.autocomplete')):
+        events = enrich_location_with_db(events, chat_id=update.effective_chat.id)
 
     from collections import defaultdict
     days = defaultdict(list)
@@ -4657,7 +4716,7 @@ COMMAND_LIST = (
     'addevent', 'addschedule', 'nextevent', 'lastevent', 'listevents', 'listdays', 'listtoday', 'today', 'delevent',
     'iaddevent',
     'eventfollow', 'eventacceptfollow', 'deleventfollow', 'deleventacceptfollow',
-    'whereis', 'thereis', 'whereto',
+    'whereis', 'thereis', 'whereto', "delwhereis", "delthereis",
     'ru',
     'dict', 'wikt', 'larousse',
     'convertmoney', 'eur', 'brl', 'rub',
@@ -4757,6 +4816,8 @@ if __name__ == '__main__':
     application.add_handler(CommandHandler('whereis', whereis))
     application.add_handler(CommandHandler('whereto', whereto))
     application.add_handler(CommandHandler('thereis', thereis))
+    application.add_handler(CommandHandler('delthereis', delthereis))
+    application.add_handler(CommandHandler('delwhereis', delthereis))
     application.add_handler(ConversationHandler(
         entry_points=[CommandHandler("delevent", delevent)],
         states={
