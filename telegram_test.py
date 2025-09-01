@@ -3424,14 +3424,14 @@ async def list_days_or_today(update: Update, context: CallbackContext, mode: Lit
                 for n, (event_date, event_name, event_link) in enumerate(days[day], start=1)
             ))
         elif formatting == 'linkdays':
-          day_of_week = DatetimeText.days_english[date.weekday()].capitalize()
+          day_of_week = DatetimeText.days_english[date.weekday()]
           days_as_lines.append(
-            f"\n    {date:%d.%m} ({day_of_week})\n\n"
+            f"\n    {date:%d/%m} ({day_of_week.capitalize()})\n\n"
             + "\n\n".join(
                  f"{n}) {event_link}\n{event_name}" if event_link and event_date.time() == Time(0, 0) else 
-                 f"{n}) {event_link}\n{date:%H:%M} {event_name}" if event_link and event_date.time() != Time(0, 0) else 
+                 f"{n}) {event_link}\n{date:%H:%M}: {event_name}" if event_link and event_date.time() != Time(0, 0) else 
                  f"{n}) {event_name}" if event_date.time() == Time(0, 0) else 
-                 f"{n}) {date:%H:%M} {event_name}"
+                 f"{n}) {date:%H:%M}: {event_name}"
                 for n, (event_date, event_name, event_link) in enumerate(days[day], start=1)
             ))
         elif formatting == 'linkdayshtml':
@@ -3440,9 +3440,9 @@ async def list_days_or_today(update: Update, context: CallbackContext, mode: Lit
             f"{day_of_week.capitalize()} {date:%d/%m}\n"
             + "\n".join(
                  f"""- <a href="{event_link}">{event_name}</a>""" if event_link and event_date.time() == Time(0, 0) else 
-                 f"""- <a href="{event_link}">{date:%H:%M} {event_name}</a>""" if event_link and event_date.time() != Time(0, 0) else 
+                 f"""- <a href="{event_link}">{date:%H:%M}: {event_name}</a>""" if event_link and event_date.time() != Time(0, 0) else 
                  f"""- {event_name}""" if event_date.time() == Time(0, 0) else 
-                 f"""- {date:%H:%M} {event_name}"""
+                 f"""- {date:%H:%M}: {event_name}"""
                 for n, (event_date, event_name, event_link) in enumerate(days[day], start=1)
             ))
         else:
