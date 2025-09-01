@@ -1840,12 +1840,23 @@ def irange(a, b=None):
 
 async def addschedule(update: Update, context: ContextTypes.DEFAULT_TYPE):
     send = make_send(update, context)
-    if not context.args:
-        return await send("Usage: /addschedule datetime+ name")
-    
     read_chat_settings = make_read_chat_settings(update, context)
 
+    reply = get_reply(update.message)
+
+    if not context.args:
+        if reply:
+            infos_event = {} # todo: try to find infos like in add_event but for schedule
+        else:
+            return await send("Usage: /addschedule datetime+ name")
+    else:
+        infos_event = {}
+
+    infos_event |= add_event_enrich_reply_with_link(update, context, reply=reply)
+
     chat_timezones = read_chat_settings("event.timezones")
+
+    # Later commit: do_event_admin_check('add', setting=read_chat_settings('event.admins'), user_id=update.effective_user.id)
 
     source_user_id = update.message.from_user.id
     chat_id = update.effective_chat.id
@@ -1853,8 +1864,21 @@ async def addschedule(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     events: list[ParsedEventFinal] = parse_datetime_schedule(tz=tz, args=context.args)
 
+    location_autocomplete = do_if_setting_on(read_chat_settings('event.location.autocomplete'))
+
     for event in events:
-        add_event_to_db(chat_timezones=chat_timezones, tz=tz, name=event.name, chat_id=chat_id, source_user_id=source_user_id, datetime_utc=event.datetime_utc)
+        if not do_if_setting_on(read_chat_settings('event.location.autocomplete')):
+            name = update_name_using_locations(event.name, chat_id=chat_id)
+        else:
+            name = event.name
+
+        new_event_id = add_event_to_db(chat_timezones=chat_timezones, tz=tz, name=name, chat_id=chat_id, source_user_id=source_user_id, datetime_utc=event.datetime_utc)
+
+        if infos_event and infos_event.get('link'):
+            simple_sql((''' insert into EventLinkAttr(event_id, link) VALUES (?,?)''', (new_event_id, infos_event['link'])))
+
+        if not location_autocomplete:
+            implicit_thereis(what=name, chat_id=chat_id)
 
     return await send(f"{len(events)} event(s) added")
     
@@ -2053,14 +2077,14 @@ async def add_event(update: Update, context: CallbackContext):
     else:
         infos_event = {}
 
-    infos_event |= add_event_analyse_reply(update, context, reply)
-
+    infos_event |= add_event_enrich_reply_with_link(update, context, reply=reply)
     CanonInfo = add_event_canon_infos(infos_event=infos_event)
 
     source_user_id = update.message.from_user.id
     chat_id = update.effective_chat.id
 
-    date_str, time, name, date, date_end, datetime, datetime_utc, tz = parse_datetime_point(update, context, when_infos=CanonInfo.when_infos, what_infos=CanonInfo.what_infos)
+    date_str, time, name, date, date_end, datetime, datetime_utc, tz = \
+        parse_datetime_point(update, context, when_infos=CanonInfo.when_infos, what_infos=CanonInfo.what_infos)
     
     if not do_if_setting_on(read_chat_settings('event.location.autocomplete')):
         name = update_name_using_locations(name, chat_id=chat_id)
@@ -2093,7 +2117,7 @@ def add_event_canon_infos(*, infos_event):
 
     return DictJsLike(other_infos=other_infos, when_infos=when_infos, what_infos=what_infos)
 
-def add_event_analyse_reply(update: Update, context: CallbackContext, reply):
+def add_event_enrich_reply_with_link(update: Update, context: CallbackContext, *, reply):
 
     if not reply:
         return {}
