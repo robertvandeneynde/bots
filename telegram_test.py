@@ -3456,7 +3456,7 @@ async def list_days_or_today(update: Update, context: CallbackContext, mode: Lit
                 for event_date, event_name in days[day]
                 for marker in ['>' if display_time_marker and is_past(event_date) else '']))
     
-    msg = ('\n' if with_link else '\n\n').join(days_as_lines)
+    msg = ('\n' if with_link and not with_html else '\n\n').join(days_as_lines)
     
     if formatting == 'crazyjamdays':
         msg = 'CRAZY JAM\n' + msg
