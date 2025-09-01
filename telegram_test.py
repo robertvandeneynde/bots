@@ -384,7 +384,6 @@ async def list_responder(msg: str, send: AsyncSend, *, update, context):
 
                     elif operation in ('shuffle', ):
                         listsmodule.shuffle.do_it(conn=conn, name=list_name, chat_id=chat_id)
-                        await send(f"List {list_name!r} edited")
                     
                     elif operation in ('enum', 'enumerate', ):
                         if list_type in ('tree', ):
@@ -419,7 +418,6 @@ async def list_responder(msg: str, send: AsyncSend, *, update, context):
                                 listsmodule.tasklistcheck.do_it(conn=conn, name=list_name, chat_id=chat_id, value=parameters, direction='x')
                             elif operation == 'uncheck':
                                 listsmodule.tasklistcheck.do_it(conn=conn, name=list_name, chat_id=chat_id, value=parameters, direction=' ')
-                            await send(f"List {list_name!r} edited")
                         else:
                             # do nothing because the operation does not exist
                             did_edit = False 
