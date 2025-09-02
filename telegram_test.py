@@ -1114,6 +1114,7 @@ class DatetimeText:
     _days_russian_short = "пн вт ср чт пт сб вс".split()
     _days_russian_short_dotted = "пн. вт. ср. чт. пт. сб. вс.".split()
     days_russian_short = _days_russian_short
+    days_russian = _days_russian
 
     months_english = [
         "january",
@@ -3529,7 +3530,7 @@ async def list_days_or_today(update: Update, context: CallbackContext, mode: Lit
                 for n, (event_date, event_name, event_link) in enumerate(days[day], start=1)
             ))
         elif formatting == 'linkdayshtml':
-            day_of_week = DatetimeText.days_english[date.weekday()]
+            day_of_week = DatetimeText.days_russian[date.weekday()]
             days_as_lines.append(
             f"{day_of_week.capitalize()} {date:%d/%m}\n"
             + "\n".join(
