@@ -1013,7 +1013,7 @@ async def guessing_word(update, context):
     return ConversationHandler.END
 
 SendSaveInfo = namedtuple('SendSaveInfo', 'chat_id thread_id')
-def make_send(update: Update, context: CallbackContext, *, save_info: SendSaveInfo = None) -> AsyncSend:
+def make_send(update: Update, context: CallbackContext, *, save_info: SendSaveInfo = None, **ckwargs) -> AsyncSend:
     if not save_info:
         save_info = make_send_save_info(update, context)
 
@@ -1022,19 +1022,7 @@ def make_send(update: Update, context: CallbackContext, *, save_info: SendSaveIn
             text=m,
             chat_id=save_info.chat_id,
             message_thread_id=save_info.thread_id,
-            **kwargs)
-    return send
-
-def make_send_html(update: Update, context: CallbackContext, save_info: SendSaveInfo = None):
-    if not save_info:
-        save_info = make_send_save_info(update, context)
-
-    async def send(m, **kwargs):
-        return await context.bot.send_message(
-            text=m,
-            parse_mode='HTML',
-            chat_id=save_info.chat_id,
-            message_thread_id=save_info.thread_id,
+            **ckwargs,
             **kwargs)
     return send
 
@@ -3449,7 +3437,7 @@ async def list_days_or_today(update: Update, context: CallbackContext, mode: Lit
         assert not relative
 
     if with_html := formatting in ('linkdayshtml', ):
-        send = make_send_html(update, context)
+        send = make_send(update, context, parse_mode='HTML', disable_web_page_preview=True)
     else:
         send = make_send(update, context)
     read_chat_settings = make_read_chat_settings(update, context)
