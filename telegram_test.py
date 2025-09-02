@@ -1859,7 +1859,8 @@ async def addschedule(update: Update, context: ContextTypes.DEFAULT_TYPE):
     else:
         infos_event = {}
 
-    infos_event |= add_event_enrich_reply_with_link(update, context, reply=reply)
+    if not infos_event.get('link'):
+        infos_event |= add_event_enrich_reply_with_link(update, context, reply=reply)
 
     chat_timezones = read_chat_settings("event.timezones")
 
@@ -2082,7 +2083,8 @@ async def add_event(update: Update, context: CallbackContext):
     else:
         infos_event = {}
 
-    infos_event |= add_event_enrich_reply_with_link(update, context, reply=reply)
+    if not infos_event.get('link'):
+        infos_event |= add_event_enrich_reply_with_link(update, context, reply=reply)
     CanonInfo = add_event_canon_infos(infos_event=infos_event)
 
     source_user_id = update.message.from_user.id
@@ -2126,7 +2128,7 @@ def add_event_enrich_reply_with_link(update: Update, context: CallbackContext, *
 
     if not reply:
         return {}
-
+    
     if (update.message.chat.id, update.message.message_thread_id) == (SPECIAL_ENTITIES[SpecialUsers.CRAZY_JAM_BACKEND], SPECIAL_ENTITIES[SpecialUsers.CRAZY_JAM_BACKEND_THREAD_IN]):
         orig_id_tuple = simple_sql(( ''' select original_message_id, original_chat_username, original_chat_id from FwdRelation where fwd_message_id = ?''', (reply.id, )))
         if orig_id_tuple:
