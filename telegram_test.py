@@ -1591,17 +1591,31 @@ def parse_datetime_point(update, context, when_infos=None, what_infos=None) -> P
     from datetime import datetime as Datetime, time as Time, date as Date, timedelta
     tz = induce_my_timezone(user_id=update.message.from_user.id, chat_id=update.effective_chat.id)
     
-    if not (when_infos or what_infos):
+    name = None
+    date_str = None
+    if context.args:
         date_str, time, name, day_of_week, relative_day_keyword = ParseEvents.parse_event(context.args)
-    else:
+    if what_infos:
+        name = name or what_infos
+    if when_infos:
+        if date_str:
+            raise UserError("Multiple When specified")
         date_str, time, name_from_when_part, day_of_week, relative_day_keyword = ParseEvents.parse_event(when_infos.split())
         if name_from_when_part:
             raise UserError("Too much infos in the When part")
-        name = what_infos or ''
 
     date, date_end = DatetimeText.to_date_range(date_str, tz=tz)
     datetime = Datetime.combine(date, time or Time(0,0)).replace(tzinfo=tz)
     datetime_utc = datetime.astimezone(UTC)
+    
+    date_str: str
+    time: Optional[Time]
+    name: str 
+    date: Date
+    date_end: Date 
+    datetime: Datetime 
+    datetime_utc: Datetime 
+    tz: ZoneInfo
     Loc = locals()
 
     if relative_day_keyword:
@@ -2061,12 +2075,10 @@ async def add_event(update: Update, context: CallbackContext):
     read_chat_settings = make_read_chat_settings(update, context)
     read_my_settings = make_read_my_settings(update, context)
 
-    reply = get_reply(update.message)
-    if not context.args:
-        if reply:
-            infos_event = addevent_analyse(update, context)
-        else:
-            return await send("Usage: /addevent date name\nUsage: /addevent date hour name\nInteractive version: /iaddevent")
+    if reply := get_reply(update.message):
+        infos_event = addevent_analyse(update, context)
+    elif not context.args:
+        return await send("Usage: /addevent date name\nUsage: /addevent date hour name\nInteractive version: /iaddevent")
     else:
         infos_event = {}
 
@@ -2088,7 +2100,7 @@ async def add_event(update: Update, context: CallbackContext):
 
     new_event_id = add_event_to_db(chat_timezones=chat_timezones, tz=tz, datetime_utc=datetime_utc, name=name, chat_id=chat_id, source_user_id=source_user_id)
 
-    if infos_event and infos_event.get('link'):
+    if infos_event.get('link'):
         simple_sql((''' insert into EventLinkAttr(event_id, link) VALUES (?,?)''', (new_event_id, infos_event['link'])))
 
     if do_unless_setting_off(read_chat_settings('event.location.autocomplete')):
