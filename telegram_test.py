@@ -2078,7 +2078,13 @@ async def add_event(update: Update, context: CallbackContext):
     read_my_settings = make_read_my_settings(update, context)
 
     if (reply := get_reply(update.message)) and reply.text:
-        infos_event = addevent_analyse(update, context)
+        try:
+            infos_event = addevent_analyse(update, context)
+        except EventAnalyseError as e:
+            if context.args:
+                pass
+            else:
+                raise e
     elif not context.args:
         return await send("Usage: /addevent date name\nUsage: /addevent date hour name\nInteractive version: /iaddevent")
     else:
