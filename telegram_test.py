@@ -2077,9 +2077,10 @@ async def add_event(update: Update, context: CallbackContext):
     read_chat_settings = make_read_chat_settings(update, context)
     read_my_settings = make_read_my_settings(update, context)
 
+    infos_event = {}
     if (reply := get_reply(update.message)) and reply.text:
         try:
-            infos_event = addevent_analyse(update, context)
+            infos_event |= addevent_analyse(update, context)
         except EventAnalyseError as e:
             if context.args:
                 pass
@@ -2088,7 +2089,7 @@ async def add_event(update: Update, context: CallbackContext):
     elif not context.args:
         return await send("Usage: /addevent date name\nUsage: /addevent date hour name\nInteractive version: /iaddevent")
     else:
-        infos_event = {}
+        pass
 
     if not infos_event.get('link'):
         infos_event |= add_event_enrich_reply_with_link(update, context, reply=reply)
