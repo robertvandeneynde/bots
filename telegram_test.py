@@ -120,6 +120,22 @@ def get_reply(message):
     else:
         return message.reply_to_message
 
+from telegram import Message
+
+@dataclass
+class TextMessage:
+    text: str
+    _message: Message
+
+class ToTextMessage(message: Message):
+    effective_text = message.text or message.caption
+    return TextMessage(
+        text=text,
+        _message=message)
+
+def get_text_reply(message):
+    return message.reply and ToTextMessage(message.reply).text
+
 def strip_botname(update: Update, context: CallbackContext):
     # TODO analyse message.entities with message.parse_entity and message.parse_entities
     bot_mention: str = '@' + context.bot.username
