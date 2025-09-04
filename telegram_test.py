@@ -3451,9 +3451,9 @@ def enrich_location_with_db(events, *, chat_id):
     return new_events
 
 from typing import Literal
-async def list_days_or_today(update: Update, context: CallbackContext, mode: Literal['list', 'today'], relative=False, formatting:Literal['normal', 'linkdays', 'crazyjamdays', 'linkdayshtml']='normal'):
+async def list_days_or_today(update: Update, context: CallbackContext, mode: Literal['list', 'today', 'tomorrow'], relative=False, formatting:Literal['normal', 'linkdays', 'crazyjamdays', 'linkdayshtml']='normal'):
     from datetime import time as Time
-    assert mode in ('list', 'today')
+    assert mode in ('list', 'today', 'tomorrow')
     assert formatting in ('normal', 'linkdays', 'crazyjamdays', 'linkdayshtml')
     if with_link := formatting in ('linkdays', 'crazyjamdays', 'linkdayshtml'):
         assert not relative
@@ -3466,7 +3466,11 @@ async def list_days_or_today(update: Update, context: CallbackContext, mode: Lit
 
     do_event_admin_check('list', setting=read_chat_settings('event.admins'), user_id=update.effective_user.id)
     
-    datetime_range = parse_datetime_range(update, args=context.args if mode == 'list' else ('today',) if mode == 'today' else raise_error(AssertionError('mode must be a correct value')))
+    real_args = (context.args if mode == 'list' else
+                 ('today',) if mode == 'today' else
+                 ('tomorrow',) if mode == 'tomorrow' else raise_error(AssertionError('mode must be a correct value')))
+
+    datetime_range = parse_datetime_range(update, args=real_args)
     beg, end, tz, when = (datetime_range[x] for x in ('beg_utc', 'end_utc', 'tz', 'when'))
 
     strptime = DatetimeDbSerializer.strptime
@@ -3506,7 +3510,9 @@ async def list_days_or_today(update: Update, context: CallbackContext, mode: Lit
 
         days[date.timetuple()[:3]].append((date, event_name) if formatting == 'normal' else (date, event_name, event_link))
 
-    display_time_marker = False if mode == 'list' else do_unless_setting_off(read_chat_settings('event.listtoday.display_time_marker'))
+    display_time_marker = (False if mode in ('list', 'tomorrow', ) else
+                           do_unless_setting_off(read_chat_settings('event.listtoday.display_time_marker')) if mode == 'today' else 
+                           raise_error(AssertionError))
 
     now_tz = datetime.now().astimezone(tz)
     def is_past(event_date):
@@ -4723,8 +4729,8 @@ BOT_FATHER_HIDDEN_COMMANDS = (
 
 COMMAND_LIST = (
     'caps',
-    'addevent', 'addschedule', 'nextevent', 'lastevent', 'listevents', 'listdays', 'listtoday', 'today', 'delevent',
-    'iaddevent',
+    'addevent', 'addschedule', 'delevent', 'iaddevent',
+    'nextevent', 'lastevent', 'listevents', 'listdays', 'listtoday', 'today', 'tomorrow',
     'eventfollow', 'eventacceptfollow', 'deleventfollow', 'deleventacceptfollow',
     'whereis', 'thereis', 'whereto', "delwhereis", "delthereis",
     'ru',
@@ -4820,6 +4826,7 @@ if __name__ == '__main__':
     application.add_handler(CommandHandler('listtoday', list_today))
     application.add_handler(CommandHandler('rlisttoday', partial(list_today, relative=True)))
     application.add_handler(CommandHandler('today', list_today))
+    application.add_handler(CommandHandler('tomorrow', partial(list_days_or_today, mode='tomorrow', relative=False)))
     application.add_handler(CommandHandler('rtoday', partial(list_today, relative=True)))
     application.add_handler(CommandHandler('lastevent', last_event))
     application.add_handler(CommandHandler('rlastevent', partial(last_event, relative=True)))
