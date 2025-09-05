@@ -55,6 +55,15 @@ class CrazyJamFilter(MessageFilter):
 class CrazyJamFwdError(Exception):
     pass
 
+class DayOfWeekFilter(MessageFilter):
+    def filter(self, message: Message):
+        try:
+            read_chat_settings = make_read_chat_settings_from_chat_id(message.chat.id)
+            return do_if_setting_on(read_chat_settings('event.commands.dayofweek'))
+        except Exception as error: 
+            logging.error("Error", exc_info=error)
+            return False
+
 async def on_crazy_jam_message(update: Update, context):
     try:
         original_message_id = update.effective_message.id
@@ -164,7 +173,7 @@ async def hello_responder(msg:str, send: AsyncSend, *, update, context):
 def detect_currencies(msg: str):
     return [(value, MONEY_CURRENCIES_ALIAS[currency_raw.lower()]) for value, currency_raw in MONEY_RE.findall(msg)]
 
-from typing import Callable, Awaitable
+from typing import Callable, Awaitable, Tuple, Union
 AsyncSend = Callable[[Update, CallbackContext], Awaitable[None]]
 
 async def money_responder(msg:str, send: AsyncSend, *, update, context):
@@ -777,6 +786,10 @@ def make_read_my_settings(update: Update, context: CallbackContext):
 def make_read_chat_settings(update: Update, context: CallbackContext):
     from functools import partial
     return partial(read_settings, id=update.effective_chat.id, settings_type='chat')
+
+def make_read_chat_settings_from_chat_id(chat_id):
+    from functools import partial
+    return partial(read_settings, id=chat_id, settings_type='chat')
 
 DICT_ENGINES = ('wikt', 'larousse', 'glosbe')
 
@@ -1854,7 +1867,7 @@ async def addschedule(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if not context.args:
         if reply:
-            infos_event = {} # todo: try to find infos like in add_event but for schedule
+            infos_event = {}
         else:
             return await send("Usage: /addschedule datetime+ name")
     else:
@@ -3451,9 +3464,14 @@ def enrich_location_with_db(events, *, chat_id):
     return new_events
 
 from typing import Literal
-async def list_days_or_today(update: Update, context: CallbackContext, mode: Literal['list', 'today', 'tomorrow'], relative=False, formatting:Literal['normal', 'linkdays', 'crazyjamdays', 'linkdayshtml']='normal'):
+async def list_days_or_today(update: Update, context: CallbackContext, mode: Literal['list', 'today', 'tomorrow', 'dayofweek'], mode_args={}, relative=False, formatting:Literal['normal', 'linkdays', 'crazyjamdays', 'linkdayshtml']='normal'):
     from datetime import time as Time
-    assert mode in ('list', 'today', 'tomorrow')
+    
+    assert mode in ('list', 'today', 'tomorrow', 'dayofweek')
+    if mode == 'dayofweek':
+        assert (dayofweek := mode_args.get('dayofweek'))
+        assert dayofweek in irange(1, 7)
+
     assert formatting in ('normal', 'linkdays', 'crazyjamdays', 'linkdayshtml')
     if with_link := formatting in ('linkdays', 'crazyjamdays', 'linkdayshtml'):
         assert not relative
@@ -3468,7 +3486,8 @@ async def list_days_or_today(update: Update, context: CallbackContext, mode: Lit
     
     real_args = (context.args if mode == 'list' else
                  ('today',) if mode == 'today' else
-                 ('tomorrow',) if mode == 'tomorrow' else raise_error(AssertionError('mode must be a correct value')))
+                 ('tomorrow',) if mode == 'tomorrow' else 
+                 (DatetimeText.days_english[dayofweek-1], ) if mode == 'dayofweek' else raise_error(AssertionError('mode must be a correct value')))
 
     datetime_range = parse_datetime_range(update, args=real_args)
     beg, end, tz, when = (datetime_range[x] for x in ('beg_utc', 'end_utc', 'tz', 'when'))
@@ -3510,7 +3529,7 @@ async def list_days_or_today(update: Update, context: CallbackContext, mode: Lit
 
         days[date.timetuple()[:3]].append((date, event_name) if formatting == 'normal' else (date, event_name, event_link))
 
-    display_time_marker = (False if mode in ('list', 'tomorrow', ) else
+    display_time_marker = (False if mode in ('list', 'tomorrow', 'dayofweek', ) else
                            do_unless_setting_off(read_chat_settings('event.listtoday.display_time_marker')) if mode == 'today' else 
                            raise_error(AssertionError))
 
@@ -3581,6 +3600,11 @@ async def list_days_or_today(update: Update, context: CallbackContext, mode: Lit
         f"No events for {when} !" + (" 😱" if "today" in (mode, when) else "")
     ))
 
+async def day_of_week_command(update, context, n):
+    assert n in irange(1, 7)
+    return await list_days_or_today(update, context, mode='dayofweek', mode_args={'dayofweek': n})
+
+# todo: use partial
 async def list_today(update: Update, context: CallbackContext, *, relative=False):
     return await list_days_or_today(update, context, mode='today', relative=relative)
 
@@ -3898,6 +3922,7 @@ ACCEPTED_SETTINGS_CHAT = (
     'event.listtoday.display_time_marker',
     'event.delevent.display',
     'event.location.autocomplete',
+    'event.commands.dayofweek',
 ) + tuple(
     remove_dup_keep_order(setting + '.active' for _, setting, _ in RESPONDERS)
 )
@@ -4887,6 +4912,9 @@ if __name__ == '__main__':
     application.add_handler(CommandHandler('printlist', listsmodule.printlist()))
     application.add_handler(CommandHandler('dirlist', listsmodule.dirlist()))
     application.add_handler(CommandHandler('dellist', listsmodule.dellist()))
+
+    for i in irange(1, 7):
+        application.add_handler(CommandHandler(DatetimeText.days_english[i-1], partial(day_of_week_command, n=i), filters=DayOfWeekFilter()))
 
     application.add_error_handler(general_error_callback)
     
