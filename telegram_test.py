@@ -397,6 +397,8 @@ async def list_responder(msg: str, send: AsyncSend, *, update, context):
                             listsmodule.editmultilist.do_it(conn=conn, name=list_name, chat_id=chat_id, values=parameters)
 
                     elif operation in ('shuffle', ):
+                        if list_type in ('tree', ):
+                            raise UserError("Operation not possible")
                         listsmodule.shuffle.do_it(conn=conn, name=list_name, chat_id=chat_id)
                     
                     elif operation in ('enum', 'enumerate', ):
@@ -422,6 +424,8 @@ async def list_responder(msg: str, send: AsyncSend, *, update, context):
                     elif operation in ('rep', 'replace'):
                         if list_type in ('tasklist', ):
                             listsmodule.replaceintasklist.do_it(**PP())
+                        elif list_type in ('tree', ):
+                            listsmodule.replaceintree.do_it(**PP())
                         else:
                             listsmodule.replaceinlist.do_it(**PP())
                     
@@ -2564,6 +2568,18 @@ class listsmodule:
                 mv = '[ ]' + ' ' + to_rep.strip()
             
             listsmodule.replaceinlist.do_it(parameters=' '.join([i, mv]), **P)
+    
+    class replaceintree:
+        @staticmethod
+        def do_it(*, parameters, conn, name, chat_id):
+            itree_str, to_rep = parameters.split(maxsplit=1)
+            itree = tuple(map(int, itree_str.split('.')))
+
+            my_simple_sql = partial(simple_sql, connection=conn)
+            listid, = only_one(my_simple_sql(('''select rowid from List where chat_id=? and lower(name)=lower(?)''', (chat_id, name,))))
+            node_rowid = listsmodule.tree_getnode(itree, listid=listid, my_simple_sql=my_simple_sql)
+
+            my_simple_sql((''' update ListElement set value=? where listid=? and rowid=?''', (to_rep, listid, node_rowid, )))
 
     class insertinlist(GeneralAction):
         @staticmethod
