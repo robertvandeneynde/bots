@@ -3285,25 +3285,34 @@ async def sleep_(update, context):
     await send(str(to_dt - from_dt))
 
 def parse_datetime_range(update, *, args, default="week"):
-    if len(args) >= 2:
-        raise UserError("<when> must be a day of the week or week")
-    
     from datetime import date as Date, time as Time, datetime as Datetime
 
+    when2 = None
     if not args:
         when = default
-    else:
+    elif len(args) == 1:
         when, = args  # beware of the ","
+    elif len(args) == 2:
+        when, when_2 = args
+    else:
+        raise UserError("<when> must be a day of the week, or a day of the month")
+    
     time = Time(0, 0)
     tz = induce_my_timezone(user_id=update.message.from_user.id, chat_id=update.effective_chat.id)
     
-    beg_date, end_date = DatetimeText.to_date_range(when, tz=tz)
-    beg_local, end_local = Datetime.combine(beg_date, time), Datetime.combine(end_date, time)
+    def make(when):
+        beg_date, end_date = DatetimeText.to_date_range(when, tz=tz)
+        beg_local, end_local = Datetime.combine(beg_date, time), Datetime.combine(end_date, time)
+        beg, end = (x.replace(tzinfo=tz).astimezone(ZoneInfo('UTC')) for x in (beg_local, end_local))
+        return dict(beg_utc=beg, end_utc=end, tz=tz, when=when, beg_local=beg_local, end_local=end_local)
     
-    beg, end = (x.replace(tzinfo=tz).astimezone(ZoneInfo('UTC')) for x in (beg_local, end_local))
+    D1 = make(when)
+    if not when_2:
+        return D1
+    else:
+        D2 = make(when_2)
+        return dict(beg_utc=D1['beg_utc'], end_utc=D2['end_utc'], tz=tz, when=when + '-' + when_2, beg_local=D1['beg_local'], end_local=D2['end_local'])
     
-    return dict(beg_utc=beg, end_utc=end, tz=tz, when=when, beg_local=beg_local, end_local=end_local)  # | {x: locals()[x] for x in ()}
-
 async def next_or_last_event(update: Update, context: CallbackContext, n:int, *, relative=False):
     from datetime import datetime as Datetime
     send = make_send(update, context)
