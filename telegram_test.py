@@ -408,7 +408,10 @@ async def list_responder(msg: str, send: AsyncSend, *, update, context):
                         did_edit = False
                     
                     elif operation in ('del', 'delete'):
-                        listsmodule.delinlist.do_it(conn=conn, name=list_name, chat_id=chat_id, value=parameters)
+                        if list_type in ('tree', ):
+                            listsmodule.delintree.do_it(**P(), parameters=parameters)
+                        else:
+                            listsmodule.delinlist.do_it(conn=conn, name=list_name, chat_id=chat_id, value=parameters)
                     
                     elif operation in ('insert', ):
                         if list_type in ('tasklist', ):
@@ -2664,7 +2667,47 @@ class listsmodule:
             delrowid = rowids[int(value) - 1 if int(value) > 0 else int(value)][0]
 
             my_simple_sql((''' delete from ListElement where listid=? and rowid=?''', (listid, delrowid, )))
+    class delintree:
+        @staticmethod
+        def do_it(*, conn, chat_id, name, parameters):
+            itree_str, *value = parameters.split(maxsplit=1)
+            if value:
+                raise UserError("Too much information given")
+            itree = tuple(map(int, itree_str.split('.')))
 
+            assert len(itree)
+            assert all(x >= 1 for x in itree)
+            my_simple_sql = partial(simple_sql, connection=conn)
+
+            listid, = only_one(my_simple_sql(('''select rowid from List where chat_id=? and lower(name)=lower(?)''', (chat_id, name,))))
+
+            node_rowid = listsmodule.tree_getnode(itree, listid=listid, my_simple_sql=my_simple_sql)
+
+            def delete(X):
+                children = my_simple_sql((''' select rowid from ListElement where listid=? and tree_parent=? ''', (listid, X)))
+                for c, in children:
+                    delete(c)
+                my_simple_sql((''' delete from ListElement where listid=? and rowid=?''', (listid, X, )))
+            
+            delete(node_rowid)
+    
+    def tree_getnode(itree, *, listid, my_simple_sql):
+        prev = None
+        for i in itree:
+            if prev is None:
+                x = "IS NULL"
+                p = (listid, i-1)
+            else:
+                x = "= ?"
+                p = (listid, prev, i-1)
+
+            rowid, = only_one(
+                my_simple_sql((f''' select rowid from ListElement where listid=? AND tree_parent {x} LIMIT 1 OFFSET ?''', p)),
+                none=UserError(f"{'.'.join(map(str, itree))} does not exist in the tree"))
+            
+            prev = rowid
+        return prev
+    
     class addtolist(GeneralAction):
         @staticmethod
         def do_it(*, conn, chat_id, name, value):
