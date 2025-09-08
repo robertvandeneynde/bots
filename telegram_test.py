@@ -439,11 +439,12 @@ async def list_responder(msg: str, send: AsyncSend, *, update, context):
                             listsmodule.replaceinlist.do_it(**PP())
                     
                     elif operation in ('insertchild', 'addchild', ):
+                        print('list_type', list_type)
                         if list_type_is_tree:
                             if list_type in ('tasktree', ):
                                 listsmodule.tasktreeinsertchild.do_it(**PP())
                             else:
-                                listsmodule.treelistinsertchild.do_it(**PP())
+                                listsmodule.treeinsertchild(**P()).run(parameters=parameters)
                         else:
                             did_edit = False
 
@@ -451,14 +452,14 @@ async def list_responder(msg: str, send: AsyncSend, *, update, context):
                         if list_type in ('tasklist', 'tasktree'):
                             if operation == 'check':
                                 if list_type == 'tasktree':
-                                    raise UserError("Not available at the moment")
-                                    listsmodule.treelistcheck.do_it(**PV(), direction='x')
-                                listsmodule.tasklistcheck.do_it(conn=conn, name=list_name, chat_id=chat_id, value=parameters, direction='x')
+                                    listsmodule.tasktreecheck(**P()).run(value=parameters, direction='x')
+                                else:
+                                    listsmodule.tasklistcheck.do_it(conn=conn, name=list_name, chat_id=chat_id, value=parameters, direction='x')
                             elif operation == 'uncheck':
                                 if list_type == 'tasktree':
-                                    raise UserError("Not available at the moment")
-                                    listsmodule.treelistcheck.do_it(**PV(), direction=' ')
-                                listsmodule.tasklistcheck.do_it(conn=conn, name=list_name, chat_id=chat_id, value=parameters, direction=' ')
+                                    listsmodule.tasktreecheck(**P()).run(value=parameters, direction=' ')
+                                else:
+                                    listsmodule.tasklistcheck.do_it(conn=conn, name=list_name, chat_id=chat_id, value=parameters, direction=' ')
                         else:
                             # do nothing because the operation does not exist
                             did_edit = False
@@ -2317,6 +2318,47 @@ class GeneralAction(ABC):
     def get_user_id(self):
         return self.update.effective_user.id
 
+class OnListAction:
+    def __init__(self, *, name, conn, chat_id):
+        self.conn = conn
+        self.name = name 
+        self.chat_id = chat_id
+
+    def list_id(self):
+        if not hasattr(self, '_list_id'):
+            self._list_id = only_one(only_one(self.my_simple_sql(('''select rowid from List where chat_id=? and lower(name)=lower(?)''', (self.chat_id, self.name, )))))
+        return self._list_id
+    
+    def my_simple_sql(self, *args, **kwargs):
+        return partial(simple_sql, connection=self.conn)(*args, **kwargs)
+
+class OnTreeAction(OnListAction):
+    def itree(self, itree_str):
+        return tuple(map(int, itree_str.split('.')))
+    
+    def assert_is_correct_itree(self, itree):
+        assert len(itree)
+        assert all(x >= 1 for x in itree)
+
+    def tree_getnode(self, itree):
+        self.list_id()
+
+        prev = None
+        for i in itree:
+            if prev is None:
+                x = "IS NULL"
+                p = (self.list_id(), i-1)
+            else:
+                x = "= ?"
+                p = (self.list_id(), prev, i-1)
+
+            rowid, = only_one(
+                self.my_simple_sql((f''' select rowid from ListElement where listid=? AND tree_parent {x} LIMIT 1 OFFSET ?''', p)),
+                none=UserError(f"{'.'.join(map(str, itree))} does not exist in the tree"))
+            
+            prev = rowid
+        return prev
+    
 class iameventadmin(GeneralAction):
     async def run(self):
         if self.Args:
@@ -2540,7 +2582,7 @@ class listsmodule:
         def do_it(*, parameters, **P):
             itree_str, value = parameters.split(maxsplit=1)
             value = listsmodule.make_task(value)
-            listsmodule.treelistinsertchild.do_it(parameters=itree_str + ' ' + value, **P)
+            listsmodule.treeinsertchild(**P).run(parameters=itree_str + ' ' + value)
     
     def make_task(x):
         IsTask = re.compile("^\\[\\s*(x|)\\s*\\].*$")
@@ -2549,35 +2591,15 @@ class listsmodule:
         else:
             return '[ ]' + ' ' + x.strip()
 
-    class treelistinsertchild:
-        @staticmethod
-        def do_it(*, conn, chat_id, name, parameters):
+    class treeinsertchild(OnTreeAction):
+        def run(self, *, parameters):
             itree_str, value = parameters.split(maxsplit=1)
-            itree = tuple(map(int, itree_str.split('.')))
+            itree = self.itree(itree_str)
 
+            self.assert_is_correct_itree(itree)
 
-            assert len(itree)
-            assert all(x >= 1 for x in itree)
-            my_simple_sql = partial(simple_sql, connection=conn)
-
-            listid, = only_one(my_simple_sql(('''select rowid from List where chat_id=? and lower(name)=lower(?)''', (chat_id, name,))))
-            
-            prev = None
-            for i in itree:
-                if prev is None:
-                    x = "IS NULL"
-                    p = (listid, i-1)
-                else:
-                    x = "= ?"
-                    p = (listid, prev, i-1)
-
-                rowid, = only_one(
-                    my_simple_sql((f''' select rowid from ListElement where listid=? AND tree_parent {x} LIMIT 1 OFFSET ?''', p)),
-                    none=UserError(f"{itree_str} does not exist in the tree"))
-                
-                prev = rowid
-
-            my_simple_sql((''' insert into ListElement(listid, value, tree_parent) values (?,?,?)''', (listid, value, prev) ))
+            nodeid = self.tree_getnode(itree)
+            self.my_simple_sql((''' insert into ListElement(listid, value, tree_parent) values (?,?,?)''', (self.list_id(), value, nodeid) ))
     
     class insertintasklist:
         @staticmethod
@@ -2717,26 +2739,25 @@ class listsmodule:
             
             my_simple_sql((''' update ListElement set value=? where rowid=?''', (new_value, rowid)))
 
-    class tasktreecheck:
-        @staticmethod
-        def do_it(*, conn, chat_id, name, value, direction:Literal['x', '', 'toggle']):
+    class tasktreecheck(OnTreeAction):
+        def run(self, *, value, direction:Literal['x', ' ', 'toggle']):
             itree = tuple(map(int, value.split('.')))
 
-            my_simple_sql = partial(simple_sql, connection=conn)
-            listid, = only_one(my_simple_sql(('''select rowid from List where chat_id=? and lower(name)=lower(?)''', (chat_id, name,))))
+            node = self.tree_getnode(itree)
 
-            node = listsmodule.tree_getnode(itree, listid=listid, my_simple_sql=my_simple_sql)
-
-            old_value = my_simple_sql(('''select value from ListElement where listid=? and rowid=?''', (listid, node)))
+            old_value, = only_one(self.my_simple_sql(('''select value from ListElement where listid=? and rowid=?''', (self.list_id(), node))))
 
             IsTask = re.compile("^\\[\\s*(x|)\\s*\\](.*)$")
             if m := IsTask.fullmatch(old_value):
-                new_check = direction if direction != 'toggle' else ('' if m.group(1) == 'x' else 'x')
+                if direction == 'toggle':
+                    new_check = ' ' if m.group(1) == 'x' else 'x'
+                else:
+                    new_check = direction
                 new_value = '[' + new_check + ']' + m.group(2)
             else:
                 raise AssertionError('A non task is stored in a tasklist')
             
-            my_simple_sql(('''Update ListElement set value=? where listid=? and rowid=?''', (listid, new_value)))
+            self.my_simple_sql(('''Update ListElement set value=? where listid=? and rowid=?''', (new_value, self.list_id(), node)))
 
 
     class delinlist(GeneralAction):
@@ -2777,23 +2798,6 @@ class listsmodule:
                 my_simple_sql((''' delete from ListElement where listid=? and rowid=?''', (listid, X, )))
             
             delete(node_rowid)
-    
-    def tree_getnode(itree, *, listid, my_simple_sql):
-        prev = None
-        for i in itree:
-            if prev is None:
-                x = "IS NULL"
-                p = (listid, i-1)
-            else:
-                x = "= ?"
-                p = (listid, prev, i-1)
-
-            rowid, = only_one(
-                my_simple_sql((f''' select rowid from ListElement where listid=? AND tree_parent {x} LIMIT 1 OFFSET ?''', p)),
-                none=UserError(f"{'.'.join(map(str, itree))} does not exist in the tree"))
-            
-            prev = rowid
-        return prev
     
     class addtolist(GeneralAction):
         @staticmethod
