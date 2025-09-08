@@ -2716,24 +2716,34 @@ class listsmodule:
 
             rowids = my_simple_sql((''' select rowid, value from ListElement where listid=? ''', (listid, )))
 
-            assert int(value) in irange(-len(rowids), len(rowids))
-            assert int(value) != 0
+            def action(value):
+                assert int(value) in irange(-len(rowids), len(rowids))
+                assert int(value) != 0
 
-            if int(value) < 0:
-                value = len(rowids) + int(value)
-            else:
-                value = int(value) - 1
+                if int(value) < 0:
+                    value = len(rowids) + int(value)
+                else:
+                    value = int(value) - 1
 
-            rowid, old_value = rowids[int(value)]
+                rowid, old_value = rowids[int(value)]
 
-            IsTask = re.compile("^\\[\\s*(x|)\\s*\\](.*)$")
-            if m := IsTask.fullmatch(old_value):
-                new_check = direction if direction != 'toggle' else ('' if m.group(1) == 'x' else 'x')
-                new_value = '[' + new_check + ']' + m.group(2)
-            else:
-                raise AssertionError('A non task is stored in a tasklist')
+                IsTask = re.compile("^\\[\\s*(x|)\\s*\\](.*)$")
+                if m := IsTask.fullmatch(old_value):
+                    new_check = direction if direction != 'toggle' else ('' if m.group(1) == 'x' else 'x')
+                    new_value = '[' + new_check + ']' + m.group(2)
+                else:
+                    raise AssertionError('A non task is stored in a tasklist')
+                
+                my_simple_sql((''' update ListElement set value=? where rowid=?''', (new_value, rowid)))
             
-            my_simple_sql((''' update ListElement set value=? where rowid=?''', (new_value, rowid)))
+            if '-' in value:
+                a,b = value.split('-')
+                int(a), int(b)
+                assert int(a) <= int(b)
+                for i in irange(int(a), int(b)):
+                    action(i)
+            else:
+                action(value)
 
     class tasktreecheck(OnTreeAction):
         def run(self, *, value, direction:Literal['x', ' ', 'toggle']):
