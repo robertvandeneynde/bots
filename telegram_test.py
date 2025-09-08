@@ -2634,20 +2634,16 @@ class listsmodule:
             
             mv = listsmodule.make_task(to_rep)
 
-            listsmodule.replaceintree.do_it(parameters=' '.join([itree_str, mv]), **P)
+            listsmodule.replaceintree(**P).run(parameters=' '.join([itree_str, mv]))
 
-    class replaceintree:
-        @staticmethod
-        def do_it(*, parameters, conn, name, chat_id):
+    class replaceintree(OnTreeAction):
+        def run(self, *, parameters):
             itree_str, to_rep = parameters.split(maxsplit=1)
-            itree = tuple(map(int, itree_str.split('.')))
+            itree = self.itree(itree_str)
 
-            my_simple_sql = partial(simple_sql, connection=conn)
-            listid = listsmodule.get_listid(chat_id=chat_id, name=name, my_simple_sql=my_simple_sql)
-            
-            node_rowid = listsmodule.tree_getnode(itree, listid=listid, my_simple_sql=my_simple_sql)
+            node_rowid = self.tree_getnode(itree)
 
-            my_simple_sql((''' update ListElement set value=? where listid=? and rowid=?''', (to_rep, listid, node_rowid, )))
+            self.my_simple_sql((''' update ListElement set value=? where listid=? and rowid=?''', (to_rep, self.list_id(), node_rowid, )))
 
     def get_listid(*, chat_id, name, my_simple_sql):
         return only_one(only_one(my_simple_sql(('''select rowid from List where chat_id=? and lower(name)=lower(?)''', (chat_id, name,)))))
@@ -2962,7 +2958,7 @@ class listsmodule:
             def run_on(rowid, level):
                 for i, (x, xv) in enumerate(my_simple_sql((''' select rowid, value from ListElement where listid=? and tree_parent IS ? ''', (listid, rowid, )))):
                     trail.append(str(i+1))
-                    bits.append(('.'.join(trail), xv))
+                    bits.append((level * '  ' + '.'.join(trail), xv))
                     run_on(x, level+1)
                     trail.pop()
             
