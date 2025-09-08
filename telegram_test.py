@@ -252,6 +252,7 @@ class ListLang:
         'list',
         'tasklist',
         'tree',
+        'tasktree'
     ]
 
     OPS_1L = '|'.join(map(re.escape, OPERATIONS_ONE_LINE))
@@ -360,11 +361,12 @@ async def list_responder(msg: str, send: AsyncSend, *, update, context):
                     PP = lambda: P() | dict(parameters=parameters)
 
                     list_type = listsmodule.get_list_type(**P())
+                    list_type_is_tree = list_type in ('tree', 'tasktree')
                     
                     did_edit = True
                     if operation in ('add', 'append'):
                         match list_type:
-                            case 'tasklist':
+                            case 'tasklist' | 'tasktree':
                                 IsTask = re.compile("^\\[\\s*(x|)\\s*\\].*$")
                                 if IsTask.fullmatch(parameters):
                                     modified_value = parameters.strip()
@@ -375,7 +377,7 @@ async def list_responder(msg: str, send: AsyncSend, *, update, context):
                                 listsmodule.addtolist.do_it(conn=conn, name=list_name, chat_id=chat_id, value=parameters)
                             
                     elif operation in ('print', 'list', ):
-                        if list_type in ('tree', ):
+                        if list_type_is_tree:
                             await send(listsmodule.printtree.it(**P()))    
                         else:
                             await send(listsmodule.printlist.it(conn=conn, chat_id=chat_id, name=list_name))
@@ -385,24 +387,28 @@ async def list_responder(msg: str, send: AsyncSend, *, update, context):
                         listsmodule.clearlist.do_it(conn=conn, name=list_name, chat_id=chat_id)
 
                     elif operation in ('extendmulti', ):
+                        if list_type in ('tasktree', ):
+                            raise UserError("Impossible at the moment")
                         if list_type in ('tasklist', ):
                             listsmodule.extendmultitasklist.do_it(conn=conn, name=list_name, chat_id=chat_id, values=parameters)
                         else:
                             listsmodule.extendmultilist.do_it(conn=conn, name=list_name, chat_id=chat_id, values=parameters)
                     
                     elif operation in ('editmulti', ):
+                        if list_type in ('tasktree', ):
+                            raise UserError("Impossible at the moment")
                         if list_type in ('tasklist', ):
                             listsmodule.editmultitasklist.do_it(conn=conn, name=list_name, chat_id=chat_id, values=parameters)
                         else:
                             listsmodule.editmultilist.do_it(conn=conn, name=list_name, chat_id=chat_id, values=parameters)
 
                     elif operation in ('shuffle', ):
-                        if list_type in ('tree', ):
+                        if list_type_is_tree:
                             raise UserError("Operation not possible")
                         listsmodule.shuffle.do_it(conn=conn, name=list_name, chat_id=chat_id)
                     
                     elif operation in ('enum', 'enumerate', ):
-                        if list_type in ('tree', ):
+                        if list_type_is_tree:
                             await send(listsmodule.enumeratetree.it(**P()))
                         else:
                             await send(listsmodule.enumeratelist.it(**P()))
@@ -410,7 +416,7 @@ async def list_responder(msg: str, send: AsyncSend, *, update, context):
                         did_edit = False
                     
                     elif operation in ('del', 'delete'):
-                        if list_type in ('tree', ):
+                        if list_type_is_tree:
                             listsmodule.delintree.do_it(**P(), parameters=parameters)
                         else:
                             listsmodule.delinlist.do_it(conn=conn, name=list_name, chat_id=chat_id, value=parameters)
@@ -424,24 +430,38 @@ async def list_responder(msg: str, send: AsyncSend, *, update, context):
                     elif operation in ('rep', 'replace'):
                         if list_type in ('tasklist', ):
                             listsmodule.replaceintasklist.do_it(**PP())
-                        elif list_type in ('tree', ):
-                            listsmodule.replaceintree.do_it(**PP())
+                        elif list_type_is_tree:
+                            if list_type in ('tasktree', ):
+                                listsmodule.replaceintasktree.do_it(**PP())
+                            else:
+                                listsmodule.replaceintree.do_it(**PP())
                         else:
                             listsmodule.replaceinlist.do_it(**PP())
                     
                     elif operation in ('insertchild', 'addchild', ):
-                        if list_type in ('tree', ):
-                            listsmodule.treelistinsertchild.do_it(**PP())
+                        if list_type_is_tree:
+                            if list_type in ('tasktree', ):
+                                listsmodule.tasktreeinsertchild.do_it(**PP())
+                            else:
+                                listsmodule.treelistinsertchild.do_it(**PP())
+                        else:
+                            did_edit = False
 
                     elif operation in ('check', 'uncheck', ):
-                        if list_type in ('tasklist', ):
+                        if list_type in ('tasklist', 'tasktree'):
                             if operation == 'check':
+                                if list_type == 'tasktree':
+                                    raise UserError("Not available at the moment")
+                                    listsmodule.treelistcheck.do_it(**PV(), direction='x')
                                 listsmodule.tasklistcheck.do_it(conn=conn, name=list_name, chat_id=chat_id, value=parameters, direction='x')
                             elif operation == 'uncheck':
+                                if list_type == 'tasktree':
+                                    raise UserError("Not available at the moment")
+                                    listsmodule.treelistcheck.do_it(**PV(), direction=' ')
                                 listsmodule.tasklistcheck.do_it(conn=conn, name=list_name, chat_id=chat_id, value=parameters, direction=' ')
                         else:
                             # do nothing because the operation does not exist
-                            did_edit = False 
+                            did_edit = False
 
                     else:
                         raise AssertionError(f"On operation {operation}")
@@ -2461,6 +2481,8 @@ class listsmodule:
                 case 'copy', copy_from_name:
                     if listsmodule.list_exists(conn=conn, chat_id=chat_id, name=copy_from_name):
                         actual_type = only_one(only_one(my_simple_sql((''' select type from List where chat_id=? AND lower(name)=lower(?) ''', (chat_id, copy_from_name, )))))
+                        if actual_type in ('tasktree', 'tree'):
+                            raise UserError("Impossible at the moment")
                     else:
                         raise UserError(f'List {copy_from_name!r} does not exist')  # transaction will rollback
                 
@@ -2473,7 +2495,7 @@ class listsmodule:
 
             # post creation operation
             match type_list:
-                case 'list' | 'tasklist' | 'tree':
+                case 'list' | 'tasklist' | 'tree' | 'tasktree':
                     pass # nothing to do more
 
                 case 'copy', copy_from_name:
@@ -2513,6 +2535,20 @@ class listsmodule:
         async def print_usage(self):
             return await self.send("/createlist\n/createlist name")
     
+    class tasktreeinsertchild:
+        @staticmethod
+        def do_it(*, parameters, **P):
+            itree_str, value = parameters.split(maxsplit=1)
+            value = listsmodule.make_task(value)
+            listsmodule.treelistinsertchild.do_it(parameters=itree_str + ' ' + value, **P)
+    
+    def make_task(x):
+        IsTask = re.compile("^\\[\\s*(x|)\\s*\\].*$")
+        if IsTask.fullmatch(x):
+            return x.strip()
+        else:
+            return '[ ]' + ' ' + x.strip()
+
     class treelistinsertchild:
         @staticmethod
         def do_it(*, conn, chat_id, name, parameters):
@@ -2568,7 +2604,16 @@ class listsmodule:
                 mv = '[ ]' + ' ' + to_rep.strip()
             
             listsmodule.replaceinlist.do_it(parameters=' '.join([i, mv]), **P)
-    
+    class replaceintasktree:
+        @staticmethod
+        def do_it(*, parameters, **P):
+            itree_str, to_rep = parameters.split(maxsplit=1)
+            itree = tuple(map(int, itree_str.split('.')))
+            
+            mv = listsmodule.make_task(to_rep)
+
+            listsmodule.replaceintree.do_it(parameters=' '.join([itree_str, mv]), **P)
+
     class replaceintree:
         @staticmethod
         def do_it(*, parameters, conn, name, chat_id):
@@ -2576,10 +2621,14 @@ class listsmodule:
             itree = tuple(map(int, itree_str.split('.')))
 
             my_simple_sql = partial(simple_sql, connection=conn)
-            listid, = only_one(my_simple_sql(('''select rowid from List where chat_id=? and lower(name)=lower(?)''', (chat_id, name,))))
+            listid = listsmodule.get_listid(chat_id=chat_id, name=name, my_simple_sql=my_simple_sql)
+            
             node_rowid = listsmodule.tree_getnode(itree, listid=listid, my_simple_sql=my_simple_sql)
 
             my_simple_sql((''' update ListElement set value=? where listid=? and rowid=?''', (to_rep, listid, node_rowid, )))
+
+    def get_listid(*, chat_id, name, my_simple_sql):
+        return only_one(only_one(my_simple_sql(('''select rowid from List where chat_id=? and lower(name)=lower(?)''', (chat_id, name,)))))
 
     class insertinlist(GeneralAction):
         @staticmethod
@@ -2667,6 +2716,28 @@ class listsmodule:
                 raise AssertionError('A non task is stored in a tasklist')
             
             my_simple_sql((''' update ListElement set value=? where rowid=?''', (new_value, rowid)))
+
+    class tasktreecheck:
+        @staticmethod
+        def do_it(*, conn, chat_id, name, value, direction:Literal['x', '', 'toggle']):
+            itree = tuple(map(int, value.split('.')))
+
+            my_simple_sql = partial(simple_sql, connection=conn)
+            listid, = only_one(my_simple_sql(('''select rowid from List where chat_id=? and lower(name)=lower(?)''', (chat_id, name,))))
+
+            node = listsmodule.tree_getnode(itree, listid=listid, my_simple_sql=my_simple_sql)
+
+            old_value = my_simple_sql(('''select value from ListElement where listid=? and rowid=?''', (listid, node)))
+
+            IsTask = re.compile("^\\[\\s*(x|)\\s*\\](.*)$")
+            if m := IsTask.fullmatch(old_value):
+                new_check = direction if direction != 'toggle' else ('' if m.group(1) == 'x' else 'x')
+                new_value = '[' + new_check + ']' + m.group(2)
+            else:
+                raise AssertionError('A non task is stored in a tasklist')
+            
+            my_simple_sql(('''Update ListElement set value=? where listid=? and rowid=?''', (listid, new_value)))
+
 
     class delinlist(GeneralAction):
         @staticmethod
