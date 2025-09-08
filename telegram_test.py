@@ -1129,7 +1129,7 @@ async def export_event(update, context, *, name, datetime_utc):
     from datetime import date, time, datetime, timedelta
     
     file_content_str = EVENT_ICS_TEMPLATE.format(
-        dt_created_utc=datetime.now(UTC),
+        dt_created_utc=datetime.now(UTC).replace(tzinfo=None),
         dt_start_utc=datetime_utc,
         dt_end_utc=datetime_utc + timedelta(hours=1),
         name_ical_formatted=name)
@@ -3208,6 +3208,38 @@ def addevent_analyse(update, context):
     else:
         raise EventAnalyseError("I cannot interpret this message as an event")
 
+async def weekiso(update, context):
+    send = make_send(update, context)
+    await send("{0}-W{1}-{2}".format(*Datetime.today().isocalendar()))
+
+async def weekisoroman(update, context):
+    send = make_send(update, context)
+    
+    def int_to_roman(num):
+        if not (0 < num < 4000):
+            raise ValueError("Input must be between 1 and 3999")
+        
+        val = [
+            1000, 900, 500, 400,
+            100, 90, 50, 40,
+            10, 9, 5, 4,
+            1
+        ]
+        syms = [
+            "M", "CM", "D", "CD",
+            "C", "XC", "L", "XL",
+            "X", "IX", "V", "IV",
+            "I"
+        ]
+        roman_num = ''
+        for i in range(len(val)):
+            while num >= val[i]:
+                roman_num += syms[i]
+                num -= val[i]
+        return roman_num
+
+    await send("{}-W{}-{}".format(*map(int_to_roman, Datetime.today().isocalendar())))
+
 async def whereisto(update, context, *, command: Literal['whereis', 'whereto']):
     send = make_send(update, context)
 
@@ -4549,7 +4581,7 @@ def get_database_euro_rates() -> Rates:
         latest_date: Datetime = latest_date_string and DatetimeDbSerializer().from_db(latest_date_string)
         rates: json = rates_string and JsonDbSerializer().from_db(rates_string)
     
-    now = Datetime.now(UTC)
+    now = Datetime.now(UTC).replace(tzinfo=None)
     if latest_date is None or now - latest_date > Timedelta(days=1):
         rates = get_latest_euro_rates_from_api()
         with sqlite3.connect('db.sqlite') as conn:
@@ -5004,6 +5036,8 @@ if __name__ == '__main__':
     application.add_handler(CommandHandler('rtoday', partial(list_today, relative=True)))
     application.add_handler(CommandHandler('lastevent', last_event))
     application.add_handler(CommandHandler('rlastevent', partial(last_event, relative=True)))
+    application.add_handler(CommandHandler('weekiso', weekiso))
+    application.add_handler(CommandHandler('weekisoroman', weekisoroman))
     application.add_handler(CommandHandler('whereis', whereis))
     application.add_handler(CommandHandler('whereto', whereto))
     application.add_handler(CommandHandler('thereis', thereis))
