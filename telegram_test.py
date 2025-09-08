@@ -3330,7 +3330,7 @@ async def sleep_(update, context):
 def parse_datetime_range(update, *, args, default="week"):
     from datetime import date as Date, time as Time, datetime as Datetime
 
-    when2 = None
+    when_2 = None
     if not args:
         when = default
     elif len(args) == 1:
