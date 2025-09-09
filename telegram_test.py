@@ -2781,27 +2781,24 @@ class listsmodule:
             delrowid = rowids[int(value) - 1 if int(value) > 0 else int(value)][0]
 
             my_simple_sql((''' delete from ListElement where listid=? and rowid=?''', (listid, delrowid, )))
-    class delintree:
-        @staticmethod
-        def do_it(*, conn, chat_id, name, parameters):
+    class delintree(OnTreeAction):
+        def do_it(self, *, parameters):
             itree_str, *value = parameters.split(maxsplit=1)
             if value:
                 raise UserError("Too much information given")
             itree = tuple(map(int, itree_str.split('.')))
+            
+            self.assert_is_correct_itree(itree)
 
-            assert len(itree)
-            assert all(x >= 1 for x in itree)
-            my_simple_sql = partial(simple_sql, connection=conn)
-
-            listid, = only_one(my_simple_sql(('''select rowid from List where chat_id=? and lower(name)=lower(?)''', (chat_id, name,))))
-
-            node_rowid = listsmodule.tree_getnode(itree, listid=listid, my_simple_sql=my_simple_sql)
-
+            listid = self.list_id()
+            
+            node_rowid = self.tree_getnode()
+            
             def delete(X):
-                children = my_simple_sql((''' select rowid from ListElement where listid=? and tree_parent=? ''', (listid, X)))
+                children = self.my_simple_sql((''' select rowid from ListElement where listid=? and tree_parent=? ''', (listid, X)))
                 for c, in children:
                     delete(c)
-                my_simple_sql((''' delete from ListElement where listid=? and rowid=?''', (listid, X, )))
+                self.my_simple_sql((''' delete from ListElement where listid=? and rowid=?''', (listid, X, )))
             
             delete(node_rowid)
     
