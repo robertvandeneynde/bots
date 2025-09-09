@@ -2792,7 +2792,7 @@ class listsmodule:
 
             listid = self.list_id()
             
-            node_rowid = self.tree_getnode()
+            node_rowid = self.tree_getnode(itree)
             
             def delete(X):
                 children = self.my_simple_sql((''' select rowid from ListElement where listid=? and tree_parent=? ''', (listid, X)))
