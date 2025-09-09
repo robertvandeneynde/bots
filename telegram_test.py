@@ -2782,7 +2782,7 @@ class listsmodule:
 
             my_simple_sql((''' delete from ListElement where listid=? and rowid=?''', (listid, delrowid, )))
     class delintree(OnTreeAction):
-        def do_it(self, *, parameters):
+        def run(self, *, parameters):
             itree_str, *value = parameters.split(maxsplit=1)
             if value:
                 raise UserError("Too much information given")
