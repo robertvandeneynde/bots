@@ -417,7 +417,7 @@ async def list_responder(msg: str, send: AsyncSend, *, update, context):
                     
                     elif operation in ('del', 'delete'):
                         if list_type_is_tree:
-                            listsmodule.delintree.do_it(**P(), parameters=parameters)
+                            listsmodule.delintree(**P()).run(parameters=parameters)
                         else:
                             listsmodule.delinlist.do_it(conn=conn, name=list_name, chat_id=chat_id, value=parameters)
                     
