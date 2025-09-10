@@ -415,7 +415,7 @@ async def list_responder(msg: str, send: AsyncSend, *, update, context):
                     
                     elif operation in ('enum', 'enumerate', ):
                         if list_type_is_tree:
-                            await send(listsmodule.enumeratetree.it(**P()))
+                            await send(listsmodule.enumeratetree.it(**P(), parameters=parameters))
                         else:
                             await send(listsmodule.enumeratelist.it(**P()))
                         
@@ -3026,11 +3026,22 @@ class listsmodule:
 
             return '\n'.join(('{}. {}'.format(i, x) for i, x in enumerate(result_list, start=1))) if result_list else '/'
 
-    class enumeratetree(GeneralAction):
+    class enumeratetree:
         @staticmethod
-        def it(*, conn, chat_id, name):
+        def it(*, conn, chat_id, name, parameters=''):
             my_simple_sql = partial(simple_sql, connection=conn)
-            
+            args = parameters.split()
+
+            ota = OnTreeAction(conn=conn, chat_id=chat_id, name=name)
+
+            if len(args) == 0:
+                itree = ''
+            elif len(args) == 1:
+                itree = ota.itree(args[0])
+                node = ota.tree_getnode(itree)
+            else:
+                raise UserError("Too much parameters")
+
             (listid,), = my_simple_sql(('''select rowid from List where chat_id=? and lower(name)=lower(?)''', (chat_id, name,)))
             
             bits = []
@@ -3042,12 +3053,17 @@ class listsmodule:
                     run_on(x, level+1)
                     trail.pop()
             
-            trail = []
-            for i, (x, xv) in enumerate(my_simple_sql((''' select rowid, value from ListElement where listid=? and tree_parent IS NULL ''', (listid, )))):
-                trail.append(str(i+1))
-                bits.append(('.'.join(trail), xv))
-                run_on(x, 1)
-                trail.pop()
+            if itree:
+                trail = list(map(str, itree))
+                run_on(node, level=0)
+
+            else:
+                trail = []
+                for i, (x, xv) in enumerate(my_simple_sql((''' select rowid, value from ListElement where listid=? and tree_parent IS NULL ''', (listid, )))):
+                    trail.append(str(i+1))
+                    bits.append(('.'.join(trail), xv))
+                    run_on(x, 1)
+                    trail.pop()
 
             return '\n'.join('{}. {}'.format(x, y) for x, y in bits) if bits else '/'
         
