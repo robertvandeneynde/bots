@@ -1629,13 +1629,13 @@ def induce_my_timezone(*, user_id, chat_id):
         "- This: /chatsettings event.timezones TIMEZONE\n"
         "- Example: /chatsettings event.timezones Europe/Brussels\n")
 
-def parse_datetime_point(update, context, when_infos=None, what_infos=None) -> ParsedEventFinal:
+def parse_datetime_point(update, context, when_infos=None, what_infos=None, has_inline_kargs=False) -> ParsedEventFinal:
     from datetime import datetime as Datetime, time as Time, date as Date, timedelta
     tz = induce_my_timezone(user_id=update.message.from_user.id, chat_id=update.effective_chat.id)
     
     name = None
     date_str = None
-    if context.args:
+    if context.args and not has_inline_kargs:
         date_str, time, name, day_of_week, relative_day_keyword = ParseEvents.parse_event(context.args)
     if what_infos:
         name = name or what_infos
@@ -1645,6 +1645,8 @@ def parse_datetime_point(update, context, when_infos=None, what_infos=None) -> P
         date_str, time, name_from_when_part, day_of_week, relative_day_keyword = ParseEvents.parse_event(when_infos.split())
         if name_from_when_part:
             raise UserError("Too much infos in the When part")
+    if date_str is None:
+        raise UserError("Must specify an event with date")
 
     date, date_end = DatetimeText.to_date_range(date_str, tz=tz)
     datetime = Datetime.combine(date, time or Time(0,0)).replace(tzinfo=tz)
@@ -2132,15 +2134,22 @@ async def add_event(update: Update, context: CallbackContext):
     else:
         pass
 
+    Args = InfiniteEmptyList(context.args)
+    if has_inline_kwargs := Args[0].endswith(':'):
+        infos_event |= addevent_analyse_args_as_object(Args)
+
     if not infos_event.get('link'):
         infos_event |= add_event_enrich_reply_with_link(update, context, reply=reply)
+
+    infos_event = {k.lower():v for k,v in infos_event.items()}
     CanonInfo = add_event_canon_infos(infos_event=infos_event)
 
     source_user_id = update.message.from_user.id
     chat_id = update.effective_chat.id
 
     date_str, time, name, date, date_end, datetime, datetime_utc, tz = \
-        parse_datetime_point(update, context, when_infos=CanonInfo.when_infos, what_infos=CanonInfo.what_infos)
+        parse_datetime_point(update, context, has_inline_kargs=has_inline_kwargs,
+                             when_infos=CanonInfo.when_infos, what_infos=CanonInfo.what_infos)
     
     if do_unless_setting_off(read_chat_settings('event.location.autocomplete')):
         name = update_name_using_locations(name, chat_id=chat_id)
@@ -2158,6 +2167,15 @@ async def add_event(update: Update, context: CallbackContext):
         implicit_thereis(what=name, chat_id=chat_id)
     
     await post_event(update, context, name=name, datetime=datetime, time=time, date_str=date_str, chat_timezones=chat_timezones, tz=tz, chat_id=chat_id, datetime_utc=datetime_utc, link=infos_event and infos_event.get('link'))
+
+def addevent_analyse_args_as_object(Args):
+    if len(Args) == 0:
+        return {}
+    key = Args[0][:-1]
+    i = 1
+    while not (Args[i].endswith(':') or i >= len(Args)):
+        i += 1
+    return {key: ' '.join(Args[1:i])} | addevent_analyse_args_as_object(InfiniteEmptyList(Args[i:]))
 
 def add_event_canon_infos(*, infos_event):
     other_infos = {k: infos_event[k] for k in infos_event.keys() - {'when', 'what', 'where', 'link'}}
