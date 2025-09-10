@@ -384,7 +384,7 @@ async def list_responder(msg: str, send: AsyncSend, *, update, context):
                             
                     elif operation in ('print', 'list', ):
                         if list_type_is_tree:
-                            await send(listsmodule.printtree.it(**P()))    
+                            await send(listsmodule.printtree.it(**P(), parameters=parameters))
                         else:
                             await send(listsmodule.printlist.it(conn=conn, chat_id=chat_id, name=list_name))
                         did_edit = False
@@ -2998,21 +2998,35 @@ class listsmodule:
     
     class printtree(GeneralAction):
         @staticmethod
-        def it(*, conn, chat_id, name):
+        def it(*, conn, chat_id, name, parameters):
             my_simple_sql = partial(simple_sql, connection=conn)
             
             (listid,), = my_simple_sql(('''select rowid from List where chat_id=? and lower(name)=lower(?)''', (chat_id, name,)))
             
+            ota = OnTreeAction(conn=conn, chat_id=chat_id, name=name)
+
+            args = parameters.split()
+            if len(args) == 0:
+                itree = ''
+            elif len(args) == 1:
+                itree = ota.itree(args[0])
+                node = ota.tree_getnode(itree)
+            else:
+                raise UserError("Too much parameters")
+
             bits = []
 
             def run_on(rowid, level):
                 for x, xv in my_simple_sql((''' select rowid, value from ListElement where listid=? and tree_parent IS ? ''', (listid, rowid, ))):
                     bits.append((level, xv))
                     run_on(x, level+1)
-            
-            for x, xv in my_simple_sql((''' select rowid, value from ListElement where listid=? and tree_parent IS NULL ''', (listid, ))):
-                bits.append((0, xv))
-                run_on(x, 1)
+
+            if itree:
+                run_on(node, 0)
+            else:
+                for x, xv in my_simple_sql((''' select rowid, value from ListElement where listid=? and tree_parent IS NULL ''', (listid, ))):
+                    bits.append((0, xv))
+                    run_on(x, 1)
 
             return '\n'.join('{}- {}'.format(x * '  ', y) for x, y in bits) if bits else '/'
 
