@@ -326,6 +326,10 @@ async def list_responder(msg: str, send: AsyncSend, *, update, context):
                     _, _, copy_from_name = param_match.groups()
                     type_list = ('copy', copy_from_name)
 
+                elif param_match := regex.compile('(tasktree)\s*((of|from)\s*)?(\p{L}+)').fullmatch(requested_type):
+                    copy_from_type, _, _, copy_from_name = param_match.groups()
+                    type_list = (copy_from_type, copy_from_name)
+
                 elif requested_type in set(ListLang.POSSIBLE_TYPES):
                     type_list = requested_type
 
@@ -343,8 +347,10 @@ async def list_responder(msg: str, send: AsyncSend, *, update, context):
                 if operation == 'createassign':
                     if requested_type == 'tasklist':
                         listsmodule.extendmultitasklist.do_it(conn=conn, chat_id=chat_id, name=list_name, values=parameters) 
-                    else:
+                    elif requested_type == 'list':
                         listsmodule.extendmultilist.do_it(conn=conn, chat_id=chat_id, name=list_name, values=parameters) 
+                    else:
+                        raise UserError('Not possible at the moment with {requested_type!r}')
 
                 conn.execute('end transaction')
                 await send(f"List named {list_name!r} created")
@@ -2520,6 +2526,36 @@ class listsmodule:
     def dump(*, chat_id, name, conn, values):
         listsmodule.editmultilist.do_it(conn=conn, chat_id=chat_id, name=name, values=values)
 
+    class TreeNodeDump(NamedTuple):
+        value: str
+        rowid: int
+        parent: int
+
+    @staticmethod
+    def treeload(*, chat_id, name, conn):
+        my_simple_sql = partial(simple_sql, connection=conn)
+
+        listid, = only_one(my_simple_sql(('''select rowid from List where chat_id=? and lower(name)=lower(?)''', (chat_id, name,))))
+        return [listsmodule.TreeNodeDump(*x) for x in my_simple_sql(('''select value, rowid, tree_parent from ListElement where listid=?''', (listid, )))]
+    
+    @staticmethod
+    def treedump(*, chat_id, name, conn, values):
+        my_simple_sql = partial(simple_sql, connection=conn)
+
+        listid, = only_one(my_simple_sql(('''select rowid from List where chat_id=? and lower(name)=lower(?)''', (chat_id, name,))))
+        
+        mapped = {}
+
+        cursor = conn.cursor()
+        for node in values:
+            cursor.execute('''insert into ListElement(listid, value) VALUES (?, ?)''', (listid, node.value, ))
+            mapped[node.rowid] = cursor.lastrowid
+        
+        for node in values:
+            if node.parent is not None:
+                cursor.execute('''update ListElement set tree_parent=? where rowid=?''', (mapped[node.parent], mapped[node.rowid]))
+        
+
     class forcecreatelist:
         @staticmethod
         def do_it(*, conn, chat_id, name, user_id, type_list: object, force_creation: bool):
@@ -2540,12 +2576,19 @@ class listsmodule:
             match type_list:
                 case 'copy', copy_from_name:
                     if listsmodule.list_exists(conn=conn, chat_id=chat_id, name=copy_from_name):
-                        actual_type = only_one(only_one(my_simple_sql((''' select type from List where chat_id=? AND lower(name)=lower(?) ''', (chat_id, copy_from_name, )))))
-                        if actual_type in ('tasktree', 'tree'):
+                        actual_type = target_type = only_one(only_one(my_simple_sql((''' select type from List where chat_id=? AND lower(name)=lower(?) ''', (chat_id, copy_from_name, )))))
+                        if actual_type not in ('list', 'tasklist', 'tree', ):
                             raise UserError("Impossible at the moment")
                     else:
                         raise UserError(f'List {copy_from_name!r} does not exist')  # transaction will rollback
-                
+                case 'tasktree', copy_from_name:
+                    actual_type = 'tasktree'
+                    if listsmodule.list_exists(conn=conn, chat_id=chat_id, name=copy_from_name):
+                        target_type = only_one(only_one(my_simple_sql((''' select type from List where chat_id=? AND lower(name)=lower(?) ''', (chat_id, copy_from_name, )))))
+                        if target_type not in ('tree', 'tasktree'):
+                            raise UserError("Impossible to create {} from {}".format('tasktree', target_type))
+                    else:
+                        raise UserError(f'List {copy_from_name!r} does not exist')  # transaction will rollback
                 case _:
                     assert isinstance(type_list, str)
                     actual_type = type_list.lower()
@@ -2559,12 +2602,24 @@ class listsmodule:
                     pass # nothing to do more
 
                 case 'copy', copy_from_name:
-                    if listsmodule.list_exists(conn=conn, chat_id=chat_id, name=copy_from_name):
+                    if actual_type in ('list', 'tasklist'):
                         values = listsmodule.load(conn=conn, chat_id=chat_id, name=copy_from_name)
                         listsmodule.dump(conn=conn, chat_id=chat_id, name=name, values=values)
+                    elif actual_type in ('tree', 'tasktree'):
+                        values = listsmodule.treeload(conn=conn, chat_id=chat_id, name=copy_from_name)
+                        listsmodule.treedump(conn=conn, chat_id=chat_id, name=name, values=values)
                     else:
-                        raise UserError(f'List {copy_from_name!r} does not exist')  # transaction will rollback
-                
+                        raise UserError(f'Unknown copy type {copy_from_name}')
+                case 'tasktree', copy_from_name:
+                    if target_type == 'tree':
+                        values = listsmodule.treeload(conn=conn, chat_id=chat_id, name=copy_from_name)
+                        values = [listsmodule.TreeNodeDump(value=listsmodule.make_task(x.value), rowid=x.rowid, parent=x.parent) for x in values]
+                        listsmodule.treedump(conn=conn, chat_id=chat_id, name=name, values=values)
+                    elif target_type == 'tasktree':
+                        values = listsmodule.treeload(conn=conn, chat_id=chat_id, name=copy_from_name)
+                        listsmodule.treedump(conn=conn, chat_id=chat_id, name=name, values=values)
+                    else:
+                        raise AssertionError
                 case _:
                     raise AssertionError(f'Internal error on type_list variable: {type_list}')
 
@@ -3029,8 +3084,7 @@ class listsmodule:
                         if my_simple_sql((''' select 1 from List where chat_id=? and lower(name)=lower(?) ''', (self.get_chat_id(), x,) )):
                             name = x
                         else:
-                            self.send(f"List '{x}' does not exist")
-                            return
+                            return await self.send(f"List '{x}' does not exist")
                 
                 self.do_it(conn=conn, chat_id=self.get_chat_id(), name=name)
                 await self.send(f"List named {name!r} deleted")
