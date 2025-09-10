@@ -2545,7 +2545,7 @@ class listsmodule:
         listid, = only_one(my_simple_sql(('''select rowid from List where chat_id=? and lower(name)=lower(?)''', (chat_id, name,))))
         
         mapped = {}
-        
+
         cursor = conn.cursor()
         for node in values:
             cursor.execute('''insert into ListElement(listid, value) VALUES (?, ?)''', (listid, node.value, ))
@@ -2577,7 +2577,7 @@ class listsmodule:
                 case 'copy', copy_from_name:
                     if listsmodule.list_exists(conn=conn, chat_id=chat_id, name=copy_from_name):
                         actual_type = only_one(only_one(my_simple_sql((''' select type from List where chat_id=? AND lower(name)=lower(?) ''', (chat_id, copy_from_name, )))))
-                        if actual_type not in ('list', 'tasklist', ):
+                        if actual_type not in ('list', 'tasklist', 'tree', ):
                             raise UserError("Impossible at the moment")
                     else:
                         raise UserError(f'List {copy_from_name!r} does not exist')  # transaction will rollback
@@ -2601,11 +2601,22 @@ class listsmodule:
                     pass # nothing to do more
 
                 case 'copy', copy_from_name:
-                    values = listsmodule.load(conn=conn, chat_id=chat_id, name=copy_from_name)
-                    listsmodule.dump(conn=conn, chat_id=chat_id, name=name, values=values)
+                    if actual_type in ('list', 'tasklist'):
+                        values = listsmodule.load(conn=conn, chat_id=chat_id, name=copy_from_name)
+                        listsmodule.dump(conn=conn, chat_id=chat_id, name=name, values=values)
+                    elif actual_type in ('tree', 'tasktree'):
+                        values = listsmodule.treeload(conn=conn, chat_id=chat_id, name=copy_from_name)
+                        listsmodule.treedump(conn=conn, chat_id=chat_id, name=name, values=values)
+                    else:
+                        raise UserError(f'Unknown copy type {copy_from_name}')
                 case 'tasktree', copy_from_name:
-                    values = listsmodule.treeload(conn=conn, chat_id=chat_id, name=copy_from_name)
-                    listsmodule.treedump(conn=conn, chat_id=chat_id, name=name, values=values)
+                    if actual_type == 'tree':
+                        values = listsmodule.treeload(conn=conn, chat_id=chat_id, name=copy_from_name)
+                        values = list(map(listsmodule.make_task, values))
+                        listsmodule.treedump(conn=conn, chat_id=chat_id, name=name, values=values)
+                    elif actual_type == 'tasktree':
+                        values = listsmodule.treeload(conn=conn, chat_id=chat_id, name=copy_from_name)
+                        listsmodule.treedump(conn=conn, chat_id=chat_id, name=name, values=values)
                 case _:
                     raise AssertionError(f'Internal error on type_list variable: {type_list}')
 
