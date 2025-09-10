@@ -2576,16 +2576,17 @@ class listsmodule:
             match type_list:
                 case 'copy', copy_from_name:
                     if listsmodule.list_exists(conn=conn, chat_id=chat_id, name=copy_from_name):
-                        actual_type = only_one(only_one(my_simple_sql((''' select type from List where chat_id=? AND lower(name)=lower(?) ''', (chat_id, copy_from_name, )))))
+                        actual_type = target_type = only_one(only_one(my_simple_sql((''' select type from List where chat_id=? AND lower(name)=lower(?) ''', (chat_id, copy_from_name, )))))
                         if actual_type not in ('list', 'tasklist', 'tree', ):
                             raise UserError("Impossible at the moment")
                     else:
                         raise UserError(f'List {copy_from_name!r} does not exist')  # transaction will rollback
                 case 'tasktree', copy_from_name:
+                    actual_type = 'tasktree'
                     if listsmodule.list_exists(conn=conn, chat_id=chat_id, name=copy_from_name):
-                        actual_type = only_one(only_one(my_simple_sql((''' select type from List where chat_id=? AND lower(name)=lower(?) ''', (chat_id, copy_from_name, )))))
-                        if actual_type not in ('tree', 'tasktree'):
-                            raise UserError("Impossible to create {} from {}".format('tasktree', actual_type))
+                        target_type = only_one(only_one(my_simple_sql((''' select type from List where chat_id=? AND lower(name)=lower(?) ''', (chat_id, copy_from_name, )))))
+                        if target_type not in ('tree', 'tasktree'):
+                            raise UserError("Impossible to create {} from {}".format('tasktree', target_type))
                     else:
                         raise UserError(f'List {copy_from_name!r} does not exist')  # transaction will rollback
                 case _:
@@ -2610,13 +2611,15 @@ class listsmodule:
                     else:
                         raise UserError(f'Unknown copy type {copy_from_name}')
                 case 'tasktree', copy_from_name:
-                    if actual_type == 'tree':
+                    if target_type == 'tree':
                         values = listsmodule.treeload(conn=conn, chat_id=chat_id, name=copy_from_name)
-                        values = list(map(listsmodule.make_task, values))
+                        values = [listsmodule.TreeNodeDump(value=listsmodule.make_task(x.value), rowid=x.rowid, parent=x.parent) for x in values]
                         listsmodule.treedump(conn=conn, chat_id=chat_id, name=name, values=values)
-                    elif actual_type == 'tasktree':
+                    elif target_type == 'tasktree':
                         values = listsmodule.treeload(conn=conn, chat_id=chat_id, name=copy_from_name)
                         listsmodule.treedump(conn=conn, chat_id=chat_id, name=name, values=values)
+                    else:
+                        raise AssertionError
                 case _:
                     raise AssertionError(f'Internal error on type_list variable: {type_list}')
 
