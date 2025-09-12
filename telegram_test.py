@@ -445,7 +445,6 @@ async def list_responder(msg: str, send: AsyncSend, *, update, context):
                             listsmodule.replaceinlist.do_it(**PP())
                     
                     elif operation in ('insertchild', 'addchild', ):
-                        print('list_type', list_type)
                         if list_type_is_tree:
                             if list_type in ('tasktree', ):
                                 listsmodule.tasktreeinsertchild.do_it(**PP())
@@ -3022,7 +3021,9 @@ class listsmodule:
                     run_on(x, level+1)
 
             if itree:
-                run_on(node, 0)
+                xv, = only_one(my_simple_sql((''' select value from ListElement where rowid = ? ''', (node, ))))
+                bits.append((0, xv))
+                run_on(node, 1)
             else:
                 for x, xv in my_simple_sql((''' select rowid, value from ListElement where listid=? and tree_parent IS NULL ''', (listid, ))):
                     bits.append((0, xv))
@@ -3069,7 +3070,9 @@ class listsmodule:
             
             if itree:
                 trail = list(map(str, itree))
-                run_on(node, level=0)
+                xv, = only_one(my_simple_sql((''' select value from ListElement where rowid=?''', (node, ))))
+                bits.append((0 * '  ' + '.'.join(trail), xv))
+                run_on(node, level=1)
 
             else:
                 trail = []
