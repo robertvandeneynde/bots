@@ -373,14 +373,10 @@ async def list_responder(msg: str, send: AsyncSend, *, update, context):
                     if operation in ('add', 'append'):
                         match list_type:
                             case 'tasklist' | 'tasktree':
-                                IsTask = re.compile("^\\[\\s*(x|)\\s*\\].*$")
-                                if IsTask.fullmatch(parameters):
-                                    modified_value = parameters.strip()
-                                else:
-                                    modified_value = '[ ]' + ' ' + parameters.strip()
-                                listsmodule.addtolist.do_it(conn=conn, name=list_name, chat_id=chat_id, value=modified_value)
+                                modified_value = listsmodule.make_task(parameters)
+                                listsmodule.addtolist.do_it(**P, value=modified_value)
                             case _:
-                                listsmodule.addtolist.do_it(conn=conn, name=list_name, chat_id=chat_id, value=parameters)
+                                listsmodule.addtolist.do_it(**P(), value=parameters)
                             
                     elif operation in ('print', 'list', ):
                         if list_type_is_tree:
@@ -425,13 +421,17 @@ async def list_responder(msg: str, send: AsyncSend, *, update, context):
                         if list_type_is_tree:
                             listsmodule.delintree(**P()).run(parameters=parameters)
                         else:
-                            listsmodule.delinlist.do_it(conn=conn, name=list_name, chat_id=chat_id, value=parameters)
+                            listsmodule.delinlist.do_it(**P(), value=parameters)
                     
                     elif operation in ('insert', ):
                         if list_type in ('tasklist', ):
-                            listsmodule.insertintasklist.do_it(conn=conn, name=list_name, chat_id=chat_id, parameters=parameters)
+                            listsmodule.insertintasklist.do_it(**P(), parameters=parameters)
+                        elif list_today in ('tasktree', ):
+                            listsmodule.insertintasktree.do_it(**P(), parameters=parameters)
+                        elif list_type in ('tree', ):
+                            listsmodule.insertintree.do_it(**P(), parameters=parameters)
                         else:
-                            listsmodule.insertinlist.do_it(conn=conn, name=list_name, chat_id=chat_id, parameters=parameters)
+                            listsmodule.insertinlist.do_it(**P(), parameters=parameters)
                     
                     elif operation in ('rep', 'replace'):
                         if list_type in ('tasklist', ):
@@ -2657,8 +2657,7 @@ class listsmodule:
             listsmodule.treeinsertchild(**P).run(parameters=itree_str + ' ' + value)
     
     def make_task(x):
-        IsTask = re.compile("^\\[\\s*(x|)\\s*\\].*$")
-        if IsTask.fullmatch(x):
+        if ListLang.IsTask.fullmatch(x):
             return x.strip()
         else:
             return '[ ]' + ' ' + x.strip()
@@ -2677,26 +2676,21 @@ class listsmodule:
         @staticmethod
         def do_it(*, conn, chat_id, name, parameters):
             i, to_add = parameters.split(maxsplit=1)
-
-            IsTask = re.compile("^\\[\\s*(x|)\\s*\\].*$")
-            if IsTask.fullmatch(to_add):
-                modified_value = to_add.strip()
-            else:
-                modified_value = '[ ]' + ' ' + to_add.strip()
-
+            modified_value = listsmodule.make_task(to_add)
             listsmodule.insertinlist.do_it(conn=conn, chat_id=chat_id, name=name, parameters=i + ' ' + modified_value)
+    
+    class insertintasktree:
+        @staticmethod
+        def do_it(*, parameters, **P):
+            i, to_add = parameters.split(maxsplit=1)
+            modified_value = listsmodule.make_task(to_add)
+            listsmodule.insertintree.do_it(**P, parameters=i + ' ' + modified_value)
 
     class replaceintasklist:
         @staticmethod
         def do_it(*, parameters, **P):
             i, to_rep = parameters.split(maxsplit=1)
-
-            IsTask = ListLang.IsTask
-            if IsTask.fullmatch(to_rep):
-                mv = to_rep.strip()
-            else:
-                mv = '[ ]' + ' ' + to_rep.strip()
-            
+            mv = listsmodule.make_task(to_rep)
             listsmodule.replaceinlist.do_it(parameters=' '.join([i, mv]), **P)
     class replaceintasktree:
         @staticmethod
@@ -2719,6 +2713,12 @@ class listsmodule:
 
     def get_listid(*, chat_id, name, my_simple_sql):
         return only_one(only_one(my_simple_sql(('''select rowid from List where chat_id=? and lower(name)=lower(?)''', (chat_id, name,)))))
+
+
+    class insertintree:
+        @staticmethod
+        def do_it(*, conn, chat_id, name, parameters):
+            raise UserError('Not yet possible')
 
     class insertinlist(GeneralAction):
         @staticmethod
@@ -2799,8 +2799,7 @@ class listsmodule:
 
                 rowid, old_value = rowids[int(value)]
 
-                IsTask = re.compile("^\\[\\s*(x|)\\s*\\](.*)$")
-                if m := IsTask.fullmatch(old_value):
+                if m := ListLang.IsTask.fullmatch(old_value):
                     new_check = direction if direction != 'toggle' else ('' if m.group(1) == 'x' else 'x')
                     new_value = '[' + new_check + ']' + m.group(2)
                 else:
@@ -2825,8 +2824,7 @@ class listsmodule:
 
             old_value, = only_one(self.my_simple_sql(('''select value from ListElement where listid=? and rowid=?''', (self.list_id(), node))))
 
-            IsTask = re.compile("^\\[\\s*(x|)\\s*\\](.*)$")
-            if m := IsTask.fullmatch(old_value):
+            if m := ListLang.IsTask.fullmatch(old_value):
                 if direction == 'toggle':
                     new_check = ' ' if m.group(1) == 'x' else 'x'
                 else:
@@ -2947,14 +2945,7 @@ class listsmodule:
     class extendmultitasklist:
         @staticmethod
         def do_it(*, conn, chat_id, name, values):
-            def Task(x):
-                IsTask = re.compile("^\\[\\s*(x|)\\s*\\].*$")
-                if IsTask.fullmatch(x):
-                    return x.strip()
-                else:
-                    return '[ ]' + ' ' + x.strip()
-            
-            new_values = list(map(Task, values))
+            new_values = list(map(listsmodule.make_task, values))
             listsmodule.extendmultilist.do_it(values=new_values, conn=conn, name=name, chat_id=chat_id)
 
     class shuffle:
