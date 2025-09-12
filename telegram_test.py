@@ -386,7 +386,7 @@ async def list_responder(msg: str, send: AsyncSend, *, update, context):
                         if list_type_is_tree:
                             await send(listsmodule.printtree.it(**P(), parameters=parameters))
                         else:
-                            await send(listsmodule.printlist.it(conn=conn, chat_id=chat_id, name=list_name))
+                            await send(listsmodule.printlist.it(**P(), parameters=parameters))
                         did_edit = False
 
                     elif operation in ('clear', ):
@@ -417,7 +417,7 @@ async def list_responder(msg: str, send: AsyncSend, *, update, context):
                         if list_type_is_tree:
                             await send(listsmodule.enumeratetree.it(**P(), parameters=parameters))
                         else:
-                            await send(listsmodule.enumeratelist.it(**P()))
+                            await send(listsmodule.enumeratelist.it(**P(), parameters=parameters))
                         
                         did_edit = False
                     
@@ -2970,11 +2970,15 @@ class listsmodule:
 
     class printlist(GeneralAction):
         @staticmethod
-        def it(*, conn, chat_id, name):
+        def it(*, conn, chat_id, name, parameters=None):
             my_simple_sql = partial(simple_sql, connection=conn)
 
             listid, = only_one(my_simple_sql(('''select rowid from List where chat_id=? and lower(name)=lower(?)''', (chat_id, name,))))
-            result_list = [x[0] for x in simple_sql((''' select value from ListElement where listid=?''', (listid, ) ))]
+            if not parameters:
+                result_list = [x[0] for x in my_simple_sql((''' select value from ListElement where listid=?''', (listid, ) ))]
+            else:
+                offset = int(parameters) - 1
+                result_list = [x[0] for x in my_simple_sql((''' select value from ListElement where listid=? LIMIT 1 OFFSET ?''', (listid, offset)))]
 
             return '\n'.join(map('- {}'.format, result_list)) if result_list else '/'
             
@@ -3033,13 +3037,19 @@ class listsmodule:
 
     class enumeratelist(GeneralAction):
         @staticmethod
-        def it(*, conn, chat_id, name):
+        def it(*, conn, chat_id, name, parameters):
             my_simple_sql = partial(simple_sql, connection=conn)
 
             listid, = only_one(my_simple_sql(('''select rowid from List where chat_id=? and lower(name)=lower(?)''', (chat_id, name,))))
-            result_list = [x[0] for x in simple_sql((''' select value from ListElement where listid=?''', (listid, ) ))]
+            if not parameters:
+                start = 0
+                result_list = [x[0] for x in simple_sql((''' select value from ListElement where listid=?''', (listid, ) ))]
+            else:
+                offset = int(parameters) - 1
+                start = offset
+                result_list = [x[0] for x in simple_sql((''' select value from ListElement where listid=? LIMIT 1 OFFSET ?''', (listid, offset) ))]
 
-            return '\n'.join(('{}. {}'.format(i, x) for i, x in enumerate(result_list, start=1))) if result_list else '/'
+            return '\n'.join(('{}. {}'.format(i + start, x) for i, x in enumerate(result_list, start=1))) if result_list else '/'
 
     class enumeratetree:
         @staticmethod
