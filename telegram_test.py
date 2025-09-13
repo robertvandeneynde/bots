@@ -426,10 +426,10 @@ async def list_responder(msg: str, send: AsyncSend, *, update, context):
                     elif operation in ('insert', ):
                         if list_type in ('tasklist', ):
                             listsmodule.insertintasklist.do_it(**P(), parameters=parameters)
-                        elif list_today in ('tasktree', ):
+                        elif list_type in ('tasktree', ):
                             listsmodule.insertintasktree.do_it(**P(), parameters=parameters)
                         elif list_type in ('tree', ):
-                            listsmodule.insertintree.do_it(**P(), parameters=parameters)
+                            listsmodule.insertintree(**P()).run(parameters=parameters)
                         else:
                             listsmodule.insertinlist.do_it(**P(), parameters=parameters)
                     
@@ -2684,7 +2684,7 @@ class listsmodule:
         def do_it(*, parameters, **P):
             i, to_add = parameters.split(maxsplit=1)
             modified_value = listsmodule.make_task(to_add)
-            listsmodule.insertintree.do_it(**P, parameters=i + ' ' + modified_value)
+            listsmodule.insertintree(**P).run(parameters=i + ' ' + modified_value)
 
     class replaceintasklist:
         @staticmethod
@@ -2715,10 +2715,40 @@ class listsmodule:
         return only_one(only_one(my_simple_sql(('''select rowid from List where chat_id=? and lower(name)=lower(?)''', (chat_id, name,)))))
 
 
-    class insertintree:
-        @staticmethod
-        def do_it(*, conn, chat_id, name, parameters):
-            raise UserError('Not yet possible')
+    class insertintree(OnTreeAction):
+        def run(self, *, parameters):
+            i, to_add = parameters.split(maxsplit=1)
+            
+            rowids = self.my_simple_sql((''' select rowid, value from ListElement where listid=? AND tree_parent IS NULL''', (listid := self.list_id(), )))
+            childrens = [self.my_simple_sql((''' select rowid from ListElement where tree_parent = ?''', (rowid, ))) for rowid, _ in rowids]
+            childrens = [[only_one(x) for x in X] for X in childrens]
+
+            i = int(i)
+            i = i - 1
+            assert i >= 0
+            assert i < len(rowids)
+            
+            for j in range(i, len(rowids) - 1):
+                rowid, value = rowids[j]
+                nextrowid, nextvalue = rowids[j+1]
+                children = childrens[j]
+                nextchildren = childrens[j+1]
+                
+                self.my_simple_sql((''' update ListElement set value=? where rowid=? ''' , (value, nextrowid, )))
+                for c in children:
+                    self.my_simple_sql((''' update ListElement set tree_parent=? where rowid=? ''' , (nextrowid, c, )))
+
+            if i < len(rowids):
+                self.my_simple_sql((''' update ListElement set value=? where rowid=? ''', (to_add, rowids[i][0], )))
+                
+                cursor = self.conn.cursor()
+                cursor.execute(''' insert into ListElement(listid, value, tree_parent) values(?,?,NULL)''', (listid, rowids[-1][1], ))
+                new_rowid = cursor.lastrowid
+                for c in childrens[-1]:
+                    self.my_simple_sql((''' update ListElement set tree_parent=? where rowid=? ''' , (new_rowid, c, )))
+            else:
+                self.my_simple_sql((''' insert into ListElement(listid, value, tree_parent) values(?,?,NULL)''', (listid, to_add, )))
+        
 
     class insertinlist(GeneralAction):
         @staticmethod
