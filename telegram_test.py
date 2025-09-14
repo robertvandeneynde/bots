@@ -374,7 +374,7 @@ async def list_responder(msg: str, send: AsyncSend, *, update, context):
                         match list_type:
                             case 'tasklist' | 'tasktree':
                                 modified_value = listsmodule.make_task(parameters)
-                                listsmodule.addtolist.do_it(**P, value=modified_value)
+                                listsmodule.addtolist.do_it(**P(), value=modified_value)
                             case _:
                                 listsmodule.addtolist.do_it(**P(), value=parameters)
                             
