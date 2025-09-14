@@ -257,7 +257,7 @@ class ListLang:
 
     OPS_1L = '|'.join(map(re.escape, OPERATIONS_ONE_LINE))
 
-    IsTask = re.compile("^\\[\\s*(x|)\\s*\\].*$")
+    IsTask = re.compile("^\\[\\s*(x|)\\s*\\]\\s*(.*)\\s*$")
 
 async def list_responder(msg: str, send: AsyncSend, *, update, context):
     import regex
