@@ -173,7 +173,6 @@ async def hello_responder(msg:str, send: AsyncSend, *, update, context):
 def detect_currencies(msg: str):
     return [(value, MONEY_CURRENCIES_ALIAS[currency_raw.lower()]) for value, currency_raw in MONEY_RE.findall(msg)]
 
-from typing import Callable, Awaitable, Tuple, Union
 AsyncSend = Callable[[Update, CallbackContext], Awaitable[None]]
 
 async def money_responder(msg:str, send: AsyncSend, *, update, context):
@@ -988,7 +987,6 @@ def simple_sql(query, *, connection=None):
     with sqlite3.connect("db.sqlite") as conn:
         return conn.execute(*query).fetchall()
 
-from typing import TypedDict
 SimpleSqlModifyReturn = TypedDict('SimpleSqlModifyReturn', {'rowcount': int})
 
 def simple_sql_modify(query, *, connection=None) -> SimpleSqlModifyReturn:
@@ -1348,11 +1346,8 @@ class DatetimeText:
 
 
 from collections import namedtuple
-from typing import NamedTuple
-from typing import TypedDict
-
+from typing import Callable, Awaitable, Tuple, Union, Iterable, Literal, TypedDict, NamedTuple, Optional
 from datetime import date as Date, time as Time, datetime as Datetime, timedelta as Timedelta
-from typing import Optional
 
 class ParsedEventMiddleNoName(NamedTuple):
     date: str
@@ -3163,8 +3158,14 @@ def list_del(li, i):
 def natural_filter(x):
     return filter(None, x)
 
+
+class EventDictAnalysed(TypedDict):
+    """
+    keys are lowercase
+    """
+
 import yaml
-def addevent_analyse_yaml(update, context, text:str) -> {'what': str, 'when': str}:
+def addevent_analyse_yaml(update, context, text:str) -> EventDictAnalysed:
     text = '\n'.join(l for l in text.splitlines() if ':' in l)
     Y = yaml.safe_load(text)
     if not isinstance(Y, dict):
@@ -3206,7 +3207,7 @@ def only_one(it, error=None, *, many=ValueError, none=ValueError):
 def only_one_with_error(error):
     return partial(only_one, many=error, none=error)
 
-def addevent_analyse_from_bot(update, context, text:str) -> {'what': str, 'when': str}:
+def addevent_analyse_from_bot(update, context, text:str) -> EventDictAnalysed:
     my_timezone = induce_my_timezone(user_id=update.message.from_user.id, chat_id=update.effective_chat.id)
 
     lines = GetOrEmpty(text.splitlines())
@@ -3319,7 +3320,7 @@ def split_event_with_where_etc(event):
         del event['link']
     return event
 
-def addevent_analyse(update, context):
+def addevent_analyse(update, context) -> EventDictAnalysed:
     if not (reply := get_reply(update.message)):
         raise UserError("Cannot analyse if there is nothing to analyse")
 
@@ -3777,7 +3778,6 @@ def enrich_location_with_db(events, *, chat_id):
         new_events.append(new_event)
     return new_events
 
-from typing import Literal
 async def list_days_or_today(update: Update, context: CallbackContext, mode: Literal['list', 'today', 'tomorrow', 'dayofweek'], mode_args={}, relative=False, formatting:Literal['normal', 'linkdays', 'crazyjamdays', 'linkdayshtml']='normal'):
     from datetime import time as Time
     
@@ -4040,7 +4040,6 @@ async def db_delete_event(update, context, send, *, chat_id, event_id, tz):
     
     await send(f"Event deleted" if infos is None else "Event deleted: {}".format(dict(date=date_tz, name=infos.get('name'))))
 
-from typing import Iterable
 def n_to_1_dict(x:dict|Iterable):
     gen = x.items() if isinstance(x, dict) else x
     
