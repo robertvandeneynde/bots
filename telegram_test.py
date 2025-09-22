@@ -7,6 +7,8 @@ from telegram_settings_local import TOKEN
 from telegram_settings_local import FRIENDS_USER
 from telegram_settings_local import SPECIAL_ENTITIES
 
+from typing import Callable, Awaitable, Tuple, Union, Iterable, Literal, TypedDict, NamedTuple, Optional
+
 import json
 
 import enum
@@ -260,6 +262,8 @@ class ListLang:
 
 async def list_responder(msg: str, send: AsyncSend, *, update, context):
     import regex
+
+    read_chat_settings = make_read_chat_settings(update, context)
     
     RE_ONE_LINE, RE_OP_MULTI_LINE, RE_MULTI_EQUALS_PLUS_TYPE = (
         regex.compile(r"(\p{L}+)(\s*[.]\s*|\s+)(" + ListLang.OPS_1L + "|[=])\s*(.*?)", regex.IGNORECASE),
@@ -378,10 +382,12 @@ async def list_responder(msg: str, send: AsyncSend, *, update, context):
                                 listsmodule.addtolist.do_it(**P(), value=parameters)
                             
                     elif operation in ('print', 'list', ):
+                        space_between_lines = do_if_setting_on(read_chat_settings('list.space_between_lines'))
                         if list_type_is_tree:
-                            await send(listsmodule.printtree.it(**P(), parameters=parameters))
+                            indent = int_or_none(read_chat_settings('list.indent'))
+                            await send(listsmodule.printtree.it(**P(), parameters=parameters, indent=indent, space_between_lines=space_between_lines))
                         else:
-                            await send(listsmodule.printlist.it(**P(), parameters=parameters))
+                            await send(listsmodule.printlist.it(**P(), parameters=parameters, space_between_lines=space_between_lines))
                         did_edit = False
 
                     elif operation in ('clear', ):
@@ -409,10 +415,12 @@ async def list_responder(msg: str, send: AsyncSend, *, update, context):
                         listsmodule.shuffle.do_it(conn=conn, name=list_name, chat_id=chat_id)
                     
                     elif operation in ('enum', 'enumerate', ):
+                        space_between_lines = do_if_setting_on(read_chat_settings('list.space_between_lines'))
                         if list_type_is_tree:
-                            await send(listsmodule.enumeratetree.it(**P(), parameters=parameters))
+                            indent = int_or_none(read_chat_settings('list.indent'))
+                            await send(listsmodule.enumeratetree.it(**P(), parameters=parameters, indent=indent, space_between_lines=space_between_lines))
                         else:
-                            await send(listsmodule.enumeratelist.it(**P(), parameters=parameters))
+                            await send(listsmodule.enumeratelist.it(**P(), parameters=parameters, space_between_lines=space_between_lines))
                         
                         did_edit = False
                     
@@ -478,6 +486,14 @@ async def list_responder(msg: str, send: AsyncSend, *, update, context):
             
         else:
             return await send(f"I should do the operation {operation!r} on the list named {list_name!r} (not implemeted yet)")
+
+def int_or_none(setting):
+    if setting is None:
+        return None
+    try:
+        return int(setting)
+    except ValueError:
+        return None
 
 async def eventedit_responder(msg:str, send: AsyncSend, *, update, context):
     reply = get_reply(update.message)
@@ -1346,7 +1362,6 @@ class DatetimeText:
 
 
 from collections import namedtuple
-from typing import Callable, Awaitable, Tuple, Union, Iterable, Literal, TypedDict, NamedTuple, Optional
 from datetime import date as Date, time as Time, datetime as Datetime, timedelta as Timedelta
 
 class ParsedEventMiddleNoName(NamedTuple):
@@ -2986,7 +3001,7 @@ class listsmodule:
 
     class printlist(GeneralAction):
         @staticmethod
-        def it(*, conn, chat_id, name, parameters=None):
+        def it(*, conn, chat_id, name, parameters=None, space_between_lines:bool):
             my_simple_sql = partial(simple_sql, connection=conn)
 
             listid, = only_one(my_simple_sql(('''select rowid from List where chat_id=? and lower(name)=lower(?)''', (chat_id, name,))))
@@ -2996,11 +3011,14 @@ class listsmodule:
                 offset = int(parameters) - 1
                 result_list = [x[0] for x in my_simple_sql((''' select value from ListElement where listid=? LIMIT 1 OFFSET ?''', (listid, offset)))]
 
-            return '\n'.join(map('- {}'.format, result_list)) if result_list else '/'
+            sep = lambda: '\n' if not space_between_lines else '\n\n'
+
+            return sep().join(map('- {}'.format, result_list)) if result_list else '/'
             
         async def run(self):
             with sqlite3.connect("db.sqlite") as conn:
                 my_simple_sql = partial(simple_sql, connection=conn)
+                read_chat_settings = make_read_chat_settings(self.update, self.context)
                 conn.execute('begin transaction')
 
                 match self.Args[0]:
@@ -3012,12 +3030,14 @@ class listsmodule:
                         else:
                             name = 'list'
                 
-                await self.send(listsmodule.printlist.it(conn=conn, chat_id=self.get_chat_id(), name=name))
+                space_between_lines = do_if_setting_on(read_chat_settings('list.space_between_lines'))
+
+                await self.send(listsmodule.printlist.it(conn=conn, chat_id=self.get_chat_id(), name=name, space_between_lines=space_between_lines))
                 conn.execute('end transaction')
     
     class printtree(GeneralAction):
         @staticmethod
-        def it(*, conn, chat_id, name, parameters):
+        def it(*, conn, chat_id, name, parameters, indent:int, space_between_lines:bool=False):
             my_simple_sql = partial(simple_sql, connection=conn)
             
             (listid,), = my_simple_sql(('''select rowid from List where chat_id=? and lower(name)=lower(?)''', (chat_id, name,)))
@@ -3049,11 +3069,14 @@ class listsmodule:
                     bits.append((0, xv))
                     run_on(x, 1)
 
-            return '\n'.join('{}- {}'.format(x * '  ', y) for x, y in bits) if bits else '/'
+            indented = lambda x: (x * '  ' if indent is None else x * indent * ' ')
+            sep = lambda: '\n' if not space_between_lines else '\n\n'
+
+            return sep().join('{}- {}'.format(indented(x), y) for x, y in bits) if bits else '/'
 
     class enumeratelist(GeneralAction):
         @staticmethod
-        def it(*, conn, chat_id, name, parameters):
+        def it(*, conn, chat_id, name, parameters, space_between_lines:bool=False):
             my_simple_sql = partial(simple_sql, connection=conn)
 
             listid, = only_one(my_simple_sql(('''select rowid from List where chat_id=? and lower(name)=lower(?)''', (chat_id, name,))))
@@ -3065,11 +3088,13 @@ class listsmodule:
                 start = offset
                 result_list = [x[0] for x in simple_sql((''' select value from ListElement where listid=? LIMIT 1 OFFSET ?''', (listid, offset) ))]
 
-            return '\n'.join(('{}. {}'.format(i + start, x) for i, x in enumerate(result_list, start=1))) if result_list else '/'
+            sep = lambda: '\n' if not space_between_lines else '\n\n'
+
+            return sep().join(('{}. {}'.format(i + start, x) for i, x in enumerate(result_list, start=1))) if result_list else '/'
 
     class enumeratetree:
         @staticmethod
-        def it(*, conn, chat_id, name, parameters=''):
+        def it(*, conn, chat_id, name, parameters='', indent:int, space_between_lines:bool):
             my_simple_sql = partial(simple_sql, connection=conn)
             args = parameters.split()
 
@@ -3090,25 +3115,28 @@ class listsmodule:
             def run_on(rowid, level):
                 for i, (x, xv) in enumerate(my_simple_sql((''' select rowid, value from ListElement where listid=? and tree_parent IS ? ''', (listid, rowid, )))):
                     trail.append(str(i+1))
-                    bits.append((level * '  ' + '.'.join(trail), xv))
+                    bits.append(('.'.join(trail), xv, level))
                     run_on(x, level+1)
                     trail.pop()
             
             if itree:
                 trail = list(map(str, itree))
                 xv, = only_one(my_simple_sql((''' select value from ListElement where rowid=?''', (node, ))))
-                bits.append((0 * '  ' + '.'.join(trail), xv))
+                bits.append(('.'.join(trail), xv, 0))
                 run_on(node, level=1)
 
             else:
                 trail = []
                 for i, (x, xv) in enumerate(my_simple_sql((''' select rowid, value from ListElement where listid=? and tree_parent IS NULL ''', (listid, )))):
                     trail.append(str(i+1))
-                    bits.append(('.'.join(trail), xv))
+                    bits.append(('.'.join(trail), xv, 0))
                     run_on(x, 1)
                     trail.pop()
 
-            return '\n'.join('{}. {}'.format(x, y) for x, y in bits) if bits else '/'
+            indented = lambda x: (x * '  ' if indent is None else x * indent * ' ')
+            sep = lambda: '\n' if not space_between_lines else '\n\n'
+
+            return sep().join('{}{}. {}'.format(indented(z), x, y) for x, y, z in bits) if bits else '/'
         
     class dirlist(GeneralAction):
         @staticmethod
@@ -4236,6 +4264,8 @@ ACCEPTED_SETTINGS_CHAT = (
     'event.delevent.display',
     'event.location.autocomplete',
     'event.commands.dayofweek',
+    'list.space_between_lines',
+    'list.indent',
 ) + tuple(
     remove_dup_keep_order(setting + '.active' for _, setting, _ in RESPONDERS)
 )
@@ -4368,6 +4398,10 @@ def CONVERSION_SETTINGS_BUILDER():
         'from_db': lambda s: list(map(str.upper, json.loads(s))),
         'to_db': lambda L: json.dumps(list(map(str.upper, L)))
     }
+    int_serializer = {
+        'from_db': lambda s: int(s),
+        'to_db': lambda v: v,
+    }
     list_of_event_admins = list_of({
         'from_db': EventAdmin.from_json,
         'to_db': lambda x: (
@@ -4390,6 +4424,8 @@ def CONVERSION_SETTINGS_BUILDER():
         'event.addevent.display_file': on_off_serializer,
         'event.delevent.display': on_off_serializer,
         'event.addevent.display_forwarded_infos': on_off_serializer,
+        'list.space_between_lines': on_off_serializer,
+        'list.indent': int_serializer,
     }
     mapping_user = {
         'event.timezone': timezone_serializer,
