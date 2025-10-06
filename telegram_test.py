@@ -542,7 +542,7 @@ class GetOrEmpty(list):
 InfiniteEmptyList = GetOrEmpty
 
 from collections import namedtuple
-NamedChatDebt = namedtuple('NamedChatDebt', 'chat_id, debitor_id, creditor_id, amount, currency')
+NamedChatDebt = namedtuple('NamedChatDebt', 'chat_id, debitor_id, creditor_id, amount, currency, reason')
 
 async def sharemoney_responder(msg:str, send: AsyncSend, *, update, context):
     chat_id = update.effective_chat.id
@@ -604,12 +604,29 @@ async def sharemoney_responder(msg:str, send: AsyncSend, *, update, context):
     import regex
     name = regex.compile(r"(\p{L}\w*)([.]([A-Za-z]+))?")
     amount = Amount()
+    currency_re = regex.compile('[A-Z]{3}')
     Args = GetOrEmpty(msg.split())
-    if name.fullmatch(Args[0]) and Args[1] in ('owes', 'paid') and name.fullmatch(Args[2]) and amount.matches(Args[3]) and len(Args) in (4, 5):
-        first_name, operation, second_name, amount_str, *rest = Args
 
-        Rest = GetOrEmpty(rest)
-        currency_string: str = Rest[0].upper() or None
+    # Name owes Name 50
+    # Name owes Name 50 [EUR]
+    # Name owes Name 50 [EUR] [for Something]
+
+    if name.fullmatch(Args[0]) and Args[1] in ('owes', 'paid') and name.fullmatch(Args[2]) and amount.matches(Args[3]):
+        i = 4
+        if currency_re.fullmatch(Args[i]):
+            currency_string: str = Args[i].upper()
+            i += 1
+        else:
+            currency_string: str = None
+        
+        if Args[i] in ('for', '#') and Args[i+1]:
+            reason: str = ' '.join(Args[i+1:])
+        elif Args[i].startswith('#') and Args[i][1:]:
+            reason: str = ' '.join(Args[i][1:])
+        else:
+            reason: str = None
+
+        first_name, operation, second_name, amount_str = Args[:4]
 
         if operation == 'paid':
             first_name, second_name = second_name, first_name
@@ -629,7 +646,7 @@ async def sharemoney_responder(msg:str, send: AsyncSend, *, update, context):
                     raise UserError("Currencies match")
 
         if currency_string:
-            raise ValueError('I cannot deal properly with currencies atm, but you can use the equivalent "account" notation: A.EUR owes B.EUR 5')
+            raise UserError('I cannot deal properly with currencies atm, but you can use the equivalent "account" notation: A.EUR owes B.EUR 5')
 
         if first_currency:
             first_name = name.fullmatch(first_name).group(1) + "." + first_currency.upper()
@@ -641,14 +658,16 @@ async def sharemoney_responder(msg:str, send: AsyncSend, *, update, context):
             creditor_id=second_name,
             chat_id=chat_id,
             amount=amount.parse_string(amount_str, parse_all=True)[0].eval(),
+            reason=reason,
             currency=currency_string)
         
         simple_sql((
-            'insert into NamedChatDebt(debitor_id, creditor_id, chat_id, amount, currency) values (?,?,?,?,?)',
-            (debt.debitor_id, debt.creditor_id, debt.chat_id, debt.amount, debt.currency)))
+            'insert into NamedChatDebt(debitor_id, creditor_id, chat_id, amount, currency, reason) values (?,?,?,?,?,?)',
+            (debt.debitor_id, debt.creditor_id, debt.chat_id, debt.amount, debt.currency, debt.reason)))
         
-        return await send('Debt "{d.debitor_id} owes {d.creditor_id} {d.amount}" created'.format(d=debt) if not debt.currency else
-                          'Debt "{d.debitor_id} owes {d.creditor_id} {d.amount} {d.currency}" created'.format(d=debt))
+        return await send(' '.join(filter(None,
+            ('Debt', f'"{debt.debitor_id}"', 'owes', f'"{debt.creditor_id}"', f'{debt.amount}', f'{debt.currency}' if debt.currency else '', (f'for {debt.reason}' if debt.reason else ''))
+        )))
 
 RESPONDERS = (
     (hello_responder, 'hello', 'on'),
@@ -4699,6 +4718,11 @@ def migration17():
         conn.execute('alter table ListElement add column tree_parent REFERENCES ListElement(rowid) DEFAULT NULL')
         conn.execute('end transaction')
 
+def migration18():
+    with sqlite3.connect('db.sqlite') as conn:
+        conn.execute('begin transaction')
+        conn.execute("alter table NamedChatDebt add column reason DEFAULT NULL")
+        conn.execute('end transaction')
 
 def get_latest_euro_rates_from_api() -> json:
     import requests
