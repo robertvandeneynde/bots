@@ -4871,7 +4871,7 @@ async def sharemoney(update, context):
 async def listdebts(update, context):
     send = make_send(update, context)
     chat_id = update.effective_chat.id
-    lines = simple_sql_dict(('select chat_id, debitor_id, creditor_id, amount, currency from NamedChatDebt where chat_id=?', (chat_id,)))
+    lines = simple_sql_dict(('select chat_id, debitor_id, creditor_id, amount, currency, reason from NamedChatDebt where chat_id=?', (chat_id,)))
     debts_sum = {}
     
     for debt in (NamedChatDebt(**x) for x in lines):
