@@ -4868,17 +4868,6 @@ async def sharemoney(update, context):
     except UsageError:
         return await send('Usage: /sharemoney on|off')
 
-async def detaildebts(update, context):
-    send = make_send(update, context)
-    chat_id = update.effective_chat.id
-
-    lines = simple_sql_dict(('select chat_id, debitor_id, creditor_id, amount, currency from NamedChatDebt where chat_id=?', (chat_id,)))
-
-    return await send('\n'.join(
-        "{} owes {} {}".format(d.debitor_id, d.creditor_id, d.amount)
-        for d in (NamedChatDebt(**x) for x in lines)
-    ))
-
 async def listdebts(update, context):
     send = make_send(update, context)
     chat_id = update.effective_chat.id
@@ -4905,7 +4894,22 @@ async def listdebts(update, context):
         "{} owes {} {}".format(creditor, debitor, -amount) if amount < 0 else
         "{} and {} are even".format(debitor, creditor)
         for (debitor, creditor), amount in debts_sum.items()) or 'No debts in this chat !')
+
+async def detaildebts(update, context):
+    last_n: int = int(GetOrEmpty(context.args)[0] or 30)
     
+    send = make_send(update, context)
+    chat_id = update.effective_chat.id
+    count = simple_sql_dict(('select count(*) as c from NamedChatDebt where chat_id=?'))[0]['c']
+    lines = simple_sql_dict(('select chat_id, debitor_id, creditor_id, amount, currency, reason from NamedChatDebt where chat_id=? ORDER BY rowid DESC LIMIT ?', (chat_id, last_n)))
+    to_print = []
+    if count > len(lines):
+        to_print.append('...')
+    for debt in reversed(NamedChatDebt(**x) for x in lines):
+        to_print.append(' '.join(filter(None,
+            ('Debt', f'"{debt.debitor_id}"', 'owes', f'"{debt.creditor_id}"', f'{debt.amount}', f'{debt.currency}' if debt.currency else '', (f'for {debt.reason}' if debt.reason else ''))
+        )))
+    return await send('\n'.join(to_print) or 'No debts in that chat !')
 
 async def help(update, context):
     send = make_send(update, context)
@@ -5098,6 +5102,7 @@ COMMAND_DESC = {
     "sleep": "Record personal sleep cycle and make graphs", 
     "sharemoney": "Manage money between users (shared bank account, add a debt)",
     "listdebts": "List debts between users (sharemoney)",
+    "detaildebts": "List debts between users in details (sharemoney)",
 
     'createlist': 'Create a list (of strings, by default)',
     'addtolist': 'Add to the end of a list',
@@ -5139,7 +5144,7 @@ COMMAND_LIST = (
     'help',
     'uniline', 'nuniline',
     #'sleep',
-    'sharemoney', 'listdebts',
+    'sharemoney', 'listdebts', 'detaildebts',
     #
     'createlist',
     'addtolist',
