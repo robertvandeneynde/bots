@@ -666,7 +666,7 @@ async def sharemoney_responder(msg:str, send: AsyncSend, *, update, context):
             (debt.debitor_id, debt.creditor_id, debt.chat_id, debt.amount, debt.currency, debt.reason)))
         
         return await send(' '.join(filter(None,
-            ('Debt', f'"{debt.debitor_id}"', 'owes', f'"{debt.creditor_id}"', f'{debt.amount}', f'{debt.currency}' if debt.currency else '', (f'for {debt.reason}' if debt.reason else ''))
+            ('Debt created:', f'"{debt.debitor_id}"', 'owes', f'"{debt.creditor_id}"', f'{debt.amount}', f'{debt.currency}' if debt.currency else '', (f'for {debt.reason}' if debt.reason else ''))
         )))
 
 RESPONDERS = (
@@ -4900,12 +4900,12 @@ async def detaildebts(update, context):
     
     send = make_send(update, context)
     chat_id = update.effective_chat.id
-    count = simple_sql_dict(('select count(*) as c from NamedChatDebt where chat_id=?'))[0]['c']
+    count = simple_sql_dict(('select count(*) as c from NamedChatDebt where chat_id=?', (chat_id,)))[0]['c']
     lines = simple_sql_dict(('select chat_id, debitor_id, creditor_id, amount, currency, reason from NamedChatDebt where chat_id=? ORDER BY rowid DESC LIMIT ?', (chat_id, last_n)))
     to_print = []
     if count > len(lines):
         to_print.append('...')
-    for debt in reversed(NamedChatDebt(**x) for x in lines):
+    for debt in reversed([NamedChatDebt(**x) for x in lines]):
         to_print.append(' '.join(filter(None,
             ('Debt', f'"{debt.debitor_id}"', 'owes', f'"{debt.creditor_id}"', f'{debt.amount}', f'{debt.currency}' if debt.currency else '', (f'for {debt.reason}' if debt.reason else ''))
         )))
