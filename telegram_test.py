@@ -4254,6 +4254,69 @@ async def mytimezone(update: Update, context: CallbackContext):
         set_my_timezone(update.message.from_user.id, tz)
         return await send("Your timezone is now: {}".format(tz))
 
+async def timezonealias(update: Update, context: CallbackContext):
+    send = make_send(update, context)
+    chat_id = update.effective_chat.id
+
+    if not context.args:
+        # get timezone
+        return await send("Usage: /timezonealias abc = timezone")
+    elif len(context.args) == 1:
+        alias, = context.args
+        tz = None
+    elif len(context.args) == 2:
+        alias, tz = context.args
+    elif len(context.args) == 3:
+        alias, tz_continent, tz_city = context.args
+        tz = tz_continent + "/" + tz_city
+    else:
+        raise UserError("Too much arguments")
+    
+    if tz is None:
+        # read
+        try:
+            return await send(get_timezonealias_from_table(update, context, alias=alias, chat_id=chat_id))
+        except NoRecords:
+            return await send(f"No timezone for {alias!r}")
+    else:
+        # write
+        try:
+            ZoneInfo(tz)
+        except ZoneInfoNotFoundError:
+            raise UserError(f"{tz!r} is not a timezone")
+        set_timezonealias_to_table(update, context, chat_id=chat_id, alias=alias, real=tz)
+        return await send("Alias {alias!r} saved")
+
+class TooManyRecords(ValueError):
+    pass
+
+class NoRecords(ValueError):
+    pass
+
+def get_timezonealias_from_table(update, context, chat_id, alias):
+    return only_one(
+        only_one(
+            simple_sql(('''select real from TimezoneAlias where chat_id = ? and alias = ?''', (chat_id, alias))),
+            none=NoRecords,
+            many=TooManyRecords,
+        )
+    )
+
+def set_timezonealias_to_table(update, context, chat_id, alias, real):
+    # check correct TZ
+    ZoneInfo(real)
+
+    # db
+    with sqlite3.connect('db.sqlite') as conn:
+        conn.execute('begin transaction')
+        if only_one(only_one(conn.execute('''select count(*) from TimezoneAlias where LOWER(?)=LOWER(alias) and chat_id=?''', (alias, chat_id)))) == 0:
+            # insert
+            conn.execute('''insert into TimezoneAlias(chat_id, alias, real)''', (chat_id, alias, real))
+        else:
+            # update
+            conn.execute('''update TimezoneAlias set real=? where chat_id=? and LOWER(?)=LOWER(alias)''', (real, chat_id, alias))
+        conn.execute('end transaction')
+
 def remove_dup_keep_order(it):
     S = set()
     for x in it:
@@ -4724,6 +4787,12 @@ def migration18():
         conn.execute("alter table NamedChatDebt add column reason DEFAULT NULL")
         conn.execute('end transaction')
 
+def migration19():
+    with sqlite3.connect('db.sqlite') as conn:
+        conn.execute('begin transaction')
+        conn.execute("create table TimezoneAlias(chat_id, alias, real)")
+        conn.execute('end transaction')
+
 def get_latest_euro_rates_from_api() -> json:
     import requests
     from telegram_settings_local import FIXER_TOKEN
@@ -5103,6 +5172,7 @@ COMMAND_DESC = {
     "sharemoney": "Manage money between users (shared bank account, add a debt)",
     "listdebts": "List debts between users (sharemoney)",
     "detaildebts": "List debts between users in details (sharemoney)",
+    "tzalias": "Set short codes for timezones",
 
     'createlist': 'Create a list (of strings, by default)',
     'addtolist': 'Add to the end of a list',
@@ -5259,6 +5329,7 @@ if __name__ == '__main__':
     application.add_handler(CommandHandler('rub', rub))
     application.add_handler(CommandHandler('convertmoney', convertmoney))
     application.add_handler(CommandHandler('mytimezone', mytimezone))
+    application.add_handler(CommandHandler('timezonealias', timezonealias))
     application.add_handler(CommandHandler('listallsettings', listallsettings))
     application.add_handler(CommandHandler('mysettings', mysettings))
     application.add_handler(CommandHandler('chatsettings', chatsettings))
