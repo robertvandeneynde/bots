@@ -3250,6 +3250,9 @@ def only_one(it, error=None, *, many=ValueError, none=ValueError):
             raise none
         else:
             raise many
+    
+def only_one_specific(it):
+    return only_one(it, many=TooManyRecords, none=NoRecords)
 
 def only_one_with_error(error):
     return partial(only_one, many=error, none=error)
@@ -4129,6 +4132,13 @@ async def timedifference(update, context, command):
         delta = -delta
     await send('{:.2f} {}'.format(delta / dtunits, units))
 
+def ZoneInfoOrAlias(tz, *, chat_id):
+    try:
+        real, = only_one_specific(simple_sql((''' select real from TimezoneAlias where chat_id=? and lower(alias) = lower(?)''', (chat_id, tz))))
+        return ZoneInfo(real)
+    except NoRecords:
+        return ZoneInfo(tz)
+
 async def timein(update, context):
     from datetime import datetime
     send = make_send(update, context)
@@ -4137,7 +4147,7 @@ async def timein(update, context):
         return await send("Usage: /timein [timezone]\nExample: /timein Europe/Brussels")
 
     try:
-        tz = ZoneInfo(context.args[0])
+        tz = ZoneInfoOrAlias(context.args[0], chat_id=update.effective_chat.id)
     except (ZoneInfoNotFoundError, IsADirectoryError):
         raise UserError(f"{context.args[0]!r} is not a timezone")
     
