@@ -4260,7 +4260,7 @@ async def timezonealias(update: Update, context: CallbackContext):
 
     if not context.args:
         # get timezone
-        return await send("Usage: /timezonealias abc = timezone")
+        return await send("Usage: /timezonealias abc timezone")
     elif len(context.args) == 1:
         alias, = context.args
         tz = None
@@ -4280,12 +4280,15 @@ async def timezonealias(update: Update, context: CallbackContext):
             return await send(f"No timezone for {alias!r}")
     else:
         # write
-        try:
-            ZoneInfo(tz)
-        except ZoneInfoNotFoundError:
-            raise UserError(f"{tz!r} is not a timezone")
+        if tz.lower() == 'delete':
+            pass # ok
+        else:
+            try:
+                ZoneInfo(tz)
+            except ZoneInfoNotFoundError:
+                raise UserError(f"{tz!r} is not a timezone")
         set_timezonealias_to_table(update, context, chat_id=chat_id, alias=alias, real=tz)
-        return await send("Alias {alias!r} saved")
+        return await send(f"Alias {alias!r} saved")
 
 class TooManyRecords(ValueError):
     pass
@@ -4303,6 +4306,10 @@ def get_timezonealias_from_table(update, context, chat_id, alias):
     )
 
 def set_timezonealias_to_table(update, context, chat_id, alias, real):
+    if real.lower() == 'delete':
+        conn.execute('''delete from TimezoneAlias where chat_id=? and LOWER(?)=LOWER(alias)''', (chat_id, alias, ))
+        return 
+    
     # check correct TZ
     ZoneInfo(real)
 
@@ -4311,7 +4318,7 @@ def set_timezonealias_to_table(update, context, chat_id, alias, real):
         conn.execute('begin transaction')
         if only_one(only_one(conn.execute('''select count(*) from TimezoneAlias where LOWER(?)=LOWER(alias) and chat_id=?''', (alias, chat_id)))) == 0:
             # insert
-            conn.execute('''insert into TimezoneAlias(chat_id, alias, real)''', (chat_id, alias, real))
+            conn.execute('''insert into TimezoneAlias(chat_id, alias, real) VALUES (?,?,?)''', (chat_id, alias, real))
         else:
             # update
             conn.execute('''update TimezoneAlias set real=? where chat_id=? and LOWER(?)=LOWER(alias)''', (real, chat_id, alias))
