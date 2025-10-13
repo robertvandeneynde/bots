@@ -99,6 +99,7 @@ MONEY_CURRENCIES_ALIAS = {
     '$': 'usd',
     'usd': 'usd',
     'cad': 'cad',
+    'sol': 'pen',
 }
 MONEY_RE = re.compile('(\\d+) ?(' + '|'.join(map(re.escape, MONEY_CURRENCIES_ALIAS)) + ')', re.I)
 
