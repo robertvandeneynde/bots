@@ -4147,18 +4147,35 @@ def ZoneInfoOrAlias(tz, *, chat_id):
 async def timein(update, context):
     from datetime import datetime
     send = make_send(update, context)
+    read_chat_settings = make_read_chat_settings(update, context)
 
-    if not context.args or len(context.args) != 1:
-        return await send("Usage: /timein [timezone]\nExample: /timein Europe/Brussels")
+    if not context.args:
+        if not (tzs := read_chat_settings('event.timezones')):
+            return await send("Usage: /timein [timezone]\nExample: /timein Europe/Brussels")
+    else:
+        tzs = None
 
-    try:
-        tz = ZoneInfoOrAlias(context.args[0], chat_id=update.effective_chat.id)
-    except (ZoneInfoNotFoundError, IsADirectoryError):
-        raise UserError(f"{context.args[0]!r} is not a timezone")
+    if len(context.args) == 1:
+        tz_str, = context.args
+    elif len(context.args) == 2:
+        tz_str = '/'.join(context.args)
+    elif len(context.args) > 2:
+        raise ValueError("Too much arguments")
     
-    dt = datetime.now().astimezone(tz).replace(tzinfo=None)
+    if tzs is None:
+        try:
+            tz = ZoneInfoOrAlias(tz_str, chat_id=update.effective_chat.id)
+        except (ZoneInfoNotFoundError, IsADirectoryError):
+            raise UserError(f"{context.args[0]!r} is not a timezone")
+        
+        dt = datetime.now().astimezone(tz).replace(tzinfo=None)
 
-    return await send(DatetimeDbSerializer.strftime(dt))
+        return await send(DatetimeDbSerializer.strftime(dt))
+    else:
+        def y(tz):
+            dt = datetime.now().astimezone(tz).replace(tzinfo=None)
+            return "{} ({})".format(DatetimeDbSerializer.strftime(dt), tz)
+        return await send('\n'.join(map(y, tzs)))
 
 async def timeuntil(update, context):
     return await timedifference(update, context, command='timeuntil')
