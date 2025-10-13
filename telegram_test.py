@@ -828,21 +828,21 @@ async def ipa(update:Update, context: ContextTypes.DEFAULT_TYPE):
         return await ipa_display(update, context, mode='ipa')
     except UsageError as e:
         send = make_send(update, context)
-        return await send(e.format(command="ipa"))
+        return await send(str(e).format(command="ipa"))
     
 async def iparu(update:Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         return await ipa_display(update, context, mode='ru')
     except UsageError as e:
         send = make_send(update, context)
-        return await send(e.format(command="iparu"))
+        return await send(str(e).format(command="iparu"))
 
 async def pron(update:Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         return await ipa_display(update, context, mode='pron')
     except UsageError as e:
         send = make_send(update, context)
-        return await send(e.format(command="pron"))
+        return await send(str(e).format(command="pron"))
 
 def get_or_empty(L: list, i:int) -> str | object:
     try:
