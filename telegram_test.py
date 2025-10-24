@@ -5040,12 +5040,51 @@ async def detaildebts(update, context):
         )))
     return await send('\n'.join(to_print) or 'No debts in that chat !')
 
+class EnglishPracticeData:
+    class IrregularVerbs:
+        TRIPLETS = ["put", "cut", "let", "shut", "split", "spread", "hurt", "cost", "burst","fit", "bet", "hit", "set", "broadcast", "read"]
+        TWINS = ["bend", "teach", "think", "catch", "bring", "build", "buy", "creep", "deal", "dig", "feed", "feel", "fight", "find", "flee","get","hang","have", "hear", "hold", "keep", "kneel", "lay", "lead", "leave", "lend", "light", "lose", "make", "mean", "meet", "pay", "say", "seek", "sell", "send", "sew", "shine", "shoot", "sit", "sleep", "slide","spend", "spit", "stand", "stick", "sting", "strike", "sweep", "swing", "tell", "think", "understand", "weep", "win"]
+
+        @staticmethod
+        def phrase_for_verb(word):
+            if word == "put":
+                return("Обычно, Петя [кладет] ручку на стол. Вчера он [положил] ручку на пол, но чаще всего ручка в его доме [кладется] на стол")
+            elif word == "cut":
+                return("Она никогда не [режет] хлеб. Неделю назад она [порезала] свой палец. Вообще, колбасу [режут] другим ножом .")
+            elif word == "let":
+                return("Она редко [позволяет] другим помочь. 5 минут назад она [позволила] мне помочь ей открыть дверь. Обычно, нагетивные эмоции [выпускаются] все вместе.")
+            elif word == "shut":
+                return("Она всегда [захлопывает] двень и книгу очень громко. На прошлой неделе я сказал ей замолчать и она [замолчала] (....up). Эта дверь [не закрывается] силой.")
+            elif word == "split":
+                return("Наш учитель никогда [не делит] класс на группы. Вчера она [разделила] маффин и дала мне половину. Обычно, на свидании в Европе счет [делится пополвм].")
+            elif word == "spread":
+                return("Она часто [распространяет] слухи про других. Час назад огонь [распространился] на второй этаж больницы. Холодное масло[размазано] крупными кусками на хлебе.")
+            elif word == "hurt":
+                return("Она часто [делает больно] другим. 5 минут назад она [повредила] свою коленку. В автомобильной аварии никто [не пострадал].")
+            elif word == "cost":
+                return("Это [стоит] слишком дорого. Неделю назад эта сумка [стоила] меньше. Квартиры в Москве никогда [не стоили] так дешево, как сейчас.\n\nПОДСКАЗКА: третье предложение это Present Perfect Simple с третьей формой глагола")
+            elif word == "burst":
+                return("Каждый понедельник после уроков она [раздается смехом] ***ПОДСКАЗКА*** :инфинитив тут TO BURST INTO LAUGHTER. 5 минут назад она [разревелась] ***ПОДСКАЗКА*** :инфинитив тут TO BURST INTO TEARS. Трубы [были прорваны] всю неделю") 
+            elif word == "fit":
+                return("Это платье мне[не подходит по размеру]. В детстве она всегда [вливалась] в любой коллектив ***ПОДСКАЗКА*** :инфинитив тут TO FIT IN - ВЛИВАТЬСЯ. Одежда была [подогнана] под конкретные мерки клиента.")
+            elif word == "bet":
+                return("Она никогда [не делает ставки] на свою лошадь. Неделю назад она [поставила ставки] на свою любимую команду. Вообще, на детей [ставки не ставят]  .")
+            elif word == "hit":
+                return("Она никогда не [ударяет] своих детей . Неделю назад она [ударила] свой палец. Вчера 3 дрона [было сбито] СВО .")
+            elif word == "set":
+                return("Она никогда не [накрывает] на стол. Неделю назад она [отложила] немного денег ***ПОДСКАЗКА*** :инфинитив тут TO SET ASIDE MONEY/TIME -ОТЛОЖИТЬ . Время для урока [определено]. ***ПОДСКАЗКА*** :инфинитив тут TO SET A TIME/DATE.")
+            elif word == "broadcast":
+                return("Она никогда не [транслирует] свои страхи. Неделю назад она [транслировала] свое интервью в грам. Матч будет [транслирован] со стадиона.")
+            elif word == "read":
+                return("Она никогда не [читает] книги. Неделю назад она [прочитала] 3 поста в соц сетях. Поэма [будет прочтена] со стадиона.")
+            raise ValueError
+
 async def practice_command(update, context):
     # only accessible when the practiceenglish.active is
     send = make_send(update, context)
     await send("Translate the verbs in [ ] to English.\n\nSeparate them with spaces.\nFor example: put put put.\n\nKEEP IN MIND that:\n1)every 1st verb is in Present Simple\n2)Every 2nd verb is in Past Simple\n3)Every third verb is in PASSIVE VOICE.")
     # table EnglishPracticeIrregularVerbs
-    VERBS = ["put", "cut", "let", "shut", "split", "spread", "hurt", "cost", "burst","fit", "bet", "hit", "set", "broadcast", "read"]
+    VERBS = EnglishPracticeData.IrregularVerbs.TRIPLETS
     
     import random
     session = {'verbs': (session_verbs := random.sample(VERBS, 5)), 'i': 1}
@@ -5056,7 +5095,7 @@ async def practice_command(update, context):
     import json
     simple_sql(('insert into EnglishPracticeIrregularVerbs(user_id, chat_id, json) VALUES (?,?,?)', (user_id, chat_id, json.dumps(session))))
 
-    await send(session_verbs[0])
+    await send(EnglishPracticeData.IrregularVerbs.phrase_for_verb(session_verbs[0]))
 
     return 'next-verb'
 
@@ -5080,7 +5119,7 @@ async def practice_command_next_verb_state(update, context):
             await send('Congratulations!')
 
         else:
-            await send(session['verbs'][session['i']])
+            await send(EnglishPracticeData.IrregularVerbs.phrase_for_verb(session['verbs'][session['i']]))
             session['i'] += 1
 
             my_simple_sql(('update EnglishPracticeIrregularVerbs set json = ? where rowid=?', (json.dumps(session), session_rowid)))
