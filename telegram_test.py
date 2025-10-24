@@ -674,7 +674,7 @@ async def sharemoney_responder(msg:str, send: AsyncSend, *, update, context):
             ('Debt created:', f'"{debt.debitor_id}"', 'owes', f'"{debt.creditor_id}"', f'{debt.amount}', f'{debt.currency}' if debt.currency else '', (f'for {debt.reason}' if debt.reason else ''))
         )))
 
-def englishpractice_responder(msg: str, send: AsyncSend, *, update, context):
+async def englishpractice_responder(msg: str, send: AsyncSend, *, update, context):
     pass
 
 class EnglishPracticeFilter(MessageFilter):
@@ -4847,6 +4847,12 @@ def migration19():
         conn.execute("create table TimezoneAlias(chat_id, alias, real)")
         conn.execute('end transaction')
 
+def migration20():
+    with sqlite3.connect('db.sqlite') as conn:
+        conn.execute('begin transaction')
+        conn.execute("create table EnglishPracticeIrregularVerbs(chat_id, user_id, json)")
+        conn.execute('end transaction')
+
 def get_latest_euro_rates_from_api() -> json:
     import requests
     from telegram_settings_local import FIXER_TOKEN
@@ -5033,6 +5039,55 @@ async def detaildebts(update, context):
             ('Debt', f'"{debt.debitor_id}"', 'owes', f'"{debt.creditor_id}"', f'{debt.amount}', f'{debt.currency}' if debt.currency else '', (f'for {debt.reason}' if debt.reason else ''))
         )))
     return await send('\n'.join(to_print) or 'No debts in that chat !')
+
+async def practice_command(update, context):
+    # only accessible when the practiceenglish.active is
+    send = make_send(update, context)
+    await send("Translate the verbs in [ ] to English.\n\nSeparate them with spaces.\nFor example: put put put.\n\nKEEP IN MIND that:\n1)every 1st verb is in Present Simple\n2)Every 2nd verb is in Past Simple\n3)Every third verb is in PASSIVE VOICE.")
+    # table EnglishPracticeIrregularVerbs
+    VERBS = ["put", "cut", "let", "shut", "split", "spread", "hurt", "cost", "burst","fit", "bet", "hit", "set", "broadcast", "read"]
+    
+    import random
+    session = {'verbs': (session_verbs := random.sample(VERBS, 5)), 'i': 1}
+
+    user_id = update.effective_user.id
+    chat_id = update.effective_chat.id
+
+    import json
+    simple_sql(('insert into EnglishPracticeIrregularVerbs(user_id, chat_id, json) VALUES (?,?,?)', (user_id, chat_id, json.dumps(session))))
+
+    await send(session_verbs[0])
+
+    return 'next-verb'
+
+async def practice_command_next_verb_state(update, context):
+    send = make_send(update, context)
+
+    user_id = update.effective_user.id
+    chat_id = update.effective_chat.id
+
+    with sqlite3.connect("db.sqlite") as conn:
+        conn.execute('begin transaction')
+        my_simple_sql = partial(simple_sql, connection=conn)
+        session_rowid, session = only_one(my_simple_sql(('select rowid, json from EnglishPracticeIrregularVerbs where user_id=? and chat_id=? ORDER BY rowid DESC LIMIT 1', (user_id, chat_id))))
+        
+        import json
+        session = json.loads(session)
+        
+        finished = (session['i'] == len(session['verbs']))
+
+        if finished:
+            await send('Congratulations!')
+
+        else:
+            await send(session['verbs'][session['i']])
+            session['i'] += 1
+
+            my_simple_sql(('update EnglishPracticeIrregularVerbs set json = ? where rowid=?', (json.dumps(session), session_rowid)))
+
+        conn.execute('end transaction')
+    
+    return 'next-verb' if not finished else ConversationHandler.END
 
 async def help(update, context):
     send = make_send(update, context)
@@ -5287,7 +5342,15 @@ if __name__ == '__main__':
 
     application.add_handler(MessageHandler(CrazyJamFilter(), on_crazy_jam_message))
 
-    application.add_handler(CommandHandler('/practice', filters=EnglishPracticeFilter()))
+    application.add_handler(ConversationHandler(
+        entry_points=[CommandHandler('practice', practice_command, filters=EnglishPracticeFilter())],
+        states={
+            'next-verb': [
+                MessageHandler(filters.TEXT & ~filters.COMMAND, practice_command_next_verb_state)
+            ],
+        },
+        fallbacks=[]
+    ))
 
     message_handler = MessageHandler(filters.TEXT & (~filters.COMMAND), on_message)
     application.add_handler(message_handler)
