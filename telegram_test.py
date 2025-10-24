@@ -674,6 +674,20 @@ async def sharemoney_responder(msg:str, send: AsyncSend, *, update, context):
             ('Debt created:', f'"{debt.debitor_id}"', 'owes', f'"{debt.creditor_id}"', f'{debt.amount}', f'{debt.currency}' if debt.currency else '', (f'for {debt.reason}' if debt.reason else ''))
         )))
 
+def englishpractice_responder(msg: str, send: AsyncSend, *, update, context):
+    pass
+
+class EnglishPracticeFilter(MessageFilter):
+    def filter(self, message: Message):
+
+        def custom_make_read_chat_settings(chat_id):
+            from functools import partial
+            return partial(read_settings, id=chat_id, settings_type='chat')
+        
+        read_chat_settings = custom_make_read_chat_settings(chat_id=message.chat.id)
+
+        return do_if_setting_on(read_chat_settings('englishpractice.active'))
+
 RESPONDERS = (
     (hello_responder, 'hello', 'on'),
     (money_responder, 'money', 'on'),
@@ -681,6 +695,7 @@ RESPONDERS = (
     (whereisanswer_responder, 'whereisanswer', 'on'),
     (eventedit_responder, 'eventedit', 'on'),
     (list_responder, 'list', 'off'),
+    (englishpractice_responder, 'englishpractice', 'off'),
 )
 
 async def on_message(update: Update, context: CallbackContext):
@@ -5271,6 +5286,8 @@ if __name__ == '__main__':
     application.add_handler(start_handler)
 
     application.add_handler(MessageHandler(CrazyJamFilter(), on_crazy_jam_message))
+
+    application.add_handler(CommandHandler('/practice', filters=EnglishPracticeFilter()))
 
     message_handler = MessageHandler(filters.TEXT & (~filters.COMMAND), on_message)
     application.add_handler(message_handler)
