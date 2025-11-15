@@ -360,6 +360,8 @@ async def list_responder(msg: str, send: AsyncSend, *, update, context):
                 else:
                     if requested_type /fullmatches_with_flags(re.I)/ "\{L}+":  
                         raise UserError(f"List creation of type {requested_type!r} not implemented, use = list, for example")
+                    else:
+                        raise DoNotAnswer
 
                 type_list: str | tuple[str, ...]
                 force_creation: bool
