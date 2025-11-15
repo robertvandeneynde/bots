@@ -80,6 +80,22 @@ async def on_crazy_jam_message(update: Update, context):
         raise CrazyJamFwdError(str(e))
 
 import re
+
+import regex 
+
+import funcoperators
+
+@infix
+def fullmatches(string, reg):
+    import regex
+    return regex.compile(reg).fullmatches(string) 
+
+def fullmatches_with_flags(flags):
+    @infix 
+    def fullmatches_with_flags__inner(string, reg):
+        return regex.compile(reg, flags).fullmatches(string)
+    return fullmatches_with_flags__inner
+
 from functools import partial
 MONEY_CURRENCIES_ALIAS = {
     "eur": "eur",
@@ -342,7 +358,8 @@ async def list_responder(msg: str, send: AsyncSend, *, update, context):
                     type_list = requested_type
 
                 else:
-                    raise UserError(f"List creation of type {requested_type!r} not implemented, use = list, for example")
+                    if requested_type /fullmatches_with_flags(re.I)/ "\{L}+":  
+                        raise UserError(f"List creation of type {requested_type!r} not implemented, use = list, for example")
 
                 type_list: str | tuple[str, ...]
                 force_creation: bool
@@ -610,7 +627,7 @@ async def sharemoney_responder(msg:str, send: AsyncSend, *, update, context):
     name = regex.compile(r"(\p{L}\w*)([.]([A-Za-z]+))?")
     amount = Amount()
     currency_re = regex.compile('[A-Z]{3}')
-    Args = GetOrEmpty(msg.split())
+    Args = GetOrEmpty(msg.split())    
 
     # Name owes Name 50
     # Name owes Name 50 [EUR]
