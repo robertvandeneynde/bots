@@ -85,13 +85,13 @@ import regex
 
 import funcoperators
 
-@infix
+@funcoperators.infix
 def fullmatches(string, reg):
     import regex
     return regex.compile(reg).fullmatches(string) 
 
 def fullmatches_with_flags(flags):
-    @infix 
+    @funcoperators.infix 
     def fullmatches_with_flags__inner(string, reg):
         return regex.compile(reg, flags).fullmatches(string)
     return fullmatches_with_flags__inner
