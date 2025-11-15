@@ -88,12 +88,12 @@ import funcoperators
 @funcoperators.infix
 def fullmatches(string, reg):
     import regex
-    return regex.compile(reg).fullmatches(string) 
+    return regex.compile(reg).fullmatch(string) 
 
 def fullmatches_with_flags(flags):
     @funcoperators.infix 
     def fullmatches_with_flags__inner(string, reg):
-        return regex.compile(reg, flags).fullmatches(string)
+        return regex.compile(reg, flags).fullmatch(string)
     return fullmatches_with_flags__inner
 
 from functools import partial
