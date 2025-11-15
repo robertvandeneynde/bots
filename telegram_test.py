@@ -5079,7 +5079,8 @@ class EnglishPracticeData:
                 return("Она никогда не [читает] книги. Неделю назад она [прочитала] 3 поста в соц сетях. Поэма [будет прочтена] со стадиона.")
             raise ValueError
 
-async def practice_command(update, context):
+class LanguagePractice:
+  async def practice_command(update, context):
     # only accessible when the practiceenglish.active is
     send = make_send(update, context)
     await send("Translate the verbs in [ ] to English.\n\nSeparate them with spaces.\nFor example: put put put.\n\nKEEP IN MIND that:\n1)every 1st verb is in Present Simple\n2)Every 2nd verb is in Past Simple\n3)Every third verb is in PASSIVE VOICE.")
@@ -5099,7 +5100,7 @@ async def practice_command(update, context):
 
     return 'next-verb'
 
-async def practice_command_next_verb_state(update, context):
+  async def practice_command_next_verb_state(update, context):
     send = make_send(update, context)
 
     user_id = update.effective_user.id
@@ -5382,10 +5383,10 @@ if __name__ == '__main__':
     application.add_handler(MessageHandler(CrazyJamFilter(), on_crazy_jam_message))
 
     application.add_handler(ConversationHandler(
-        entry_points=[CommandHandler('practice', practice_command, filters=EnglishPracticeFilter())],
+        entry_points=[CommandHandler('practice', LanguagePractice.practice_command, filters=EnglishPracticeFilter())],
         states={
             'next-verb': [
-                MessageHandler(filters.TEXT & ~filters.COMMAND, practice_command_next_verb_state)
+                MessageHandler(filters.TEXT & ~filters.COMMAND, LanguagePractice.practice_command_next_verb_state)
             ],
         },
         fallbacks=[]
