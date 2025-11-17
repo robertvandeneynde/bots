@@ -4056,7 +4056,8 @@ async def delevent(update, context):
     do_event_admin_check('del', setting=read_chat_settings('event.admins'), user_id=update.effective_user.id)
 
     if reply := get_reply(update.message):
-        return await send("Not implemented yet but will allow to deleent an event by responding to it.")
+        await send("Not implemented yet but will allow to deleent an event by responding to it.")
+        return ConversationHandler.END
 
     strptime = DatetimeDbSerializer.strptime
 
