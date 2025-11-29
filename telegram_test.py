@@ -2905,33 +2905,40 @@ class listsmodule:
                 
                 my_simple_sql((''' update ListElement set value=? where rowid=?''', (new_value, rowid)))
             
-            if '-' in value:
-                a,b = value.split('-')
-                int(a), int(b)
-                assert int(a) <= int(b)
-                for i in irange(int(a), int(b)):
-                    action(i)
-            else:
-                action(value)
+            for value in value.split():
+                if '-' in value:
+                    a,b = value.split('-')
+                    int(a), int(b)
+                    assert int(a) <= int(b)
+                    for i in irange(int(a), int(b)):
+                        action(i)
+                else:
+                    action(value)
 
     class tasktreecheck(OnTreeAction):
         def run(self, *, value, direction:Literal['x', ' ', 'toggle']):
-            itree = tuple(map(int, value.split('.')))
+            nodes = []
+            for value in value.split():
+                itree = tuple(map(int, value.split('.')))
 
-            node = self.tree_getnode(itree)
+                node = self.tree_getnode(itree)
 
-            old_value, = only_one(self.my_simple_sql(('''select value from ListElement where listid=? and rowid=?''', (self.list_id(), node))))
+                nodes.append(node)
 
-            if m := ListLang.IsTask.fullmatch(old_value):
-                if direction == 'toggle':
-                    new_check = ' ' if m.group(1) == 'x' else 'x'
+            for node in nodes:
+
+                old_value, = only_one(self.my_simple_sql(('''select value from ListElement where listid=? and rowid=?''', (self.list_id(), node))))
+
+                if m := ListLang.IsTask.fullmatch(old_value):
+                    if direction == 'toggle':
+                        new_check = ' ' if m.group(1) == 'x' else 'x'
+                    else:
+                        new_check = direction
+                    new_value = '[' + new_check + ']' + ' ' + m.group(2).strip()
                 else:
-                    new_check = direction
-                new_value = '[' + new_check + ']' + ' ' + m.group(2).strip()
-            else:
-                raise AssertionError('A non task is stored in a tasklist')
-            
-            self.my_simple_sql(('''Update ListElement set value=? where listid=? and rowid=?''', (new_value, self.list_id(), node)))
+                    raise AssertionError('A non task is stored in a tasklist')
+                
+                self.my_simple_sql(('''Update ListElement set value=? where listid=? and rowid=?''', (new_value, self.list_id(), node)))
 
 
     class delinlist(GeneralAction):
