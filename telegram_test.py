@@ -419,8 +419,10 @@ async def list_responder(msg: str, send: AsyncSend, *, update, context):
 
                     elif operation in ('extendmulti', ):
                         if list_type in ('tasktree', ):
-                            raise UserError("Impossible at the moment")
-                        if list_type in ('tasklist', ):
+                            listsmodule.extendmultitasktree.do_it(conn=conn, name=list_name, chat_id=chat_id, values=parameters)
+                        elif list_type in ('tree', ):
+                            listsmodule.extendmultitree.do_it(conn=conn, name=list_name, chat_id=chat_id, values=parameters)
+                        elif list_type in ('tasklist', ):
                             listsmodule.extendmultitasklist.do_it(conn=conn, name=list_name, chat_id=chat_id, values=parameters)
                         else:
                             listsmodule.extendmultilist.do_it(conn=conn, name=list_name, chat_id=chat_id, values=parameters)
@@ -3053,11 +3055,22 @@ class listsmodule:
             for value in values:
                 my_simple_sql(('''insert into ListElement(listid, value) values (?,?)''', (listid, value)))
     
+    class extendmultitree:
+        @staticmethod
+        def do_it(*, conn, chat_id, name, values):
+            listsmodule.extendmultilist.do_it(conn=conn, chat_id=chat_id, name=name, values=values)
+
     class extendmultitasklist:
         @staticmethod
         def do_it(*, conn, chat_id, name, values):
             new_values = list(map(listsmodule.make_task, values))
             listsmodule.extendmultilist.do_it(values=new_values, conn=conn, name=name, chat_id=chat_id)
+
+    class extendmultitasktree:
+        @staticmethod
+        def do_it(*, conn, chat_id, name, values):
+            new_values = list(map(listsmodule.make_task, values))
+            listsmodule.extendmultitree.do_it(values=new_values, conn=conn, name=name, chat_id=chat_id)
 
     class shuffle:
         @staticmethod
