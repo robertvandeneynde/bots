@@ -2899,7 +2899,7 @@ class listsmodule:
 
                 if m := ListLang.IsTask.fullmatch(old_value):
                     new_check = direction if direction != 'toggle' else ('' if m.group(1) == 'x' else 'x')
-                    new_value = '[' + new_check + ']' + m.group(2)
+                    new_value = '[' + new_check + ']' + ' ' + m.group(2).strip()
                 else:
                     raise AssertionError('A non task is stored in a tasklist')
                 
@@ -2927,7 +2927,7 @@ class listsmodule:
                     new_check = ' ' if m.group(1) == 'x' else 'x'
                 else:
                     new_check = direction
-                new_value = '[' + new_check + ']' + m.group(2)
+                new_value = '[' + new_check + ']' + ' ' + m.group(2).strip()
             else:
                 raise AssertionError('A non task is stored in a tasklist')
             
