@@ -2943,24 +2943,29 @@ class listsmodule:
 
             rowids = my_simple_sql((''' select rowid from ListElement where listid=? ''', (listid, )))
 
-            assert int(value) in range(-len(rowids), len(rowids)+1)
-            assert int(value) != 0
+            for v in value.split():
+                assert int(v) in range(-len(rowids), len(rowids)+1)
+                assert int(v) != 0
 
-            delrowid = rowids[int(value) - 1 if int(value) > 0 else int(value)][0]
+            for v in value.split():
+                delrowid = rowids[int(v) - 1 if int(v) > 0 else int(v)][0]
+                my_simple_sql((''' delete from ListElement where listid=? and rowid=?''', (listid, delrowid, )))
 
-            my_simple_sql((''' delete from ListElement where listid=? and rowid=?''', (listid, delrowid, )))
     class delintree(OnTreeAction):
         def run(self, *, parameters):
-            itree_str, *value = parameters.split(maxsplit=1)
-            if value:
-                raise UserError("Too much information given")
-            itree = tuple(map(int, itree_str.split('.')))
+            itree_str_multiple = parameters.split()
             
-            self.assert_is_correct_itree(itree)
+            itrees_rowid = []
+            for itree_str in itree_str_multiple:
+                itree = tuple(map(int, itree_str.split('.')))
+            
+                self.assert_is_correct_itree(itree)
+
+                node_rowid = self.tree_getnode(itree)
+
+                itrees_rowid.append(node_rowid)
 
             listid = self.list_id()
-            
-            node_rowid = self.tree_getnode(itree)
             
             def delete(X):
                 children = self.my_simple_sql((''' select rowid from ListElement where listid=? and tree_parent=? ''', (listid, X)))
@@ -2968,7 +2973,8 @@ class listsmodule:
                     delete(c)
                 self.my_simple_sql((''' delete from ListElement where listid=? and rowid=?''', (listid, X, )))
             
-            delete(node_rowid)
+            for node_rowid in itrees_rowid:
+                delete(node_rowid)
     
     class addtolist(GeneralAction):
         @staticmethod
