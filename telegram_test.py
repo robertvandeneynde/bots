@@ -646,11 +646,13 @@ async def sharemoney_responder(msg:str, send: AsyncSend, *, update, context):
             currency_string: str = None
         
         if Args[i] in ('for', '#') and Args[i+1]:
-            reason: str = ' '.join(Args[i+1:])
+            reason = ' '.join(Args[i+1:])
         elif Args[i].startswith('#') and Args[i][1:]:
-            reason: str = ' '.join(Args[i][1:])
+            reason = ' '.join(Args[i][1:])
         else:
-            reason: str = None
+            reason = None
+
+        reason: str | None
 
         first_name, operation, second_name, amount_str = Args[:4]
 
