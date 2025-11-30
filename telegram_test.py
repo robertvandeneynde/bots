@@ -4233,12 +4233,29 @@ async def timein(update, context):
         
         dt = datetime.now().astimezone(tz).replace(tzinfo=None)
 
-        return await send(DatetimeDbSerializer.strftime(dt))
+        return await send(f"{dt:%H:%M} on {dt.date():%d/%m/%Y}")
     else:
-        def y(tz):
-            dt = datetime.now().astimezone(tz).replace(tzinfo=None)
-            return "{} ({})".format(DatetimeDbSerializer.strftime(dt), tz)
-        return await send('\n'.join(map(y, tzs)))
+        def get_dt(tz):
+            return datetime.now().astimezone(tz).replace(tzinfo=None)
+
+        def dt_tz_format_old(dt, tz):
+            return "{} ({})".format(f"{dt:%H:%M} on {dt.date():%d/%m/%Y}", tz)
+
+        def dt_tz_format_new(dt, tz):
+            return "  {} ({})".format(f"{dt:%H:%M}", tz)
+
+        def dt_tz_format_group(date):
+            return f"{date:%d/%m/%Y} ({DatetimeText.days_english[date.weekday()].capitalize()})"
+
+        dts = list(map(get_dt, tzs))
+        data = sorted(zip(dts, tzs))
+
+        lines = []
+        for k, group in itertools.groupby(data, key=lambda t:t[0].date()):
+            lines.append(dt_tz_format_group(k))
+            lines.extend(dt_tz_format_new(dt, tz) for dt, tz in group)
+
+        return await send('\n'.join(lines))
 
 async def timeuntil(update, context):
     return await timedifference(update, context, command='timeuntil')
