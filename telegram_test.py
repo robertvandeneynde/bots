@@ -5090,12 +5090,51 @@ async def listdebts(update, context):
         for (debitor, creditor), amount in debts_sum.items()) or 'No debts in this chat !')
 
 async def detaildebts(update, context):
-    last_n: int = int(GetOrEmpty(context.args)[0] or 30)
+    Args = GetOrEmpty(context.args)
+
+    if Args[0].isdecimal():
+        last_n: int = int(Args[0])
+        Args = GetOrEmpty(Args[1:])
+    else:
+        last_n: int = 30
+        Args = GetOrEmpty(Args[0:])
     
+    account_filter: None | tuple['simple', str] | tuple['multi', list[str]]
+
+    if not Args[0]:
+        account_filter = None
+
+    elif not Args[1]:
+        # one person filter: filter all where that person happen
+        account_filter = ('simple', Args[0])
+
+        Args = GetOrEmpty(Args[1:])
+
+    elif Args[0] and Args[1]:
+        # multiway filter
+        if Args[2]:
+            raise UserError("Currently not avaialbe to filter with more than 2 persons")
+        account_filter = ('multi', [Args[0], Args[1]])
+
+        Args = GetOrEmpty(Args[2:])
+
     send = make_send(update, context)
     chat_id = update.effective_chat.id
-    count = simple_sql_dict(('select count(*) as c from NamedChatDebt where chat_id=?', (chat_id,)))[0]['c']
-    lines = simple_sql_dict(('select chat_id, debitor_id, creditor_id, amount, currency, reason from NamedChatDebt where chat_id=? ORDER BY rowid DESC LIMIT ?', (chat_id, last_n)))
+
+    sql_filter = ('1=1' if account_filter is None else
+                  'debitor_id=? OR creditor_id=?' if account_filter[0] == 'simple' else
+                  'debitor_id=? AND creditor_id=? OR debitor_id=? AND creditor_id=?')
+    
+    filter_params = (() if account_filter is None else
+                     (account_filter[1], account_filter[1]) if account_filter[0] == 'simple' else 
+                     (account_filter[1][0], account_filter[1][1], account_filter[1][1], account_filter[1][0]))
+
+    sql = 'select chat_id, debitor_id, creditor_id, amount, currency, reason from NamedChatDebt where chat_id=? AND (%s) ORDER BY rowid DESC LIMIT ?' % sql_filter
+
+    count = simple_sql_dict(('select count(*) as c from NamedChatDebt where chat_id=? AND (%s)' % sql_filter, (chat_id, ) + filter_params))[0]['c']
+
+    lines = simple_sql_dict((sql, (chat_id, ) + filter_params + (last_n, )))
+
     to_print = []
     if count > len(lines):
         to_print.append('...')
