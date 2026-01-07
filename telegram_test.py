@@ -5138,10 +5138,46 @@ async def detaildebts(update, context):
     to_print = []
     if count > len(lines):
         to_print.append('...')
+    
+    if account_filter and account_filter[0] == 'multi':
+        to_print.append('// "{}" owes "{}"'.format(*account_filter[1]))
+        total_displayed = 0
+
+    debt: NamedChatDebt
     for debt in reversed([NamedChatDebt(**x) for x in lines]):
-        to_print.append(' '.join(filter(None,
-            ('Debt', f'"{debt.debitor_id}"', 'owes', f'"{debt.creditor_id}"', f'{debt.amount}', f'{debt.currency}' if debt.currency else '', (f'for {debt.reason}' if debt.reason else ''))
-        )))
+        if account_filter and account_filter[0] == 'multi':
+            
+            if (debt.debitor_id, debt.creditor_id, ) == tuple(account_filter[1]):
+                directed_amount = debt.amount
+            elif (debt.creditor_id, debt.debitor_id, ) == tuple(account_filter[1]):
+                directed_amount = - debt.amount
+            else:
+                print(debt.debitor_id, debt.creditor_id, account_filter[1])
+                raise ValueError('Logic problem in identify directed_amount')
+            
+            to_print.append(' '.join(filter(None, (
+                '+' if directed_amount >= 0 else '-',
+                str(abs(directed_amount)),
+                str(debt.currency) if debt.currency else '',
+                f'# {debt.reason}' if debt.reason else '',
+            ))))
+
+            total_displayed += directed_amount
+
+        else:
+            to_print.append(' '.join(filter(None, (
+                'Debt',
+                f'"{debt.debitor_id}"',
+                'owes',
+                f'"{debt.creditor_id}"',
+                f'{debt.amount}',
+                f'{debt.currency}' if debt.currency else '',
+                f'for {debt.reason}' if debt.reason else ''
+            ))))
+    
+    if account_filter and account_filter[0] == 'multi':
+        to_print.append("// Total: {}".format(total_displayed))
+
     return await send('\n'.join(to_print) or 'No debts in that chat !')
 
 class EnglishPracticeData:
