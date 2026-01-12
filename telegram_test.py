@@ -2404,7 +2404,7 @@ async def post_event(update, context, *, name, datetime, time, link, date_str, c
         f"{emojis.Time} {datetime_tz:%H:%M} ({timezone})" if datetime_tz.date() == datetime.date() else
         f"{emojis.Time} {datetime_tz:%H:%M} on {datetime_tz.date():%d/%m/%Y} ({timezone})"
         for display in displays
-        for timezone in [None if display == 'simple' else display[1] if display[0] == 'tz_conversion' else raise_error(AssertionError)]
+        for timezone in [tz if display == 'simple' else display[1] if display[0] == 'tz_conversion' else raise_error(AssertionError)]
         for datetime_tz in [datetime.astimezone(timezone)]
     ] + [
         f"{emojis.Link} {link}"
