@@ -2382,8 +2382,6 @@ async def post_event(update, context, *, name, datetime, time, link, date_str, c
 
     # 1. Send info in text
 
-    print(tz_explicit)
-
     await send(event_text := '\n'.join(filter(None, [
         f"Event added:",
         f"{emojis.Name} {infos['what']}",
