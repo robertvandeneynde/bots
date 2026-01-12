@@ -2382,24 +2382,33 @@ async def post_event(update, context, *, name, datetime, time, link, date_str, c
 
     # 1. Send info in text
 
+    displays = []
+    if not time:
+        displays = []
+    elif not chat_timezones:
+        displays.append('simple' if not tz_explicit else ('tz_conversion', tz))
+    elif len(chat_timezones) == 1:
+        displays.append('simple' if tz in chat_timezones else ('tz_conversion', chat_timezones[0]))
+    else:
+        displays.extend(('tz_conversion', timezone) for timezone in chat_timezones)
+
     await send(event_text := '\n'.join(filter(None, [
         f"Event added:",
         f"{emojis.Name} {infos['what']}",
     ] + ([
         f"{emojis.Location} {infos['where']}",
     ] if infos.get('where') else []) + [
-        f"{emojis.Date} {datetime:%A} {datetime.date():%d/%m/%Y} ({date_str})",
-        (f"{emojis.Time} {time:%H:%M} ({tz})" if chat_timezones and set(chat_timezones) != {tz} or tz_explicit else
-         f"{emojis.Time} {time:%H:%M}") if time else None
-    ] + ([
+        f"{emojis.Date} {datetime:%A} {datetime.date():%d/%m/%Y} ({date_str})"
+    ] + [
+        f"{emojis.Time} {datetime_tz:%H:%M}" if display == 'simple' else 
         f"{emojis.Time} {datetime_tz:%H:%M} ({timezone})" if datetime_tz.date() == datetime.date() else
         f"{emojis.Time} {datetime_tz:%H:%M} on {datetime_tz.date():%d/%m/%Y} ({timezone})"
-        for timezone in chat_timezones or []
-        if timezone != tz
+        for display in displays
+        for timezone in [None if display == 'simple' else display[1] if display[0] == 'tz_conversion' else raise_error(AssertionError)]
         for datetime_tz in [datetime.astimezone(timezone)]
-    ] if time else []) + ([
+    ] + [
         f"{emojis.Link} {link}"
-    ] * (bool(link) and do_if_setting_on(read_chat_settings('event.addevent.display_link')))))))
+    ] * (bool(link) and do_if_setting_on(read_chat_settings('event.addevent.display_link'))))))
     
     if do_unless_setting_off(read_chat_settings('event.addevent.display_file')):
         # 2. Send info as clickable ics file to add to calendar
