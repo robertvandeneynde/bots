@@ -4385,15 +4385,18 @@ async def mytimezone(update: Update, context: CallbackContext):
         return await send(base_text)
     else:
         # set timezone
+        default_error = UserError("This timezone is not known by the system.\nCorrect examples include:\n- America/Los_Angeles\n- Europe/Brussels")
         for tries in (1, 2):
             match tries:
                 case 1:
                     tz_name, *_ = context.args
                 case 2:
+                    if len(context.args) < 2:
+                        raise default_error
                     tz_continent, tz_city, *_ = context.args
                     tz_name = tz_continent + "/" + tz_city
             try:
-                tz = ZoneInfo(tz_name)
+                tz = ZoneInfoOrAlias(tz_name, chat_id=update.effective_chat.id)
                 break
             except ZoneInfoNotFoundError:
                 continue
@@ -4403,7 +4406,7 @@ async def mytimezone(update: Update, context: CallbackContext):
                 else:
                     raise e
         else:
-            raise UserError("This timezone is not known by the system.\nCorrect examples include:\n- America/Los_Angeles\n- Europe/Brussels")
+            raise default_error
         set_my_timezone(update.message.from_user.id, tz)
         return await send("Your timezone is now: {}".format(tz))
 
