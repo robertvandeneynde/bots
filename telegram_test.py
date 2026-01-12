@@ -2410,7 +2410,7 @@ async def post_event(update, context, *, name, datetime, time, link, date_str, c
         f"{emojis.Link} {link}"
     ] * (bool(link) and do_if_setting_on(read_chat_settings('event.addevent.display_link'))))))
     
-    if do_unless_setting_off(read_chat_settings('event.addevent.display_file')):
+    if do_if_setting_on(read_chat_settings('event.addevent.display_file')):
         # 2. Send info as clickable ics file to add to calendar
         if do_unless_setting_off(read_chat_settings('event.addevent.help_file')):
             await send('Click the file below to add the event to your calendar:')
