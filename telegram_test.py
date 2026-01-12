@@ -1458,6 +1458,7 @@ class ParsedEventFinal(NamedTuple):
     datetime: Datetime 
     datetime_utc: Datetime 
     tz: ZoneInfo
+    tz_explicit: bool
 
 from dataclasses import dataclass
 
@@ -2032,8 +2033,6 @@ async def addschedule(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     events: list[ParsedEventFinal] = parse_datetime_schedule(tz=tz, args=context.args)
 
-    events[0].timez
-
     location_autocomplete = do_if_setting_on(read_chat_settings('event.location.autocomplete'))
 
     for event in events:
@@ -2200,11 +2199,13 @@ class InteractiveAddEvent:
 
         real_what = (what if not where else what + ' @ ' + where).strip()
 
-        date_str, time, name, date, date_end, datetime, datetime_utc, tz = parse_datetime_point(update, context, when_infos=when, what_infos=real_what)
+        date_str, time, name, date, date_end, datetime, datetime_utc, tz, tz_explicit = parse_datetime_point(update, context, when_infos=when, what_infos=real_what)
         
         add_event_to_db(datetime_utc=datetime_utc, name=name, chat_id=chat_id, source_user_id=source_user_id)
+
+        chat_timezones = read_chat_settings("event.timezones")
         
-        await post_event(update, context, name=name, datetime=datetime, time=time, date_str=date_str, chat_timezones=chat_timezones, tz=tz, chat_id=chat_id, datetime_utc=datetime_utc)
+        await post_event(update, context, name=name, datetime=datetime, time=time, date_str=date_str, chat_timezones=chat_timezones, tz=tz, tz_explicit=tz_explicit, chat_id=chat_id, datetime_utc=datetime_utc)
 
 def do_event_admin_check(type: Literal['add', 'del', 'edit', 'list'], *, setting, user_id):
     assert type in ('add', 'del', 'edit', 'list')
@@ -2265,7 +2266,7 @@ async def add_event(update: Update, context: CallbackContext):
     source_user_id = update.message.from_user.id
     chat_id = update.effective_chat.id
 
-    date_str, time, name, date, date_end, datetime, datetime_utc, tz = \
+    date_str, time, name, date, date_end, datetime, datetime_utc, tz, tz_explicit = \
         parse_datetime_point(update, context, has_inline_kargs=has_inline_kwargs,
                              when_infos=CanonInfo.when_infos, what_infos=CanonInfo.what_infos)
     
@@ -2283,8 +2284,8 @@ async def add_event(update: Update, context: CallbackContext):
 
     if do_unless_setting_off(read_chat_settings('event.location.autocomplete')):
         implicit_thereis(what=name, chat_id=chat_id)
-    
-    await post_event(update, context, name=name, datetime=datetime, time=time, date_str=date_str, chat_timezones=chat_timezones, tz=tz, chat_id=chat_id, datetime_utc=datetime_utc, link=infos_event and infos_event.get('link'))
+
+    await post_event(update, context, name=name, datetime=datetime, time=time, date_str=date_str, chat_timezones=chat_timezones, tz=tz, tz_explicit=tz_explicit, chat_id=chat_id, datetime_utc=datetime_utc, link=infos_event and infos_event.get('link'))
 
 def addevent_analyse_args_as_object(Args):
     if len(Args) == 0:
@@ -2371,7 +2372,7 @@ def implicit_thereis(*, what:str, chat_id):
 
     do_update_thereis_db(location, address, chat_id=chat_id)
 
-async def post_event(update, context, *, name, datetime, time, link, date_str, chat_timezones, tz, chat_id, datetime_utc):
+async def post_event(update, context, *, name, datetime, time, link, date_str, chat_timezones, tz, tz_explicit=False, chat_id, datetime_utc):
     send = make_send(update, context)
     read_chat_settings = make_read_chat_settings(update, context)
 
@@ -2381,6 +2382,8 @@ async def post_event(update, context, *, name, datetime, time, link, date_str, c
 
     # 1. Send info in text
 
+    print(tz_explicit)
+
     await send(event_text := '\n'.join(filter(None, [
         f"Event added:",
         f"{emojis.Name} {infos['what']}",
@@ -2388,7 +2391,7 @@ async def post_event(update, context, *, name, datetime, time, link, date_str, c
         f"{emojis.Location} {infos['where']}",
     ] if infos.get('where') else []) + [
         f"{emojis.Date} {datetime:%A} {datetime.date():%d/%m/%Y} ({date_str})",
-        (f"{emojis.Time} {time:%H:%M} ({tz})" if chat_timezones and set(chat_timezones) != {tz} else
+        (f"{emojis.Time} {time:%H:%M} ({tz})" if chat_timezones and set(chat_timezones) != {tz} or tz_explicit else
          f"{emojis.Time} {time:%H:%M}") if time else None
     ] + ([
         f"{emojis.Time} {datetime_tz:%H:%M} ({timezone})" if datetime_tz.date() == datetime.date() else
