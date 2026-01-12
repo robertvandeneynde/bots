@@ -1431,6 +1431,7 @@ class ParsedEventMiddleNoName(NamedTuple):
     time: Optional[Time]
     day_of_week: str
     relative_day_keyword: str
+    timezone: Optional[str]
 
 class ParsedEventMiddle(NamedTuple):
     date: str
@@ -1438,6 +1439,7 @@ class ParsedEventMiddle(NamedTuple):
     name: str 
     day_of_week: str
     relative_day_keyword: str
+    timezone: Optional[str]
 
     @staticmethod
     def from_no_name(event: ParsedEventMiddleNoName, name:str):
@@ -1520,6 +1522,16 @@ def parse_event_date(args) -> tuple[ParsedEventDate, list]:
 
 class ParseEvents:
 
+    class TimeWithTz(Exception):
+        time: Time 
+        rest: list[str]
+        timezone: str
+
+        def __init__(self, time, rest, timezone):
+            self.time = time
+            self.rest = rest
+            self.timezone = timezone
+
     @classmethod
     def is_valid_date(cls, value:str):
         return cls.parse_valid_date(value) is not None
@@ -1553,6 +1565,12 @@ class ParseEvents:
             hours, minutes = match.group(1), match.group(2)
             time = Time(int(hours), int(minutes or '0'))
             args = args[1:]
+        elif match := re.compile('(\\d{1,2})[:hH](\\d{2})?[:]([A-Za-z_]+|[A-Za-z_]+[/][A-Za-z_]+)').fullmatch(Args[0]):
+            hours, minutes = match.group(1), match.group(2)
+            time = Time(int(hours), int(minutes or '0'))
+            timezone: str = match.group(3)
+            args = args[1:]
+            raise ParseEvents.TimeWithTz(time=time, rest=args, timezone=timezone)
         else:
             time = None
         return time, args
@@ -1570,9 +1588,14 @@ class ParseEvents:
         date = parsed_event_date.date_str
         relative_day_keyword = parsed_event_date.relative_day_keyword
 
-        time, rest = cls.parse_time(rest)
+        try:
+            time, rest = cls.parse_time(rest)
+            timezone = None
+        except ParseEvents.TimeWithTz as ret:
+            time, rest = ret.time, ret.rest
+            timezone = ret.timezone
 
-        return ParsedEventMiddleNoName(date=date, time=time, day_of_week=day_of_week, relative_day_keyword=relative_day_keyword), rest
+        return ParsedEventMiddleNoName(date=date, time=time, day_of_week=day_of_week, relative_day_keyword=relative_day_keyword, timezone=timezone), rest
     
     @classmethod
     def parse_event(cls, args) -> ParsedEventMiddle:
@@ -1581,7 +1604,7 @@ class ParseEvents:
         return ParsedEventMiddle.from_no_name(event_no_name, name=" ".join(rest))
 
     @classmethod
-    def parse_schedule(cls, args, *, tz) -> list[ParsedEventMiddleNoName]:
+    def parse_schedule(cls, args, *, default_tz) -> list[ParsedEventMiddleNoName]:
         out: list[ParsedEventMiddleNoName] = []
         it = args
         while it:
@@ -1597,7 +1620,9 @@ class ParseEvents:
                 it = it[2:]
                 
             bit = it[0]
+
             event, it = cls.parse_event_timed(it)
+            tz = event.timezone or default_tz
 
             try:
                 DatetimeText.to_date_range(event.date, tz=tz)
@@ -1708,22 +1733,31 @@ def induce_my_timezone(*, user_id, chat_id):
 
 def parse_datetime_point(update, context, when_infos=None, what_infos=None, has_inline_kargs=False) -> ParsedEventFinal:
     from datetime import datetime as Datetime, time as Time, date as Date, timedelta
-    tz = induce_my_timezone(user_id=update.message.from_user.id, chat_id=update.effective_chat.id)
+    read_chat_settings = make_read_chat_settings(update, context)
     
     name = None
     date_str = None
     if context.args and not has_inline_kargs:
-        date_str, time, name, day_of_week, relative_day_keyword = ParseEvents.parse_event(context.args)
+        date_str, time, name, day_of_week, relative_day_keyword, timezone_event_str = ParseEvents.parse_event(context.args)
     if what_infos:
         name = name or what_infos
     if when_infos:
         if date_str:
             raise UserError("Multiple When specified")
-        date_str, time, name_from_when_part, day_of_week, relative_day_keyword = ParseEvents.parse_event(when_infos.split())
+        date_str, time, name_from_when_part, day_of_week, relative_day_keyword, timezone_event_str = ParseEvents.parse_event(when_infos.split())
         if name_from_when_part:
             raise UserError("Too much infos in the When part")
     if date_str is None:
         raise UserError("Must specify an event with date")
+
+    if timezone_event_str:
+        tz = ZoneInfoOrAlias(timezone_event_str, chat_id=update.effective_chat.id)
+        # timezone explicit: no need to be in chat.event.timezones
+        tz_explicit = True
+    else:
+        tz = induce_my_timezone(user_id=update.message.from_user.id, chat_id=update.effective_chat.id)
+        # timezone implicit: need to be in chat.event.timezones to avoid confusion
+        tz_explicit = False
 
     date, date_end = DatetimeText.to_date_range(date_str, tz=tz)
     datetime = Datetime.combine(date, time or Time(0,0)).replace(tzinfo=tz)
@@ -1737,7 +1771,12 @@ def parse_datetime_point(update, context, when_infos=None, what_infos=None, has_
     datetime: Datetime 
     datetime_utc: Datetime 
     tz: ZoneInfo
+    tz_explicit: bool
     Loc = locals()
+
+    if not tz_explicit:
+        chat_timezones = read_chat_settings("event.timezones")
+        check_tz_in_chat(chat_timezones=chat_timezones, tz=tz)
 
     if relative_day_keyword:
         rdate, rdate_end = DatetimeText.to_date_range(relative_day_keyword, tz=tz)
@@ -1993,6 +2032,8 @@ async def addschedule(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     events: list[ParsedEventFinal] = parse_datetime_schedule(tz=tz, args=context.args)
 
+    events[0].timez
+
     location_autocomplete = do_if_setting_on(read_chat_settings('event.location.autocomplete'))
 
     for event in events:
@@ -2001,7 +2042,7 @@ async def addschedule(update: Update, context: ContextTypes.DEFAULT_TYPE):
         else:
             name = event.name
 
-        new_event_id = add_event_to_db(chat_timezones=chat_timezones, tz=tz, name=name, chat_id=chat_id, source_user_id=source_user_id, datetime_utc=event.datetime_utc)
+        new_event_id = add_event_to_db(name=name, chat_id=chat_id, source_user_id=source_user_id, datetime_utc=event.datetime_utc)
 
         if infos_event and infos_event.get('link'):
             simple_sql((''' insert into EventLinkAttr(event_id, link) VALUES (?,?)''', (new_event_id, infos_event['link'])))
@@ -2010,8 +2051,8 @@ async def addschedule(update: Update, context: ContextTypes.DEFAULT_TYPE):
             implicit_thereis(what=name, chat_id=chat_id)
 
     return await send(f"{len(events)} event(s) added")
-    
-def add_event_to_db(*, chat_timezones, tz, datetime_utc, name, chat_id, source_user_id) -> 'id':
+
+def check_tz_in_chat(*, tz, chat_timezones):
     if chat_timezones and tz and tz not in chat_timezones:
         raise UserError('\n'.join([
             'Your timezone is not in chat timezones, this can be confusing, change your timezone or add your timezone to the chat timezones.',
@@ -2019,6 +2060,7 @@ def add_event_to_db(*, chat_timezones, tz, datetime_utc, name, chat_id, source_u
             '- Chat timezones: {chat_timezone_str}'.format(chat_timezone_str=", ".join(map(str, chat_timezones))),
         ]))
 
+def add_event_to_db(*, datetime_utc, name, chat_id, source_user_id) -> 'id':
     with sqlite3.connect('db.sqlite') as conn:
         cursor = conn.cursor()
 
@@ -2160,8 +2202,7 @@ class InteractiveAddEvent:
 
         date_str, time, name, date, date_end, datetime, datetime_utc, tz = parse_datetime_point(update, context, when_infos=when, what_infos=real_what)
         
-        chat_timezones = read_chat_settings("event.timezones")
-        add_event_to_db(chat_timezones=chat_timezones, tz=tz, datetime_utc=datetime_utc, name=name, chat_id=chat_id, source_user_id=source_user_id)
+        add_event_to_db(datetime_utc=datetime_utc, name=name, chat_id=chat_id, source_user_id=source_user_id)
         
         await post_event(update, context, name=name, datetime=datetime, time=time, date_str=date_str, chat_timezones=chat_timezones, tz=tz, chat_id=chat_id, datetime_utc=datetime_utc)
 
@@ -2235,7 +2276,7 @@ async def add_event(update: Update, context: CallbackContext):
 
     do_event_admin_check('add', setting=read_chat_settings('event.admins'), user_id=update.effective_user.id)
 
-    new_event_id = add_event_to_db(chat_timezones=chat_timezones, tz=tz, datetime_utc=datetime_utc, name=name, chat_id=chat_id, source_user_id=source_user_id)
+    new_event_id = add_event_to_db(datetime_utc=datetime_utc, name=name, chat_id=chat_id, source_user_id=source_user_id)
 
     if infos_event.get('link'):
         simple_sql((''' insert into EventLinkAttr(event_id, link) VALUES (?,?)''', (new_event_id, infos_event['link'])))
