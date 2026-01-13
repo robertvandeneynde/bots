@@ -5111,9 +5111,13 @@ async def convertmoney(update, context):
     except:
         return await send("Usage: /convertmoney value currency [to currency]")
 
+    currency = MONEY_CURRENCIES_ALIAS.get(currency.lower(), currency)
+    if currency_converted is not None:
+        currency_converted = MONEY_CURRENCIES_ALIAS.get(currency_converted.lower(), currency_converted)
+
     amount_base = Decimal(value)
     rates = get_database_euro_rates()
-    
+
     if mode == 'to_chat_currencies':
         chat_currencies = read_chat_settings('money.currencies') or DEFAULT_CURRENCIES
         currencies_to_convert = [x.upper() for x in chat_currencies if x.upper() != currency.upper()]
