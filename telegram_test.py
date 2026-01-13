@@ -196,6 +196,16 @@ async def hello_responder(msg:str, send: AsyncSend, *, update, context):
 def detect_currencies(msg: str):
     return [(value, MONEY_CURRENCIES_ALIAS[currency_raw.lower()]) for value, currency_raw in MONEY_RE.findall(msg)]
 
+def lazy_value(getter):
+    sentinel = object()
+    value = sentinel
+    def f():
+        nonlocal value
+        if value is sentinel:
+            value = getter()
+        return value
+    return f
+
 AsyncSend = Callable[[Update, CallbackContext], Awaitable[None]]
 
 async def money_responder(msg:str, send: AsyncSend, *, update, context):
@@ -204,14 +214,14 @@ async def money_responder(msg:str, send: AsyncSend, *, update, context):
     if detected_currencies:
         read_chat_settings = make_read_chat_settings(update, context)
 
-        chat_currencies = list(remove_dup_keep_order(read_chat_settings('money.currencies') or DEFAULT_CURRENCIES))
-        rates = get_database_euro_rates()
+        chat_currencies = lazy_value(lambda: list(remove_dup_keep_order(read_chat_settings('money.currencies') or DEFAULT_CURRENCIES)))
+        rates = lazy_value(get_database_euro_rates)
 
-        for value, currency_lower in detect_currencies(msg):
-            if (currency := currency_lower.upper()) in chat_currencies:
-                currencies_to_convert = [x for x in chat_currencies if x != currency]
+        for value, currency_lower in detected_currencies:
+            if (currency := currency_lower.upper()) in chat_currencies():
+                currencies_to_convert = [x for x in chat_currencies() if x != currency]
                 amount_base = Decimal(value)
-                amounts_converted = [convert_money(amount_base, currency_base=currency, currency_converted=currency_to_convert, rates=rates) for currency_to_convert in currencies_to_convert]
+                amounts_converted = [convert_money(amount_base, currency_base=currency, currency_converted=currency_to_convert, rates=rates()) for currency_to_convert in currencies_to_convert]
                 await send(format_currency(currency_list=[currency] + currencies_to_convert, amount_list=[amount_base] + amounts_converted))
 
 class DoNotAnswer(Exception):
@@ -4509,6 +4519,7 @@ ACCEPTED_SETTINGS_USER = (
 )
 ACCEPTED_SETTINGS_CHAT = (
     'money.currencies',
+    'money.known_currencies',
     'event.timezones',
     'event.admins',
     'event.addevent.help_file',
@@ -4673,6 +4684,7 @@ def CONVERSION_SETTINGS_BUILDER():
     # mappings
     mapping_chat = {
         'money.currencies': list_of_currencies_serializer,
+        'money.known_currencies': list_of_currencies_serializer,
         'event.timezones': list_of_timezone_serializer,
         'event.admins': list_of_event_admins,
         'event.addevent.display_link': on_off_serializer,
@@ -4782,7 +4794,7 @@ async def settings_command(update: Update, context: CallbackContext, *, command_
         raise UserError(f"Usage: /{command_name} set command.key value")
 
     list_type_and_extend = False
-    if list_type := key in ('money.currencies', 'event.timezones', 'event.admins'):
+    if list_type := key in ('money.currencies', 'money.known_currencies', 'event.timezones', 'event.admins'):
         if InfiniteEmptyList(rest)[0] == '+=':
             rest = rest[1:]
             list_type_and_extend = True
