@@ -209,20 +209,25 @@ def lazy_value(getter):
 AsyncSend = Callable[[Update, CallbackContext], Awaitable[None]]
 
 async def money_responder(msg:str, send: AsyncSend, *, update, context):
-    detected_currencies = detect_currencies(msg)
-
-    if detected_currencies:
+    if detected_currencies := detect_currencies(msg):
         read_chat_settings = make_read_chat_settings(update, context)
 
-        chat_currencies = lazy_value(lambda: list(remove_dup_keep_order(read_chat_settings('money.currencies') or DEFAULT_CURRENCIES)))
+        chat_currencies = remove_dup_keep_order(read_chat_settings('money.currencies') or DEFAULT_CURRENCIES)
+        
+        db_known_currencies = read_chat_settings('money.known_currencies')
+        if db_known_currencies is not None:
+            db_known_currencies = remove_dup_keep_order(db_known_currencies)
+
         rates = lazy_value(get_database_euro_rates)
 
-        for value, currency_lower in detected_currencies:
-            if (currency := currency_lower.upper()) in chat_currencies():
-                currencies_to_convert = [x for x in chat_currencies() if x != currency]
-                amount_base = Decimal(value)
-                amounts_converted = [convert_money(amount_base, currency_base=currency, currency_converted=currency_to_convert, rates=rates()) for currency_to_convert in currencies_to_convert]
-                await send(format_currency(currency_list=[currency] + currencies_to_convert, amount_list=[amount_base] + amounts_converted))
+        upper_detected_currencies = [(value, currency_lower.upper()) for value, currency_lower in detected_currencies]
+        for value, currency in upper_detected_currencies:
+            if db_known_currencies is None or currency not in db_known_currencies:
+                if currency in chat_currencies:
+                    currencies_to_convert = [x for x in chat_currencies if x != currency]
+                    amount_base = Decimal(value)
+                    amounts_converted = [convert_money(amount_base, currency_base=currency, currency_converted=currency_to_convert, rates=rates()) for currency_to_convert in currencies_to_convert]
+                    await send(format_currency(currency_list=[currency] + currencies_to_convert, amount_list=[amount_base] + amounts_converted))
 
 class DoNotAnswer(Exception):
     pass
@@ -4500,6 +4505,13 @@ def set_timezonealias_to_table(update, context, chat_id, alias, real):
             conn.execute('''update TimezoneAlias set real=? where chat_id=? and LOWER(?)=LOWER(alias)''', (real, chat_id, alias))
         conn.execute('end transaction')
 
+
+def to_list(gen):
+    def f(*a, **b):
+        return list(gen(*a, **b))
+    return f
+
+@to_list
 def remove_dup_keep_order(it):
     S = set()
     for x in it:
