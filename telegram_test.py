@@ -1620,7 +1620,8 @@ class ParseEvents:
         return ParsedEventMiddle.from_no_name(event_no_name, name=" ".join(rest))
 
     @classmethod
-    def parse_schedule(cls, args, *, default_tz) -> list[ParsedEventMiddleNoName]:
+    def parse_schedule(cls, args, *, tz) -> list[ParsedEventMiddleNoName]:
+        default_tz = tz
         out: list[ParsedEventMiddleNoName] = []
         it = args
         while it:
@@ -1838,7 +1839,8 @@ def parse_datetime_schedule(*, tz, args) -> list[ParsedEventFinal]:
             if not is_correct_day_of_week(date, day_of_week):
                 raise UserError(f"{event.date!r} is not a {day_of_week!r}")
         
-        final = ParsedEventFinal(date_str=event.date, time=time, name=name, date=date, date_end=date_end, datetime=datetime, datetime_utc=datetime_utc, tz=tz)
+        tz_explicit = event.timezone is not None
+        final = ParsedEventFinal(date_str=event.date, time=time, name=name, date=date, date_end=date_end, datetime=datetime, datetime_utc=datetime_utc, tz=tz, tz_explicit=tz_explicit)
         out.append(final)
 
     return out 
