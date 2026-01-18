@@ -3963,7 +3963,26 @@ def enrich_location_with_db(events, *, chat_id):
         new_events.append(new_event)
     return new_events
 
-async def list_days_or_today(update: Update, context: CallbackContext, mode: Literal['list', 'today', 'tomorrow', 'dayofweek'], mode_args={}, relative=False, formatting:Literal['normal', 'linkdays', 'crazyjamdays', 'linkdayshtml']='normal'):
+async def list_days_or_today(
+        update: Update,
+        context: CallbackContext,
+        mode: Literal['list', 'today', 'tomorrow', 'dayofweek'],
+        mode_args={},
+        relative=False,
+        formatting:Literal['normal', 'linkdays', 'crazyjamdays', 'linkdayshtml']='normal'):
+    """
+    @param mode: 
+        - list(): read the arguments from args
+        - today(): for today, will put a "→" to mark past events
+        - tomorrow(): for tomorrow
+        - dayofweek(dayofweek=): example: "Monday" (dayofweek = 1)
+
+    @param formatting: describe how each event is displayed
+        - normal
+        - linkdays: (?)
+        - crazyjamdays: the format used by crazy jam
+        - linkdayshtml: each event is possibily a link
+    """
     from datetime import time as Time
     
     assert mode in ('list', 'today', 'tomorrow', 'dayofweek')
