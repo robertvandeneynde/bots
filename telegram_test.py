@@ -3492,12 +3492,14 @@ def enrich_event_with_where(event):
         del event['where']
     return event
 
+def split_event_name_into_what_where(event_name):
+    X = GetOrEmpty(re.compile('(?:[ ]|^)[@][ ]').split(event_name, maxsplit=1))
+    return (X[0], X[1]) # X[1] can be empty
+
 def split_event_with_where_etc(event):
     event = dict(event)
 
-    X = GetOrEmpty(re.compile('(?:[ ]|^)[@][ ]').split(event['what'], maxsplit=1))
-    event['what'] = X[0]
-    event['where'] = X[1] # Can be empty
+    event['what'], event['where'] = split_event_name_into_what_where(event['what'])
 
     if not event.get('where') and 'where' in event:
         del event['where']
@@ -3909,9 +3911,6 @@ async def last_event(update, context, *, relative=False):
 async def next_event(update, context, *, relative=False):
     return await next_or_last_event(update, context, 1, relative=relative)
 
-async def list_days(update: Update, context: CallbackContext, relative=False, formatting='normal'):
-    return await list_days_or_today(update, context, mode='list', relative=relative, formatting=formatting)
-
 def setting_on_off(s, default):
     return (s if isinstance(s, bool) else
             True if isinstance(s, str) and s.lower() == 'on' else
@@ -3969,7 +3968,7 @@ async def list_days_or_today(
         mode: Literal['list', 'today', 'tomorrow', 'dayofweek'],
         mode_args={},
         relative=False,
-        formatting:Literal['normal', 'linkdays', 'crazyjamdays', 'linkdayshtml']='normal'):
+        formatting:Literal['normal', 'linkdays', 'crazyjamdays', 'linkdayshtml', 'short', 'shorthtml']='normal'):
     """
     @param mode: 
         - list(): read the arguments from args
@@ -3982,6 +3981,8 @@ async def list_days_or_today(
         - linkdays: (?)
         - crazyjamdays: the format used by crazy jam
         - linkdayshtml: each event is possibily a link
+
+    @param relative: display dates as "H-3" for example
     """
     from datetime import time as Time
     
@@ -3990,11 +3991,11 @@ async def list_days_or_today(
         assert (dayofweek := mode_args.get('dayofweek'))
         assert dayofweek in irange(1, 7)
 
-    assert formatting in ('normal', 'linkdays', 'crazyjamdays', 'linkdayshtml')
-    if with_link := formatting in ('linkdays', 'crazyjamdays', 'linkdayshtml'):
+    assert formatting in ('normal', 'linkdays', 'crazyjamdays', 'linkdayshtml', 'short', 'shorthtml')
+    if with_link := formatting in ('linkdays', 'crazyjamdays', 'linkdayshtml', 'shorthtml'):
         assert not relative
 
-    if with_html := formatting in ('linkdayshtml', ):
+    if with_html := formatting in ('linkdayshtml', 'shorthtml'):
         send = make_send(update, context, parse_mode='HTML', disable_web_page_preview=True)
     else:
         send = make_send(update, context)
@@ -4045,7 +4046,7 @@ async def list_days_or_today(
             if not event_link.startswith(('http://', 'https://')):
                 event_link = 'https://' + event_link
 
-        days[date.timetuple()[:3]].append((date, event_name) if formatting == 'normal' else (date, event_name, event_link))
+        days[date.timetuple()[:3]].append((date, event_name) if formatting in ('normal', 'short') else (date, event_name, event_link))
 
     display_time_marker = (False if mode in ('list', 'tomorrow', 'dayofweek', ) else
                            do_unless_setting_off(read_chat_settings('event.listtoday.display_time_marker')) if mode == 'today' else 
@@ -4090,6 +4091,26 @@ async def list_days_or_today(
                  f"""- {event_date:%H:%M}: {event_name}"""
                 for n, (event_date, event_name, event_link) in enumerate(days[day], start=1)
             ))
+        elif formatting in ('short', ):
+            day_of_week = DatetimeText.days_english[date.weekday()]
+            days_as_lines.append(
+                f"{day_of_week.capitalize()} {date:%d/%m}\n"
+                + "\n".join(
+                    f"""- {event_pure_name}"""
+                    for event_date, event_name in days[day]
+                    for (event_pure_name, event_location) in [split_event_name_into_what_where(event_name)]
+                )
+            )
+        elif formatting in ('shorthtml', ):
+            day_of_week = Datetime.days_english[date.weekday()] 
+            days_as_lines.append(
+                f"{day_of_week.capitalize()} {date:%d/%m}\n"
+                + "\n".join(
+                    f"""- <a href="{event_link}">{event_pure_name}</a>"""
+                    for event_date, event_name, event_link in days[day]
+                    for (event_pure_name, event_location) in [split_event_name_into_what_where(event_name)]
+                )
+            )
         else:
           day_of_week = DatetimeText.days_english[date.weekday()]
           days_as_lines.append(
@@ -4125,6 +4146,9 @@ async def day_of_week_command(update, context, n):
 # todo: use partial
 async def list_today(update: Update, context: CallbackContext, *, relative=False):
     return await list_days_or_today(update, context, mode='today', relative=relative)
+
+async def list_days(update: Update, context: CallbackContext, relative=False, formatting='normal'):
+    return await list_days_or_today(update, context, mode='list', relative=relative, formatting=formatting)
 
 async def list_events(update: Update, context: CallbackContext, relative=False):
     send = make_send(update, context)
@@ -5695,6 +5719,8 @@ if __name__ == '__main__':
     application.add_handler(CommandHandler('crazyjamdays',  partial(list_days,formatting='crazyjamdays')))
     application.add_handler(CommandHandler('listdayslink',  partial(list_days,formatting='linkdays')))
     application.add_handler(CommandHandler('listdayshtml',  partial(list_days,formatting='linkdayshtml')))
+    application.add_handler(CommandHandler('listdaysshort',  partial(list_days,formatting='short')))
+    application.add_handler(CommandHandler('listdaysshorthtml',  partial(list_days,formatting='shorthtml')))
     application.add_handler(CommandHandler('rlistdays', partial(list_days, relative=True)))
     application.add_handler(CommandHandler('listoday', list_today)) # hidden command, for typo
     application.add_handler(CommandHandler('rlistoday', partial(list_today, relative=True))) # hidden command, for typo
