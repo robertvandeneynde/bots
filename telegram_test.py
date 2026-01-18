@@ -4102,7 +4102,7 @@ async def list_days_or_today(
                 )
             )
         elif formatting in ('shorthtml', ):
-            day_of_week = Datetime.days_english[date.weekday()] 
+            day_of_week = DatetimeText.days_english[date.weekday()] 
             days_as_lines.append(
                 f"{day_of_week.capitalize()} {date:%d/%m}\n"
                 + "\n".join(
