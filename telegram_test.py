@@ -324,6 +324,8 @@ async def list_responder(msg: str, send: AsyncSend, *, update, context):
                 requested_type = post_operation_symbol
 
             parameters_lines = parameters_text.splitlines()
+            parameters_lines = list(map(str.strip, parameters_lines))
+            parameters_lines = list(filter(None, parameters_lines))
             if any(map(lambda x:x.startswith("-"), parameters_lines)) and not all(map(lambda x:x.startswith("-"), parameters_lines)):
                 raise UserError("Either use dash notation or don't, not a mix")
             parameters_lines = [line[1:] if line.startswith("-") else line for line in parameters_lines]
