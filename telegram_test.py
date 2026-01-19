@@ -2979,7 +2979,7 @@ class listsmodule:
 
     @staticmethod
     def is_negative_range(r: range):
-        return r.start < 0 or r.stop < 0
+        return r.start < 0 or r.stop <= 0
     
     @staticmethod
     def to_positive_range(r: range, N: int):
@@ -3208,7 +3208,7 @@ class listsmodule:
                     N = only_one(only_one(my_simple_sql(('''select count(*) from ListElement where listid=?''', (listid,)))))
                     r = listsmodule.to_positive_range(r, N)
                 
-                offset = r.start
+                offset = listsmodule.one_based_to_zero_based(r.start)
                 limit = r.stop - r.start
                 result_list = [x[0] for x in my_simple_sql((''' select value from ListElement where listid=? LIMIT ? OFFSET ?''', (listid, limit, offset)))]
 
