@@ -2954,25 +2954,25 @@ class listsmodule:
         '-5' → [-5]: list
         '2-4' → [2, 3, 4]: range
         """
-        for value in value.split():
-            if '-' in value:
-                a,b = value.split('-')
-                if a and b:
-                    # interval
-                    int(a), int(b)
-                    assert int(a) <= int(b)
-                    return irange(int(a), int(b))
-                
-                elif a and not b:
-                    raise ValueError("Invalid number or range")
-                elif b and not a:
-                    # negative number
-                    return [int(b)]
-                else:
-                    raise AssertionError
-                    
+        if '-' in value:
+            a,b = value.split('-')
+            if a and b:
+                # interval
+                int(a), int(b)
+                assert int(a) <= int(b)
+                return irange(int(a), int(b))
+            
+            elif a and not b:
+                raise ValueError("Invalid number or range")
+            elif b and not a:
+                # negative number
+                return [- int(b)]
             else:
-                return [int(value)]
+                raise AssertionError
+                
+        else:
+            return [int(value)]
+            
     class tasklistcheck:
         @staticmethod
         def do_it(*, conn, chat_id, name, value, direction:Literal['x', '', 'toggle']):
@@ -2994,7 +2994,7 @@ class listsmodule:
                     i = len(rowids) + i
                 else:
                     i = i - 1
-
+                
                 rowid, old_value = rowids[i]
 
                 if m := ListLang.IsTask.fullmatch(old_value):
@@ -3005,8 +3005,9 @@ class listsmodule:
                 
                 my_simple_sql((''' update ListElement set value=? where rowid=?''', (new_value, rowid)))
             
-            for i in listsmodule.parse_interval(value):
-                action(i)
+            for value in value.split():
+                for i in listsmodule.parse_interval(value):
+                    action(i)
 
     class tasktreecheck(OnTreeAction):
         def run(self, *, value, direction:Literal['x', ' ', 'toggle']):
