@@ -2982,10 +2982,20 @@ class listsmodule:
             for value in value.split():
                 if '-' in value:
                     a,b = value.split('-')
-                    int(a), int(b)
-                    assert int(a) <= int(b)
-                    for i in irange(int(a), int(b)):
-                        action(i)
+                    if a and b:
+                        # interval
+                        int(a), int(b)
+                        assert int(a) <= int(b)
+                        for i in irange(int(a), int(b)):
+                            action(i)
+                    elif a and not b:
+                        raise ValueError("Invalid number or range")
+                    elif b and not a:
+                        # negative number
+                        action(value)
+                    else:
+                        raise AssertionError
+                        
                 else:
                     action(value)
 
