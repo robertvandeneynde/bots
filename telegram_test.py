@@ -2948,10 +2948,10 @@ class listsmodule:
             my_simple_sql(('''update ListElement set value=? where listid=? LIMIT 1 OFFSET ? ''', (to_rep, listid, value)))
 
     @staticmethod
-    def parse_interval(value:str) -> list | range:
+    def parse_interval(value:str) -> range:
         """
-        '1' → [1]: list
-        '-5' → [-5]: list
+        '1' → [1]: range
+        '-5' → [-5]: range
         '2-4' → [2, 3, 4]: range
         """
         if '-' in value:
@@ -2966,13 +2966,34 @@ class listsmodule:
                 raise ValueError("Invalid number or range")
             elif b and not a:
                 # negative number
-                return [- int(b)]
+                return irange(- int(b), - int(b))
             else:
                 raise AssertionError
                 
         else:
-            return [int(value)]
-            
+            return irange(int(value), int(value))
+    
+    @staticmethod
+    def one_based_to_zero_based(i: int) -> int:
+        return i if i < 0 else i - 1        
+
+    @staticmethod
+    def is_negative_range(r: range):
+        return r.start < 0 or r.stop < 0
+    
+    @staticmethod
+    def to_positive_range(r: range, N: int):
+        if listsmodule.is_negative_range(r):
+            start = r.start + N if r.start < 0 else r.start
+            stop = r.stop + N if r.stop <= 0 else r.stop
+
+            assert start in range(0, N)
+            assert stop in irange(0, N)
+            assert start < stop
+
+            return range(start, stop)
+        else:
+            return r
     class tasklistcheck:
         @staticmethod
         def do_it(*, conn, chat_id, name, value, direction:Literal['x', '', 'toggle']):
@@ -3045,12 +3066,9 @@ class listsmodule:
             rowids = my_simple_sql((''' select rowid from ListElement where listid=? ''', (listid, )))
 
             for v in value.split():
-                assert int(v) in range(-len(rowids), len(rowids)+1)
-                assert int(v) != 0
-
-            for v in value.split():
-                delrowid = rowids[int(v) - 1 if int(v) > 0 else int(v)][0]
-                my_simple_sql((''' delete from ListElement where listid=? and rowid=?''', (listid, delrowid, )))
+                for i in map(listsmodule.one_based_to_zero_based, listsmodule.parse_interval(v)):
+                    delrowid = rowids[i][0]
+                    my_simple_sql((''' delete from ListElement where listid=? and rowid=?''', (listid, delrowid, )))
 
     class delintree(OnTreeAction):
         def run(self, *, parameters):
@@ -3184,8 +3202,15 @@ class listsmodule:
             if not parameters:
                 result_list = [x[0] for x in my_simple_sql((''' select value from ListElement where listid=?''', (listid, ) ))]
             else:
-                offset = int(parameters) - 1
-                result_list = [x[0] for x in my_simple_sql((''' select value from ListElement where listid=? LIMIT 1 OFFSET ?''', (listid, offset)))]
+                r: range = listsmodule.parse_interval(parameters)
+
+                if listsmodule.is_negative_range(r):
+                    N = only_one(only_one(my_simple_sql(('''select count(*) from ListElement where listid=?''', (listid,)))))
+                    r = listsmodule.to_positive_range(r, N)
+                
+                offset = r.start
+                limit = r.stop - r.start
+                result_list = [x[0] for x in my_simple_sql((''' select value from ListElement where listid=? LIMIT ? OFFSET ?''', (listid, limit, offset)))]
 
             sep = lambda: '\n' if not space_between_lines else '\n\n'
 
