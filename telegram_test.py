@@ -2947,6 +2947,27 @@ class listsmodule:
 
             my_simple_sql(('''update ListElement set value=? where listid=? LIMIT 1 OFFSET ? ''', (to_rep, listid, value)))
 
+    @staticmethod
+    def parse_interval(value):
+        for value in value.split():
+            if '-' in value:
+                a,b = value.split('-')
+                if a and b:
+                    # interval
+                    int(a), int(b)
+                    assert int(a) <= int(b)
+                    return irange(int(a), int(b))
+                
+                elif a and not b:
+                    raise ValueError("Invalid number or range")
+                elif b and not a:
+                    # negative number
+                    return [int(b)]
+                else:
+                    raise AssertionError
+                    
+            else:
+                return [int(value)]
     class tasklistcheck:
         @staticmethod
         def do_it(*, conn, chat_id, name, value, direction:Literal['x', '', 'toggle']):
@@ -2960,16 +2981,16 @@ class listsmodule:
 
             rowids = my_simple_sql((''' select rowid, value from ListElement where listid=? ''', (listid, )))
 
-            def action(value):
-                assert int(value) in irange(-len(rowids), len(rowids))
-                assert int(value) != 0
+            def action(i: int):
+                assert i in irange(-len(rowids), len(rowids))
+                assert i != 0
 
-                if int(value) < 0:
-                    value = len(rowids) + int(value)
+                if i < 0:
+                    i = len(rowids) + i
                 else:
-                    value = int(value) - 1
+                    i = i - 1
 
-                rowid, old_value = rowids[int(value)]
+                rowid, old_value = rowids[i]
 
                 if m := ListLang.IsTask.fullmatch(old_value):
                     new_check = direction if direction != 'toggle' else ('' if m.group(1) == 'x' else 'x')
@@ -2979,25 +3000,8 @@ class listsmodule:
                 
                 my_simple_sql((''' update ListElement set value=? where rowid=?''', (new_value, rowid)))
             
-            for value in value.split():
-                if '-' in value:
-                    a,b = value.split('-')
-                    if a and b:
-                        # interval
-                        int(a), int(b)
-                        assert int(a) <= int(b)
-                        for i in irange(int(a), int(b)):
-                            action(i)
-                    elif a and not b:
-                        raise ValueError("Invalid number or range")
-                    elif b and not a:
-                        # negative number
-                        action(value)
-                    else:
-                        raise AssertionError
-                        
-                else:
-                    action(value)
+            for i in listsmodule.parse_interval(value):
+                action(i)
 
     class tasktreecheck(OnTreeAction):
         def run(self, *, value, direction:Literal['x', ' ', 'toggle']):
