@@ -2948,7 +2948,12 @@ class listsmodule:
             my_simple_sql(('''update ListElement set value=? where listid=? LIMIT 1 OFFSET ? ''', (to_rep, listid, value)))
 
     @staticmethod
-    def parse_interval(value):
+    def parse_interval(value:str) -> list | range:
+        """
+        '1' → [1]: list
+        '-5' → [-5]: list
+        '2-4' → [2, 3, 4]: range
+        """
         for value in value.split():
             if '-' in value:
                 a,b = value.split('-')
