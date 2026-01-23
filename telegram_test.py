@@ -1754,7 +1754,7 @@ def parse_datetime_point(update, context, when_infos=None, what_infos=None, has_
     from datetime import datetime as Datetime, time as Time, date as Date, timedelta
     read_chat_settings = make_read_chat_settings(update, context)
     
-    name = None
+    name = ''
     date_str = None
     if context.args and not has_inline_kargs:
         date_str, time, name, day_of_week, relative_day_keyword, timezone_event_str = ParseEvents.parse_event(context.args)
