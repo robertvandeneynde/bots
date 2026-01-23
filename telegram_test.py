@@ -2210,6 +2210,7 @@ class InteractiveAddEvent:
         await InteractiveAddEvent.do_all_add_event(update, context, what=what, when=when, where=where)
         return ConversationHandler.END
     
+    @staticmethod
     async def do_all_add_event(update, context, *, what, when, where):
         read_chat_settings = make_read_chat_settings(update, context)
 
@@ -2224,7 +2225,7 @@ class InteractiveAddEvent:
 
         chat_timezones = read_chat_settings("event.timezones")
         
-        await post_event(update, context, name=name, datetime=datetime, time=time, date_str=date_str, chat_timezones=chat_timezones, tz=tz, tz_explicit=tz_explicit, chat_id=chat_id, datetime_utc=datetime_utc)
+        await post_event(update, context, link='', name=name, datetime=datetime, time=time, date_str=date_str, chat_timezones=chat_timezones, tz=tz, tz_explicit=tz_explicit, chat_id=chat_id, datetime_utc=datetime_utc)
 
 def do_event_admin_check(type: Literal['add', 'del', 'edit', 'list'], *, setting, user_id):
     assert type in ('add', 'del', 'edit', 'list')
