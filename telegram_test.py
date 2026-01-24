@@ -1218,8 +1218,14 @@ async def listpageflashcards(update, context):
     await send('\n'.join("{marker} {name}".format(marker='→' if current else '•', name=name) for name, current in results) or '/')
 
 async def exportflashcards(update, context):
-    query = ('select sentence, translation from flashcard where user_id=?', (update.message.from_user.id,))
-    lines = simple_sql(query)
+    user_id = update.effective_user.id
+    query = ('select sentence, translation, page_name from flashcard where user_id=?', (user_id, ))
+    all_pages = simple_sql(query)
+
+    from collections import defaultdict
+    page_dict = defaultdict(list)
+    for sentence, translation, page_name in all_pages:
+        page_dict[page_name].append((sentence, translation))
 
     def export_tsv_utf8():
         import io
@@ -1231,8 +1237,12 @@ async def exportflashcards(update, context):
     def export_xlsx():
         import openpyxl
         wb = openpyxl.Workbook()
-        for line in lines:
-            wb.active.append(line)
+        wb.active.title = '1'
+        for sheet_name, lines in page_dict.items():
+            if sheet_name not in wb.sheetnames:
+                wb.active = wb.create_sheet(title=sheet_name)
+            for line in lines:
+                wb.active.append(line)
         import io
         bytes_io = io.BytesIO()
         wb.save(bytes_io)
@@ -1243,7 +1253,11 @@ async def exportflashcards(update, context):
     file_content: bytes = export_xlsx()
     extension: str = 'xlsx'
 
-    await context.bot.send_document(update.effective_chat.id, file_content, filename="flashcards." + extension)
+    await context.bot.send_document(
+        update.effective_chat.id,
+        file_content,
+        filename="flashcards." + extension,
+        message_thread_id=update.message.message_thread_id if update.message.is_topic_message else None)
 
 async def export_event(update, context, *, name, datetime_utc):
     from datetime import date, time, datetime, timedelta
