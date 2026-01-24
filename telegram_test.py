@@ -1060,14 +1060,18 @@ async def flashcard(update, context):
 
     await send(f"New flashcard:\n{sentence!r}\n→ {translation!r}")
 
-def get_current_flashcard_page(user_id):
-    with sqlite3.connect("db.sqlite") as conn:
-        conn.execute("begin transaction")
+def get_current_flashcard_page(user_id, connection=None):
+    def op(conn):
         current_page_name, = conn.execute("select name from flashcardpage where user_id=? and current=1", (user_id,)).fetchone() or (None,)
         if current_page_name is None:
             current_page_name = '1'
-        conn.execute("end transaction")
-    return current_page_name
+        return current_page_name
+        
+    if connection is None:
+        with sqlite3.connect("db.sqlite") as conn:
+            return op(conn)    
+    else:
+        return op(conn)
 
 def save_flashcard(sentence, translation, *, user_id, page_name):
     query = ('insert into Flashcard(sentence, translation, user_id, page_name) values (?,?,?,?)', (sentence, translation, user_id, page_name))
@@ -1194,6 +1198,24 @@ async def switchpageflashcard(update, context):
         conn.execute("end transaction")
 
     await send(f"Your current flashcard page is now {page_name!r}")
+
+async def listflashcards(update, context):
+    send = make_send(update, context)
+    Args = InfiniteEmptyList(context.args)
+    user_id = update.effective_user.id
+
+    page_name = get_current_flashcard_page(user_id=user_id)
+    results = simple_sql(('select sentence, translation from flashcard where user_id=? and page_name=?', (user_id, page_name)))
+
+    await send('\n'.join(f"{sentence!r}\n→ {translation!r}" for sentence, translation in results) or '/')
+
+async def listpageflashcards(update, context):
+    send = make_send(update, context)
+    Args = InfiniteEmptyList(context.args)
+    user_id = update.effective_user.id
+
+    results = simple_sql(('select name, current from FlashcardPage where user_id = ?', (user_id, ))) or [('1', True)]
+    await send('\n'.join("{marker} {name}".format(marker='→' if current else '•', name=name) for name, current in results) or '/')
 
 async def exportflashcards(update, context):
     query = ('select sentence, translation from flashcard where user_id=?', (update.message.from_user.id,))
@@ -5674,7 +5696,7 @@ COMMAND_LIST = (
     'dict', 'wikt', 'larousse',
     'convertmoney', 'eur', 'brl', 'rub',
     'mytimezone', 'mysettings', 'delmysettings', 'chatsettings', 'delchatsettings',
-    'flashcard', 'exportflashcards', 'practiceflashcards', 'switchpageflashcard',
+    'flashcard', 'exportflashcards', 'practiceflashcards', 'switchpageflashcard', 'listflashcard', 'listpageflashcard',
     'help',
     'uniline', 'nuniline',
     #'sleep',
@@ -5811,6 +5833,8 @@ if __name__ == '__main__':
     application.add_handler(CommandHandler('chatsettings', chatsettings))
     application.add_handler(CommandHandler('flashcard', flashcard))
     application.add_handler(CommandHandler('switchpageflashcard', switchpageflashcard))
+    application.add_handler(CommandHandler('listflashcards', listflashcards))
+    application.add_handler(CommandHandler('listpageflashcards', listpageflashcards))
     application.add_handler(CommandHandler('exportflashcards', exportflashcards))
     application.add_handler(CommandHandler('sharemoney', sharemoney))
     application.add_handler(ConversationHandler(
