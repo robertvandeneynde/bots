@@ -355,7 +355,14 @@ async def list_responder(msg: str, send: AsyncSend, *, update, context):
                 else:
                     force_creation = False
 
-                if re.fullmatch(re.escape('[') + '\s*' + re.escape(']'), requested_type):
+                if ((dynamic_list_match := requested_type /fullmatches/ (re.escape('[') + '(.+)' + re.escape(']')))
+                    or (dynamic_list_match := requested_type /fullmatches/ ('dynamic\s+((\p{L}|[.])+)'))):
+                    dynamic_list = dynamic_list_match.group(1)
+                    if not(dynamic_list in ('event.today', 'flashcard.current')):
+                        raise UserError(f"Dynamic list {dynamic_list} is not implemented")
+                    type_list = ('dynamic', dynamic_list)
+                    
+                elif re.fullmatch(re.escape('[') + '\s*' + re.escape(']'), requested_type):
                     # name = list
                     # name = []
                     # name = [ ]
@@ -420,7 +427,10 @@ async def list_responder(msg: str, send: AsyncSend, *, update, context):
                                 modified_value = listsmodule.make_task(parameters)
                                 listsmodule.addtolist.do_it(**P(), value=modified_value)
                             case _:
-                                listsmodule.addtolist.do_it(**P(), value=parameters)
+                                if dynamic_match := list_type /fullmatches/ ('dynamic' + re.escape('.') + '(.*)'):
+                                    listsmodule.dynamic_add.do_it(**P(), value=parameters, dynamic_list=dynamic_match.group(1))
+                                else:
+                                    listsmodule.addtolist.do_it(**P(), value=parameters)
                             
                     elif operation in ('print', 'list', ):
                         space_between_lines = do_if_setting_on(read_chat_settings('list.space_between_lines'))
@@ -1088,9 +1098,9 @@ def db_connect_or_use(connection, op):
     else:
         return op(conn)
 
-def save_flashcard(sentence, translation, *, page_id):
+def save_flashcard(sentence, translation, *, page_id, connection=None):
     query = ('insert into Flashcard(sentence, translation, page_id) values (?,?,?)', (sentence, translation, page_id))
-    simple_sql(query)
+    simple_sql(query, connection=connection)
 
 def simple_sql(query, *, connection=None):
     conn = connection
@@ -2760,8 +2770,6 @@ class listsmodule:
         for node in values:
             if node.parent is not None:
                 cursor.execute('''update ListElement set tree_parent=? where rowid=?''', (mapped[node.parent], mapped[node.rowid]))
-        
-
     class forcecreatelist:
         @staticmethod
         def do_it(*, conn, chat_id, name, user_id, type_list: object, force_creation: bool):
@@ -2795,6 +2803,8 @@ class listsmodule:
                             raise UserError("Impossible to create {} from {}".format('tasktree', target_type))
                     else:
                         raise UserError(f'List {copy_from_name!r} does not exist')  # transaction will rollback
+                case 'dynamic', dynamic_list:
+                    actual_type = 'dynamic' + '.' + dynamic_list
                 case _:
                     assert isinstance(type_list, str)
                     actual_type = type_list.lower()
@@ -2806,6 +2816,9 @@ class listsmodule:
             match type_list:
                 case 'list' | 'tasklist' | 'tree' | 'tasktree':
                     pass # nothing to do more
+                    
+                case 'dynamic', _:
+                    pass
 
                 case 'copy', copy_from_name:
                     if actual_type in ('list', 'tasklist'):
@@ -3159,7 +3172,33 @@ class listsmodule:
             
             for node_rowid in itrees_rowid:
                 delete(node_rowid)
-    
+
+    class dynamic_add(GeneralAction):
+        @staticmethod
+        def do_it(*, conn, chat_id, name, value, dynamic_list):
+            my_simple_sql = partial(simple_sql, connection=conn)
+            listid, = only_one(my_simple_sql(('''select rowid from List where chat_id=? and lower(name)=lower(?)''', (chat_id, name,))))
+            match dynamic_list:
+                case 'flashcard.current':
+                    parsed = value.split()
+                    if len(parsed) == 2:
+                        sentence, translation = map(str.strip, parsed)
+                    else:
+                        parsed = value.split('=', maxsplit=1)
+                        if len(parsed) == 2:
+                            sentence, translation = map(str.strip, parsed)
+                        else:
+                            parsed = value.split('/', maxsplit=1)
+                            if len(parsed) == 2:
+                                sentence, translation = map(str.strip, parsed)
+                            else:
+                                raise UserError('Invalid flashcard')
+                            
+                    page_id = get_current_flashcard_page_id(chat_id=chat_id)
+                    save_flashcard(sentence, translation, page_id=page_id, connection=conn)
+                    
+                case 'event.today':
+                    pass
     class addtolist(GeneralAction):
         @staticmethod
         def do_it(*, conn, chat_id, name, value):
