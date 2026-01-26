@@ -1073,8 +1073,8 @@ def get_current_flashcard_page(user_id, connection=None):
     else:
         return op(conn)
 
-def save_flashcard(sentence, translation, *, user_id, page_name):
-    query = ('insert into Flashcard(sentence, translation, user_id, page_name) values (?,?,?,?)', (sentence, translation, user_id, page_name))
+def save_flashcard(sentence, translation, *, user_id, page_name, scope:Literal['personal', 'chat']):
+    query = ('insert into Flashcard(sentence, translation, user_id, page_name, scope) values (?,?,?,?,?)', (sentence, translation, user_id, page_name, scope))
     simple_sql(query)
 
 def simple_sql(query, *, connection=None):
@@ -5123,6 +5123,25 @@ def migration20():
     with sqlite3.connect('db.sqlite') as conn:
         conn.execute('begin transaction')
         conn.execute("create table EnglishPracticeIrregularVerbs(chat_id, user_id, json)")
+        conn.execute('end transaction')
+
+def migration21():
+    with sqlite3.connect('db.sqlite') as conn:
+        conn.execute('begin transaction')
+        conn.execute("alter table FlashcardPage add column scope")
+        conn.execute("alter table Flashcard add column scope")
+        conn.execute("alter table FlashcardPage add column chat_id")
+        conn.execute("alter table Flashcard add column page_id")
+        conn.execute("update Flashcard set scope='personal'")
+        conn.execute("update FlashcardPage set scope='personal'")
+        conn.execute("update FlashcardPage set chat_id=user_id where scope='personal'")
+        for rowid, in conn.execute('select rowid from flashcard'):
+            conn.execute('''
+                update flashcard set page_id=(
+                    select rowid from flashcardpage where flashcardpage.user_id=flashcard.user_id and flashcardpage.name=flashcard.page_name
+                ) where rowid=?
+                ''', (rowid, )
+            )
         conn.execute('end transaction')
 
 def get_latest_euro_rates_from_api() -> json:
