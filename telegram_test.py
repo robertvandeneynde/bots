@@ -1030,6 +1030,8 @@ async def dict_(update: Update, context: CallbackContext):
 class UsageError(Exception):
     pass
 
+FlashcardScope = Literal['personal', 'chat']
+
 async def flashcard(update, context):
     send = make_send(update, context)
     try:
@@ -1055,26 +1057,40 @@ async def flashcard(update, context):
         return await send("Usage:\n/flashcard word translation\n/flashcard words+ = translation+\n/flashcard words+ / translation+\nCan also be used on a reply message to replace the words")
     
     user_id = update.effective_user.id
-    page_name = get_current_flashcard_page(user_id)
-    save_flashcard(sentence, translation, user_id=user_id, page_name=page_name)
+    page = get_current_flashcard_page(user_id)
+    if page is None:
+        page = create_default_flashcard_page(update, context)
+    save_flashcard(sentence, translation, user_id=user_id, page_id=page['page_id'], page_name=page['page_name'])
 
     await send(f"New flashcard:\n{sentence!r}\n→ {translation!r}")
 
-def get_current_flashcard_page(user_id, connection=None):
+def get_current_flashcard_page(user_id, connection=None) -> dict:
     def op(conn):
-        current_page_name, = conn.execute("select name from flashcardpage where user_id=? and current=1", (user_id,)).fetchone() or (None,)
-        if current_page_name is None:
-            current_page_name = '1'
-        return current_page_name
-        
+        page_id, page_name = conn.execute("select rowid, page_name from flashcardpage where user_id=? and current=1", (user_id,)).fetchone() or (None, None)
+        if page_id is None:
+            return None 
+        return {'page_name': page_name, 'page_id': page_id}
+    
+    return db_connect_or_use(connection, op)
+
+def create_default_flashcard_page(update, context, connection=None):
+    def op(conn):
+        user_id, chat_id = update.effective_user.id, update.effective_chat.id
+        cursor = conn.cursor()
+        cursor.execute("insert into flashcardpage(user_id, name, current, scope, chat_id) values (?,?,?,?,?)", (user_id, '1', 1, 'personal', chat_id))
+        return {'page_name': '1', 'page_id': cursor.lastrowid}
+
+    return db_connect_or_use(connection, op)
+
+def db_connect_or_use(connection, op):
     if connection is None:
         with sqlite3.connect("db.sqlite") as conn:
-            return op(conn)    
+            return op(conn)
     else:
         return op(conn)
 
-def save_flashcard(sentence, translation, *, user_id, page_name, scope:Literal['personal', 'chat']):
-    query = ('insert into Flashcard(sentence, translation, user_id, page_name, scope) values (?,?,?,?,?)', (sentence, translation, user_id, page_name, scope))
+def save_flashcard(sentence, translation, *, user_id, page_name, page_id):
+    query = ('insert into Flashcard(sentence, translation, user_id, page_name, page_id) values (?,?,?,?,?)', (sentence, translation, user_id, page_name, page_id))
     simple_sql(query)
 
 def simple_sql(query, *, connection=None):
@@ -5129,10 +5145,8 @@ def migration21():
     with sqlite3.connect('db.sqlite') as conn:
         conn.execute('begin transaction')
         conn.execute("alter table FlashcardPage add column scope")
-        conn.execute("alter table Flashcard add column scope")
         conn.execute("alter table FlashcardPage add column chat_id")
         conn.execute("alter table Flashcard add column page_id")
-        conn.execute("update Flashcard set scope='personal'")
         conn.execute("update FlashcardPage set scope='personal'")
         conn.execute("update FlashcardPage set chat_id=user_id where scope='personal'")
         for rowid, in conn.execute('select rowid from flashcard'):
