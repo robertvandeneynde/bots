@@ -1030,9 +1030,7 @@ async def dict_(update: Update, context: CallbackContext):
 class UsageError(Exception):
     pass
 
-FlashcardScope = Literal['personal', 'chat']
-
-async def flashcard(update, context):
+async def flashcard(update, context, *, scope=Literal['personal', 'general']):
     send = make_send(update, context)
     try:
       if reply := get_reply(update.message):
@@ -1056,28 +1054,30 @@ async def flashcard(update, context):
     except UsageError:
         return await send("Usage:\n/flashcard word translation\n/flashcard words+ = translation+\n/flashcard words+ / translation+\nCan also be used on a reply message to replace the words")
     
-    user_id, chat_id = update.effective_user.id, update.effective_chat.id
-    page = get_current_flashcard_page(user_id=user_id, chat_id=chat_id)
-    save_flashcard(sentence, translation, user_id=user_id, page_id=page['page_id'], page_name=page['page_name'])
+    the_id = (update.effective_chat.id if scope == 'general' else
+              update.effective_user.id if scope == 'personal' else raise_error(AssertionError))
 
-    await send(f"New flashcard:\n{sentence!r}\n→ {translation!r}")
+    page_id = get_current_flashcard_page_id(chat_id=the_id)
+    save_flashcard(sentence, translation, page_id=page_id)
 
-def get_current_flashcard_page(*, user_id, chat_id, connection=None) -> dict:
+    await send(f"New flashcard:\n{sentence}\n→ {translation}")
+
+def get_current_flashcard_page_id(*, chat_id, connection=None) -> dict:
     def op(conn):
-        results = conn.execute("select rowid, page_name from flashcardpage where user_id=? and current=1", (user_id,)).fetchall()
+        results = conn.execute("select rowid from flashcardpage where chat_id=? and current=1", (chat_id,)).fetchall()
         if not results:
-            return create_default_flashcard_page(user_id=user_id, chat_id=chat_id, connection=connection)
+            return create_default_flashcard_page(chat_id=chat_id, connection=connection)
         else:
-            page_id, page_name = only_one(results)
-            return {'page_name': page_name, 'page_id': page_id}
+            page_id, = only_one(results)
+            return page_id 
 
     return db_connect_or_use(connection, op)
 
-def create_default_flashcard_page(*, user_id, chat_id, connection=None):
+def create_default_flashcard_page(*, chat_id, connection=None):
     def op(conn):
         cursor = conn.cursor()
-        cursor.execute("insert into flashcardpage(user_id, name, current, scope, chat_id) values (?,?,?,?,?)", (user_id, '1', 1, 'personal', chat_id))
-        return {'page_name': '1', 'page_id': cursor.lastrowid}
+        cursor.execute("insert into flashcardpage(chat_id, name, current) values (?,?,?)", (chat_id, '1', 1))
+        return cursor.lastrowid
 
     return db_connect_or_use(connection, op)
 
@@ -1088,8 +1088,8 @@ def db_connect_or_use(connection, op):
     else:
         return op(conn)
 
-def save_flashcard(sentence, translation, *, user_id, page_name, page_id):
-    query = ('insert into Flashcard(sentence, translation, user_id, page_name, page_id) values (?,?,?,?,?)', (sentence, translation, user_id, page_name, page_id))
+def save_flashcard(sentence, translation, *, page_id):
+    query = ('insert into Flashcard(sentence, translation, page_id) values (?,?,?)', (sentence, translation, page_id))
     simple_sql(query)
 
 def simple_sql(query, *, connection=None):
@@ -1142,14 +1142,14 @@ async def practiceflashcards(update, context):
     except UsageError:
         return await send("Usage:\n/practiceflashcards [n] [days]")
     
-    user_id = update.effective_user.id
-    current_page = get_current_flashcard_page(user_id)
+    chat_id = update.effective_chat.id
+    current_page_id = get_current_flashcard_page_id(chat_id=chat_id)
     query = ('''select sentence, translation from flashcard inner join flashcardpage on flashcard.page_id = flashcardpage.rowid
-                where flashcard.user_id=? and flashcard.page_name=?''', (user_id, current_page['page_name']))
+                where flashcardpage.rowid=?''', (current_page_id, ))
     lines = simple_sql(query)
 
     if not lines:
-        return await send(f"No flashcards for page {current_page!r}")
+        return await send(f"No flashcards for current page")
     
     import random
     sample = random.sample(lines, n if n is not None else len(lines))
@@ -1199,44 +1199,55 @@ async def switchpageflashcard(update, context):
     except:
         return await send("Usage: /switchpageflashcard page_name")
 
-    user_id = update.effective_user.id
+    chat_id = update.effective_chat.id
 
     with sqlite3.connect('db.sqlite') as conn:
         conn.execute("begin transaction")
         # 1. Remove current page, if any
-        conn.execute("update flashcardpage set current=0 where user_id=?", (user_id,))
+        conn.execute("update flashcardpage set current=0 where chat_id=?", (chat_id,))
         
         # 2. Create or Update target page as current
-        db_page_name, = conn.execute("select name from flashcardpage where name=? and user_id=?", (page_name, user_id)).fetchone() or (None,)
+        db_page_name, = conn.execute("select name from flashcardpage where name=? and chat_id=?", (page_name, chat_id)).fetchone() or (None,)
         if db_page_name is None:
-            conn.execute("insert into flashcardpage(user_id, name, current) values (?,?,1)", (user_id, page_name))
+            conn.execute("insert into flashcardpage(chat_id, name, current) values (?,?,1)", (chat_id, page_name))
         else:
-            conn.execute("update flashcardpage set current=1 where user_id=? and name=?", (user_id, page_name))
+            conn.execute("update flashcardpage set current=1 where chat_id=? and name=?", (chat_id, page_name))
         conn.execute("end transaction")
 
-    await send(f"Your current flashcard page is now {page_name!r}")
+    if is_group := (update.effective_chat.id != update.effective_user.id):
+        await send(f"The current flashcard page is now {page_name!r} (for this group)")
+    else:
+        await send(f"Your current flashcard page is now {page_name!r}")
 
 async def listflashcards(update, context):
     send = make_send(update, context)
     Args = InfiniteEmptyList(context.args)
-    user_id = update.effective_user.id
+    chat_id = update.effective_chat.id
 
-    page_name = get_current_flashcard_page(user_id=user_id)
-    results = simple_sql(('select sentence, translation from flashcard where user_id=? and page_name=?', (user_id, page_name)))
+    page_id = get_current_flashcard_page_id(chat_id=chat_id)
+    results = simple_sql((
+        ''' select flashcard.sentence, flashcard.translation from flashcard inner join flashcardpage on flashcard.page_id=flashcardpage.rowid
+            where flashcardpage.chat_id=? and flashcardpage.rowid=?
+        ''', (chat_id, page_id)))
 
-    await send('\n'.join(f"{sentence!r}\n→ {translation!r}" for sentence, translation in results) or '/')
+    await send('\n'.join(f"{sentence}\n→ {translation}" for sentence, translation in results) or '/')
 
 async def listpageflashcards(update, context):
     send = make_send(update, context)
     Args = InfiniteEmptyList(context.args)
-    user_id = update.effective_user.id
+    chat_id = update.effective_chat.id
 
-    results = simple_sql(('select name, current from FlashcardPage where user_id = ?', (user_id, ))) or [('1', True)]
+    results = simple_sql(('select name, current from FlashcardPage where chat_id = ?', (chat_id, )))
     await send('\n'.join("{marker} {name}".format(marker='→' if current else '•', name=name) for name, current in results) or '/')
 
 async def exportflashcards(update, context):
-    user_id = update.effective_user.id
-    query = ('select sentence, translation, page_name from flashcard where user_id=?', (user_id, ))
+    chat_id = update.effective_chat.id
+    query = ('''
+             select sentence, translation, flashcardpage.name from flashcard
+             inner join flashcardpage on flashcard.page_id=flashcardpage.rowid where flashcardpage.chat_id=?
+             ''',
+             (chat_id, ))
+    
     all_pages = simple_sql(query)
 
     from collections import defaultdict
@@ -5744,6 +5755,7 @@ COMMAND_LIST = (
     'convertmoney', 'eur', 'brl', 'rub',
     'mytimezone', 'mysettings', 'delmysettings', 'chatsettings', 'delchatsettings',
     'flashcard', 'exportflashcards', 'practiceflashcards', 'switchpageflashcard', 'listflashcard', 'listpageflashcard',
+    'myflashcard',
     'help',
     'uniline', 'nuniline',
     #'sleep',
@@ -5878,7 +5890,8 @@ if __name__ == '__main__':
     application.add_handler(CommandHandler('listallsettings', listallsettings))
     application.add_handler(CommandHandler('mysettings', mysettings))
     application.add_handler(CommandHandler('chatsettings', chatsettings))
-    application.add_handler(CommandHandler('flashcard', flashcard))
+    application.add_handler(CommandHandler('flashcard', partial(flashcard, scope='general')))
+    application.add_handler(CommandHandler('myflashcard', partial(flashcard, scope='personal')))
     application.add_handler(CommandHandler('switchpageflashcard', switchpageflashcard))
     application.add_handler(CommandHandler('listflashcards', listflashcards))
     application.add_handler(CommandHandler('listpageflashcards', listpageflashcards))
