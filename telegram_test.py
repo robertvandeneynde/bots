@@ -285,13 +285,19 @@ class ListLang:
         'addchild', 'insertchild', 
     ), key=len, reverse=True)
 
+    DYNAMIC_TYPES = [
+        'flashcard.current',
+        # 'event.today',
+    ]
+
     POSSIBLE_TYPES = [
         'list',
         'tasklist',
         'tree',
         'tasktree'
-    ]
-
+        'dynamic.flashcard.current'
+    ] + ['dynamic' + '.' + x for x in DYNAMIC_TYPES]
+    
     OPS_1L = '|'.join(map(re.escape, OPERATIONS_ONE_LINE))
 
     IsTask = re.compile("^\\[\\s*(x|)\\s*\\]\\s*(.*)\\s*$")
@@ -419,30 +425,41 @@ async def list_responder(msg: str, send: AsyncSend, *, update, context):
 
                     list_type = listsmodule.get_list_type(**P())
                     list_type_is_tree = list_type in ('tree', 'tasktree')
-                    
+                    dynamic_match = list_type /fullmatches/ ('dynamic' + re.escape('.') + '(.*)')
+                    dynamic_list = dynamic_match.group(1) if dynamic_match else None
+
                     did_edit = True
                     if operation in ('add', 'append'):
                         match list_type:
                             case 'tasklist' | 'tasktree':
                                 modified_value = listsmodule.make_task(parameters)
                                 listsmodule.addtolist.do_it(**P(), value=modified_value)
+                            case 'list' | 'tree':
+                                listsmodule.addtolist.do_it(**P(), value=parameters)
                             case _:
-                                if dynamic_match := list_type /fullmatches/ ('dynamic' + re.escape('.') + '(.*)'):
-                                    listsmodule.dynamic_add.do_it(**P(), value=parameters, dynamic_list=dynamic_match.group(1))
+                                if dynamic_list:
+                                    listsmodule.dynamic_add.do_it(**P(), value=parameters, dynamic_list=dynamic_list)
                                 else:
-                                    listsmodule.addtolist.do_it(**P(), value=parameters)
-                            
+                                    raise DoNotAnswer
+                                
                     elif operation in ('print', 'list', ):
                         space_between_lines = do_if_setting_on(read_chat_settings('list.space_between_lines'))
                         if list_type_is_tree:
                             indent = int_or_none(read_chat_settings('list.indent'))
                             await send(listsmodule.printtree.it(**P(), parameters=parameters, indent=indent, space_between_lines=space_between_lines))
-                        else:
+                        elif dynamic_list:
+                            await send(listsmodule.print_dynamic.it(**P(), parameters=parameters))
+                        elif list_type in ('list', 'tasklist', ):
                             await send(listsmodule.printlist.it(**P(), parameters=parameters, space_between_lines=space_between_lines))
+                        else:
+                            raise DoNotAnswer
                         did_edit = False
 
                     elif operation in ('clear', ):
-                        listsmodule.clearlist.do_it(conn=conn, name=list_name, chat_id=chat_id)
+                        if list_type in ('list', 'tree', 'tasklist', 'tasktree'):
+                            listsmodule.clearlist.do_it(conn=conn, name=list_name, chat_id=chat_id)
+                        else:
+                            raise DoNotAnswer
 
                     elif operation in ('extendmulti', ):
                         if list_type in ('tasktree', ):
@@ -451,37 +468,48 @@ async def list_responder(msg: str, send: AsyncSend, *, update, context):
                             listsmodule.extendmultitree.do_it(conn=conn, name=list_name, chat_id=chat_id, values=parameters)
                         elif list_type in ('tasklist', ):
                             listsmodule.extendmultitasklist.do_it(conn=conn, name=list_name, chat_id=chat_id, values=parameters)
-                        else:
+                        elif list_type in ('list', ):
                             listsmodule.extendmultilist.do_it(conn=conn, name=list_name, chat_id=chat_id, values=parameters)
+                        else:
+                            raise DoNotAnswer
                     
                     elif operation in ('editmulti', ):
                         if list_type in ('tasktree', ):
                             raise UserError("Impossible at the moment")
                         if list_type in ('tasklist', ):
                             listsmodule.editmultitasklist.do_it(conn=conn, name=list_name, chat_id=chat_id, values=parameters)
-                        else:
+                        elif list_type in ('list', 'tree'):
                             listsmodule.editmultilist.do_it(conn=conn, name=list_name, chat_id=chat_id, values=parameters)
+                        else:
+                            raise DoNotAnswer
 
                     elif operation in ('shuffle', ):
                         if list_type_is_tree:
                             raise UserError("Operation not possible")
-                        listsmodule.shuffle.do_it(conn=conn, name=list_name, chat_id=chat_id)
-                    
+                        elif list_type in ('list', 'tasklist'):
+                            listsmodule.shuffle.do_it(conn=conn, name=list_name, chat_id=chat_id)
+                        else:
+                            raise DoNotAnswer
+
                     elif operation in ('enum', 'enumerate', ):
                         space_between_lines = do_if_setting_on(read_chat_settings('list.space_between_lines'))
                         if list_type_is_tree:
                             indent = int_or_none(read_chat_settings('list.indent'))
                             await send(listsmodule.enumeratetree.it(**P(), parameters=parameters, indent=indent, space_between_lines=space_between_lines))
-                        else:
+                        elif list_type in ('list', 'tasklist'):
                             await send(listsmodule.enumeratelist.it(**P(), parameters=parameters, space_between_lines=space_between_lines))
+                        else:
+                            raise DoNotAnswer
                         
                         did_edit = False
                     
                     elif operation in ('del', 'delete'):
                         if list_type_is_tree:
                             listsmodule.delintree(**P()).run(parameters=parameters)
-                        else:
+                        elif list_type in ('list', 'tasklist'):
                             listsmodule.delinlist.do_it(**P(), value=parameters)
+                        else:
+                            raise DoNotAnswer
                     
                     elif operation in ('insert', ):
                         if list_type in ('tasklist', ):
@@ -490,8 +518,10 @@ async def list_responder(msg: str, send: AsyncSend, *, update, context):
                             listsmodule.insertintasktree.do_it(**P(), parameters=parameters)
                         elif list_type in ('tree', ):
                             listsmodule.insertintree(**P()).run(parameters=parameters)
-                        else:
+                        elif list_type in ('list', ):
                             listsmodule.insertinlist.do_it(**P(), parameters=parameters)
+                        else:
+                            raise DoNotAnswer
                     
                     elif operation in ('rep', 'replace'):
                         if list_type in ('tasklist', ):
@@ -501,8 +531,10 @@ async def list_responder(msg: str, send: AsyncSend, *, update, context):
                                 listsmodule.replaceintasktree.do_it(**PP())
                             else:
                                 listsmodule.replaceintree.do_it(**PP())
-                        else:
+                        elif list_type in ('list', ):
                             listsmodule.replaceinlist.do_it(**PP())
+                        else:
+                            raise DoNotAnswer
                     
                     elif operation in ('insertchild', 'addchild', ):
                         if list_type_is_tree:
@@ -511,7 +543,7 @@ async def list_responder(msg: str, send: AsyncSend, *, update, context):
                             else:
                                 listsmodule.treeinsertchild(**P()).run(parameters=parameters)
                         else:
-                            did_edit = False
+                            raise DoNotAnswer
 
                     elif operation in ('check', 'uncheck', ):
                         if list_type in ('tasklist', 'tasktree'):
@@ -526,8 +558,7 @@ async def list_responder(msg: str, send: AsyncSend, *, update, context):
                                 else:
                                     listsmodule.tasklistcheck.do_it(conn=conn, name=list_name, chat_id=chat_id, value=parameters, direction=' ')
                         else:
-                            # do nothing because the operation does not exist
-                            did_edit = False
+                            raise DoNotAnswer
 
                     else:
                         raise AssertionError(f"On operation {operation}")
@@ -1229,18 +1260,22 @@ async def switchpageflashcard(update, context):
     else:
         await send(f"Your current flashcard page is now {page_name!r}")
 
+class flashcard:
+    def print_current_flashcards(chat_id):
+        page_id = get_current_flashcard_page_id(chat_id=chat_id)
+        results = simple_sql((
+            ''' select flashcard.sentence, flashcard.translation from flashcard inner join flashcardpage on flashcard.page_id=flashcardpage.rowid
+                where flashcardpage.chat_id=? and flashcardpage.rowid=?
+            ''', (chat_id, page_id)))
+
+        return '\n'.join(f"{sentence}\n→ {translation}" for sentence, translation in results) or '/'
+
 async def listflashcards(update, context):
     send = make_send(update, context)
     Args = InfiniteEmptyList(context.args)
     chat_id = update.effective_chat.id
 
-    page_id = get_current_flashcard_page_id(chat_id=chat_id)
-    results = simple_sql((
-        ''' select flashcard.sentence, flashcard.translation from flashcard inner join flashcardpage on flashcard.page_id=flashcardpage.rowid
-            where flashcardpage.chat_id=? and flashcardpage.rowid=?
-        ''', (chat_id, page_id)))
-
-    await send('\n'.join(f"{sentence}\n→ {translation}" for sentence, translation in results) or '/')
+    return await send(flashcard.print_current_flashcards(chat_id=chat_id))
 
 async def listpageflashcards(update, context):
     send = make_send(update, context)
@@ -3340,6 +3375,23 @@ class listsmodule:
                 await self.send(listsmodule.printlist.it(conn=conn, chat_id=self.get_chat_id(), name=name, space_between_lines=space_between_lines))
                 conn.execute('end transaction')
     
+    class print_dynamic(GeneralAction):
+        @staticmethod
+        def it(*, conn, chat_id, name, parameters, type_list):
+            my_simple_sql = partial(simple_sql, connection=conn)
+
+            listid, = only_one(my_simple_sql(('''select rowid from List where chat_id=? and lower(name)=lower(?)''', (chat_id, name,))))
+            type_list = only_one(only_one(my_simple_sql((''' select type from List where rowid=? ''', (listid, )))))
+
+            match type_list.split('.', maxsplit=1):
+                case 'dynamic', dynamic_list:
+                    match dynamic_list:
+                        case 'flashcard.current':
+                            return flashcard.print_current_flashcards(chat_id=chat_id)
+                        case _:
+                            raise UserError(f'Unknown dynamic list type {dynamic_list}')
+                case _:
+                    raise UserError(f'List {name!r} is not a dynamic list')
     class printtree(GeneralAction):
         @staticmethod
         def it(*, conn, chat_id, name, parameters, indent:int, space_between_lines:bool=False):
