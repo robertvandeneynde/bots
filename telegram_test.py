@@ -471,7 +471,7 @@ async def list_responder(msg: str, send: AsyncSend, *, update, context):
                         elif list_type in ('list', ):
                             listsmodule.extendmultilist.do_it(conn=conn, name=list_name, chat_id=chat_id, values=parameters)
                         elif dynamic_list:
-                            listsmodule.extend_multi_dynamic.do_it(**P(), dynamic_list=dynamic_list)
+                            listsmodule.extend_multi_dynamic.do_it(**P(), values=parameters, dynamic_list=dynamic_list)
                         else:
                             raise DoNotAnswer
                     
@@ -3301,7 +3301,7 @@ class listsmodule:
         @staticmethod
         def do_it(*, conn, chat_id, name, values, dynamic_list):
             for value in values:
-                flashcard.dynamic_add.do_it(conn=conn, chat_id=chat_id, name=name, value=value, dynamic_list=dynamic_list)
+                listsmodule.dynamic_add.do_it(conn=conn, chat_id=chat_id, name=name, value=value, dynamic_list=dynamic_list)
     class extendmultilist:
         @staticmethod
         def do_it(*, conn, chat_id, name, values):
