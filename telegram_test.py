@@ -295,7 +295,6 @@ class ListLang:
         'tasklist',
         'tree',
         'tasktree'
-        'dynamic.flashcard.current'
     ] + ['dynamic' + '.' + x for x in DYNAMIC_TYPES]
     
     OPS_1L = '|'.join(map(re.escape, OPERATIONS_ONE_LINE))
