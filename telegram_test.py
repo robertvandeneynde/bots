@@ -448,7 +448,7 @@ async def list_responder(msg: str, send: AsyncSend, *, update, context):
                             indent = int_or_none(read_chat_settings('list.indent'))
                             await send(listsmodule.printtree.it(**P(), parameters=parameters, indent=indent, space_between_lines=space_between_lines))
                         elif dynamic_list:
-                            await send(listsmodule.print_dynamic.it(**P(), parameters=parameters))
+                            await send(listsmodule.print_dynamic.it(**P(), parameters=parameters, dynamic_list=dynamic_list))
                         elif list_type in ('list', 'tasklist', ):
                             await send(listsmodule.printlist.it(**P(), parameters=parameters, space_between_lines=space_between_lines))
                         else:
@@ -470,6 +470,8 @@ async def list_responder(msg: str, send: AsyncSend, *, update, context):
                             listsmodule.extendmultitasklist.do_it(conn=conn, name=list_name, chat_id=chat_id, values=parameters)
                         elif list_type in ('list', ):
                             listsmodule.extendmultilist.do_it(conn=conn, name=list_name, chat_id=chat_id, values=parameters)
+                        elif dynamic_list:
+                            listsmodule.extend_multi_dynamic.do_it(**P(), dynamic_list=dynamic_list)
                         else:
                             raise DoNotAnswer
                     
@@ -1071,7 +1073,7 @@ async def dict_(update: Update, context: CallbackContext):
 class UsageError(Exception):
     pass
 
-async def flashcard(update, context, *, scope=Literal['personal', 'general']):
+async def add_flashcard(update, context, *, scope=Literal['personal', 'general']):
     send = make_send(update, context)
     try:
       if reply := get_reply(update.message):
@@ -3211,8 +3213,6 @@ class listsmodule:
     class dynamic_add(GeneralAction):
         @staticmethod
         def do_it(*, conn, chat_id, name, value, dynamic_list):
-            my_simple_sql = partial(simple_sql, connection=conn)
-            listid, = only_one(my_simple_sql(('''select rowid from List where chat_id=? and lower(name)=lower(?)''', (chat_id, name,))))
             match dynamic_list:
                 case 'flashcard.current':
                     parsed = value.split()
@@ -3296,6 +3296,12 @@ class listsmodule:
             listsmodule.clearlist.do_it(conn=conn, chat_id=chat_id, name=name)
             # 2: set (in transaction)
             listsmodule.extendmultitasklist.do_it(conn=conn, chat_id=chat_id, name=name, values=values)
+
+    class extend_multi_dynamic:
+        @staticmethod
+        def do_it(*, conn, chat_id, name, values, dynamic_list):
+            for value in values:
+                flashcard.dynamic_add.do_it(conn=conn, chat_id=chat_id, name=name, value=value, dynamic_list=dynamic_list)
     class extendmultilist:
         @staticmethod
         def do_it(*, conn, chat_id, name, values):
@@ -3377,21 +3383,13 @@ class listsmodule:
     
     class print_dynamic(GeneralAction):
         @staticmethod
-        def it(*, conn, chat_id, name, parameters, type_list):
-            my_simple_sql = partial(simple_sql, connection=conn)
-
-            listid, = only_one(my_simple_sql(('''select rowid from List where chat_id=? and lower(name)=lower(?)''', (chat_id, name,))))
-            type_list = only_one(only_one(my_simple_sql((''' select type from List where rowid=? ''', (listid, )))))
-
-            match type_list.split('.', maxsplit=1):
-                case 'dynamic', dynamic_list:
-                    match dynamic_list:
-                        case 'flashcard.current':
-                            return flashcard.print_current_flashcards(chat_id=chat_id)
-                        case _:
-                            raise UserError(f'Unknown dynamic list type {dynamic_list}')
+        def it(*, conn, chat_id, name, parameters, dynamic_list):
+            match dynamic_list:
+                case 'flashcard.current':
+                    return flashcard.print_current_flashcards(chat_id=chat_id)
                 case _:
-                    raise UserError(f'List {name!r} is not a dynamic list')
+                    raise UserError(f'Unknown dynamic list type {dynamic_list}')
+                
     class printtree(GeneralAction):
         @staticmethod
         def it(*, conn, chat_id, name, parameters, indent:int, space_between_lines:bool=False):
@@ -5981,8 +5979,8 @@ if __name__ == '__main__':
     application.add_handler(CommandHandler('listallsettings', listallsettings))
     application.add_handler(CommandHandler('mysettings', mysettings))
     application.add_handler(CommandHandler('chatsettings', chatsettings))
-    application.add_handler(CommandHandler('flashcard', partial(flashcard, scope='general')))
-    application.add_handler(CommandHandler('myflashcard', partial(flashcard, scope='personal')))
+    application.add_handler(CommandHandler('flashcard', partial(add_flashcard, scope='general')))
+    application.add_handler(CommandHandler('myflashcard', partial(add_flashcard, scope='personal')))
     application.add_handler(CommandHandler('switchpageflashcard', switchpageflashcard))
     application.add_handler(CommandHandler('listflashcards', listflashcards))
     application.add_handler(CommandHandler('listpageflashcards', listpageflashcards))
