@@ -583,13 +583,14 @@ def int_or_none(setting):
 async def eventedit_responder(msg:str, send: AsyncSend, *, update, context):
     reply = get_reply(update.message)
     assert_true(reply and reply.text, DoNotAnswer)
+    user_id, chat_id = update.effective_user.id, update.effective_chat.id
 
     try:
         event = addevent_analyse_from_bot(update, context, reply.text)
     except ValueError:
         raise DoNotAnswer
     
-    if match_postpone := re.match('([+]|[-])\s*(\d+)\s*(h|hours|min|minute|minutes|day|days|week|weeks)', msg):
+    if match_postpone := re.fullmatch('([+]|[-])\s*(\d+)\s*(h|hours|min|minute|minutes|day|days|week|weeks)', msg):
         event_db = retrieve_event_from_db(update=update, context=context, what=event['what'], when=event['when'])
         
         sign, amount, units = match_postpone.groups()
@@ -604,7 +605,67 @@ async def eventedit_responder(msg:str, send: AsyncSend, *, update, context):
         do_event_admin_check('edit', setting=read_chat_settings('event.admins'), user_id=update.effective_user.id)
 
         simple_sql(('''UPDATE Events SET date=? where rowid=?''', (DatetimeDbSerializer.strftime(after), event_db['rowid'], )))
-    
+
+    elif match_field_edit := msg /fullmatches_with_flags(re.I)/ '(\p{L}+)[ ]*[=][ ]*(.*)':
+        read_chat_settings = make_read_chat_settings(update, context)
+
+        field_name = match_field_edit.group(1).lower()
+        new_value = match_field_edit.group(2)
+        possible_fields = ['name', 'date', 'datetime', 'time', 'when', 'what', 'where', 'location']
+        if field_name not in possible_fields:
+            raise DoNotAnswer
+
+        event_db = retrieve_event_from_db(update=update, context=context, what=event['what'], when=event['when'])
+        event_rich = split_event_with_where_etc({'what': event_db['name']})
+
+        if field_name in ('name', 'what'):
+            event_rich['what'] = new_value
+            db_datetime = event_db['date']
+        
+        elif field_name in ('where', 'location'):
+            event_rich['where'] = new_value
+            db_datetime = event_db['date']
+
+        elif field_name in ('datetime', 'when'):
+
+            tz = induce_my_timezone(user_id=user_id, chat_id=chat_id)
+            check_tz_in_chat(tz=tz, chat_timezones=read_chat_settings('event.timezones'))
+            
+            datetime_object = parse_datetime_point(update, context, when_infos=new_value, what_infos=event_db['name']).datetime.replace(tzinfo=tz)
+            db_datetime = DatetimeDbSerializer.strftime(datetime_object.astimezone(UTC))
+        
+        elif field_name in ('time', ):
+            time, rest = ParseEvents.parse_time(new_value.split())
+            assert_true(not rest, UserError("Too much values for time"))
+            assert_true(time, UserError("Cannot parse time"))
+
+            tz = induce_my_timezone(user_id=user_id, chat_id=chat_id)
+            check_tz_in_chat(tz=tz, chat_timezones=read_chat_settings('event.timezones'))
+
+            datetime_object = DatetimeDbSerializer.strptime(event_db['date']).replace(tzinfo=UTC).astimezone(tz)
+            datetime_object = Datetime.combine(datetime_object.date(), time)
+            db_datetime = DatetimeDbSerializer.strftime(datetime_object.astimezone(UTC))
+        
+        elif field_name in ('date', ):
+            mini_event, rest = parse_event_date(new_value.split())
+            assert_true(not rest, UserError("Too much values for date"))
+            assert_true(mini_event.date_str, UserError("Cannot parse date"))
+
+            tz = induce_my_timezone(user_id=user_id, chat_id=chat_id)
+            check_tz_in_chat(tz=tz, chat_timezones=read_chat_settings('event.timezones'))
+
+            date, date_end = DatetimeText.to_date_range(mini_event.date_str, tz=tz)
+
+            datetime_object = DatetimeDbSerializer.strptime(event_db['date']).replace(tzinfo=UTC).astimezone(tz)
+            datetime_object = Datetime.combine(date, datetime_object.time())
+            db_datetime = DatetimeDbSerializer.strftime(datetime_object.astimezone(UTC))
+
+        else:
+            raise DoNotAnswer
+        
+        db_what = event_rich['what'] if not event_rich.get('where') else event_rich['what'] + ' @ ' + event_rich['where']
+        simple_sql(('''UPDATE Events SET name=?, date=? where rowid=?''', (db_what, db_datetime, event_db['rowid'], )))
+
     else:
         raise DoNotAnswer
     
