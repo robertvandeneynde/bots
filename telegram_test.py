@@ -1860,7 +1860,7 @@ def induce_my_timezone(*, user_id, chat_id):
         "- This: /chatsettings event.timezones TIMEZONE\n"
         "- Example: /chatsettings event.timezones Europe/Brussels\n")
 
-def parse_datetime_point(update, context, when_infos=None, what_infos=None, has_inline_kargs=False) -> ParsedEventFinal:
+def parse_datetime_point(update, context, when_infos=None, what_infos=None, has_inline_kargs=False, required_time=False) -> ParsedEventFinal:
     from datetime import datetime as Datetime, time as Time, date as Date, timedelta
     read_chat_settings = make_read_chat_settings(update, context)
     
@@ -1887,6 +1887,10 @@ def parse_datetime_point(update, context, when_infos=None, what_infos=None, has_
         tz = induce_my_timezone(user_id=update.message.from_user.id, chat_id=update.effective_chat.id)
         # timezone implicit: need to be in chat.event.timezones to avoid confusion
         tz_explicit = False
+
+    if required_time:
+        if time is None:
+            raise UserError("Time must be specified (policy of the group)")
 
     date, date_end = DatetimeText.to_date_range(date_str, tz=tz)
     datetime = Datetime.combine(date, time or Time(0,0)).replace(tzinfo=tz)
@@ -2328,8 +2332,9 @@ class InteractiveAddEvent:
         chat_id = update.effective_chat.id
 
         real_what = (what if not where else what + ' @ ' + where).strip()
-
-        date_str, time, name, date, date_end, datetime, datetime_utc, tz, tz_explicit = parse_datetime_point(update, context, when_infos=when, what_infos=real_what)
+        
+        required_time = do_if_setting_on(read_chat_settings('event.addevent.required_time'))
+        date_str, time, name, date, date_end, datetime, datetime_utc, tz, tz_explicit = parse_datetime_point(update, context, when_infos=when, what_infos=real_what, required_time=required_time)
         
         add_event_to_db(datetime_utc=datetime_utc, name=name, chat_id=chat_id, source_user_id=source_user_id)
 
@@ -2396,9 +2401,10 @@ async def add_event(update: Update, context: CallbackContext):
     source_user_id = update.message.from_user.id
     chat_id = update.effective_chat.id
 
+    required_time = do_if_setting_on(read_chat_settings('event.addevent.required_time'))
     date_str, time, name, date, date_end, datetime, datetime_utc, tz, tz_explicit = \
         parse_datetime_point(update, context, has_inline_kargs=has_inline_kwargs,
-                             when_infos=CanonInfo.when_infos, what_infos=CanonInfo.what_infos)
+                             when_infos=CanonInfo.when_infos, what_infos=CanonInfo.what_infos, required_time=required_time)
     
     if do_unless_setting_off(read_chat_settings('event.location.autocomplete')):
         name = update_name_using_locations(name, chat_id=chat_id)
@@ -4783,6 +4789,7 @@ ACCEPTED_SETTINGS_CHAT = (
     'event.addevent.display_link',
     'event.addevent.display_file',
     'event.addevent.display_forwarded_infos',
+    'event.addevent.required_time',
     'event.listtoday.display_time_marker',
     'event.delevent.display',
     'event.location.autocomplete',
