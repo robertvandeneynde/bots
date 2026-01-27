@@ -730,7 +730,7 @@ async def sharemoney_responder(msg:str, send: AsyncSend, *, update, context):
         if currency_string:
             if first_currency or second_currency:
                 if not(first_currency.upper() == second_currency.upper() == currency_string.upper()):
-                    raise UserError("Currencies match")
+                    raise UserError("Currencies must match")
 
         if currency_string:
             raise UserError('I cannot deal properly with currencies atm, but you can use the equivalent "account" notation: A.EUR owes B.EUR 5')
@@ -747,6 +747,12 @@ async def sharemoney_responder(msg:str, send: AsyncSend, *, update, context):
             amount=amount.parse_string(amount_str, parse_all=True)[0].eval(),
             reason=reason,
             currency=currency_string)
+    
+        read_chat_settings = make_read_chat_settings(update, context)
+
+        if do_if_setting_on(read_chat_settings('sharemoney.required_for')):
+            if not debt.reason:
+                raise UserError('You must specify a reason (group policy)\nExample: John owes Maria 5 for bowling')
         
         simple_sql((
             'insert into NamedChatDebt(debitor_id, creditor_id, chat_id, amount, currency, reason) values (?,?,?,?,?,?)',
@@ -4794,6 +4800,7 @@ ACCEPTED_SETTINGS_CHAT = (
     'event.delevent.display',
     'event.location.autocomplete',
     'event.commands.dayofweek',
+    'sharemoney.required_for',
     'list.space_between_lines',
     'list.indent',
 ) + tuple(
