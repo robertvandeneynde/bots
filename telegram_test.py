@@ -299,7 +299,6 @@ class ListLang:
         'tasklist',
         'tree',
         'tasktree'
-        'dynamic.flashcard.current'
     ] + ['dynamic' + '.' + x for x in DYNAMIC_TYPES]
     
     OPS_1L = '|'.join(map(re.escape, OPERATIONS_ONE_LINE))
@@ -588,13 +587,14 @@ def int_or_none(setting):
 async def eventedit_responder(msg:str, send: AsyncSend, *, update, context):
     reply = get_reply(update.message)
     assert_true(reply and reply.text, DoNotAnswer)
+    user_id, chat_id = update.effective_user.id, update.effective_chat.id
 
     try:
         event = addevent_analyse_from_bot(update, context, reply.text)
     except ValueError:
         raise DoNotAnswer
     
-    if match_postpone := re.match('([+]|[-])\s*(\d+)\s*(h|hours|min|minute|minutes|day|days|week|weeks)', msg):
+    if match_postpone := re.fullmatch('([+]|[-])\s*(\d+)\s*(h|hours|min|minute|minutes|day|days|week|weeks)', msg):
         event_db = retrieve_event_from_db(update=update, context=context, what=event['what'], when=event['when'])
         
         sign, amount, units = match_postpone.groups()
@@ -609,7 +609,67 @@ async def eventedit_responder(msg:str, send: AsyncSend, *, update, context):
         do_event_admin_check('edit', setting=read_chat_settings('event.admins'), user_id=update.effective_user.id)
 
         simple_sql(('''UPDATE Events SET date=? where rowid=?''', (DatetimeDbSerializer.strftime(after), event_db['rowid'], )))
-    
+
+    elif match_field_edit := msg /fullmatches_with_flags(re.I)/ '(\p{L}+)[ ]*[=][ ]*(.*)':
+        read_chat_settings = make_read_chat_settings(update, context)
+
+        field_name = match_field_edit.group(1).lower()
+        new_value = match_field_edit.group(2)
+        possible_fields = ['name', 'date', 'datetime', 'time', 'when', 'what', 'where', 'location']
+        if field_name not in possible_fields:
+            raise DoNotAnswer
+
+        event_db = retrieve_event_from_db(update=update, context=context, what=event['what'], when=event['when'])
+        event_rich = split_event_with_where_etc({'what': event_db['name']})
+
+        if field_name in ('name', 'what'):
+            event_rich['what'] = new_value
+            db_datetime = event_db['date']
+        
+        elif field_name in ('where', 'location'):
+            event_rich['where'] = new_value
+            db_datetime = event_db['date']
+
+        elif field_name in ('datetime', 'when'):
+
+            tz = induce_my_timezone(user_id=user_id, chat_id=chat_id)
+            check_tz_in_chat(tz=tz, chat_timezones=read_chat_settings('event.timezones'))
+            
+            datetime_object = parse_datetime_point(update, context, when_infos=new_value, what_infos=event_db['name']).datetime.replace(tzinfo=tz)
+            db_datetime = DatetimeDbSerializer.strftime(datetime_object.astimezone(UTC))
+        
+        elif field_name in ('time', ):
+            time, rest = ParseEvents.parse_time(new_value.split())
+            assert_true(not rest, UserError("Too much values for time"))
+            assert_true(time, UserError("Cannot parse time"))
+
+            tz = induce_my_timezone(user_id=user_id, chat_id=chat_id)
+            check_tz_in_chat(tz=tz, chat_timezones=read_chat_settings('event.timezones'))
+
+            datetime_object = DatetimeDbSerializer.strptime(event_db['date']).replace(tzinfo=UTC).astimezone(tz)
+            datetime_object = Datetime.combine(datetime_object.date(), time)
+            db_datetime = DatetimeDbSerializer.strftime(datetime_object.astimezone(UTC))
+        
+        elif field_name in ('date', ):
+            mini_event, rest = parse_event_date(new_value.split())
+            assert_true(not rest, UserError("Too much values for date"))
+            assert_true(mini_event.date_str, UserError("Cannot parse date"))
+
+            tz = induce_my_timezone(user_id=user_id, chat_id=chat_id)
+            check_tz_in_chat(tz=tz, chat_timezones=read_chat_settings('event.timezones'))
+
+            date, date_end = DatetimeText.to_date_range(mini_event.date_str, tz=tz)
+
+            datetime_object = DatetimeDbSerializer.strptime(event_db['date']).replace(tzinfo=UTC).astimezone(tz)
+            datetime_object = Datetime.combine(date, datetime_object.time())
+            db_datetime = DatetimeDbSerializer.strftime(datetime_object.astimezone(UTC))
+
+        else:
+            raise DoNotAnswer
+        
+        db_what = event_rich['what'] if not event_rich.get('where') else event_rich['what'] + ' @ ' + event_rich['where']
+        simple_sql(('''UPDATE Events SET name=?, date=? where rowid=?''', (db_what, db_datetime, event_db['rowid'], )))
+
     else:
         raise DoNotAnswer
     
@@ -735,7 +795,7 @@ async def sharemoney_responder(msg:str, send: AsyncSend, *, update, context):
         if currency_string:
             if first_currency or second_currency:
                 if not(first_currency.upper() == second_currency.upper() == currency_string.upper()):
-                    raise UserError("Currencies match")
+                    raise UserError("Currencies must match")
 
         if currency_string:
             raise UserError('I cannot deal properly with currencies atm, but you can use the equivalent "account" notation: A.EUR owes B.EUR 5')
@@ -752,6 +812,12 @@ async def sharemoney_responder(msg:str, send: AsyncSend, *, update, context):
             amount=amount.parse_string(amount_str, parse_all=True)[0].eval(),
             reason=reason,
             currency=currency_string)
+    
+        read_chat_settings = make_read_chat_settings(update, context)
+
+        if do_if_setting_on(read_chat_settings('sharemoney.required_for')):
+            if not debt.reason:
+                raise UserError('You must specify a reason (group policy)\nExample: John owes Maria 5 for bowling')
         
         simple_sql((
             'insert into NamedChatDebt(debitor_id, creditor_id, chat_id, amount, currency, reason) values (?,?,?,?,?,?)',
@@ -1865,7 +1931,7 @@ def induce_my_timezone(*, user_id, chat_id):
         "- This: /chatsettings event.timezones TIMEZONE\n"
         "- Example: /chatsettings event.timezones Europe/Brussels\n")
 
-def parse_datetime_point(update, context, when_infos=None, what_infos=None, has_inline_kargs=False) -> ParsedEventFinal:
+def parse_datetime_point(update, context, when_infos=None, what_infos=None, has_inline_kargs=False, required_time=False) -> ParsedEventFinal:
     from datetime import datetime as Datetime, time as Time, date as Date, timedelta
     read_chat_settings = make_read_chat_settings(update, context)
     
@@ -1892,6 +1958,10 @@ def parse_datetime_point(update, context, when_infos=None, what_infos=None, has_
         tz = induce_my_timezone(user_id=update.message.from_user.id, chat_id=update.effective_chat.id)
         # timezone implicit: need to be in chat.event.timezones to avoid confusion
         tz_explicit = False
+
+    if required_time:
+        if time is None:
+            raise UserError("Time must be specified (policy of the group)")
 
     date, date_end = DatetimeText.to_date_range(date_str, tz=tz)
     datetime = Datetime.combine(date, time or Time(0,0)).replace(tzinfo=tz)
@@ -2333,8 +2403,9 @@ class InteractiveAddEvent:
         chat_id = update.effective_chat.id
 
         real_what = (what if not where else what + ' @ ' + where).strip()
-
-        date_str, time, name, date, date_end, datetime, datetime_utc, tz, tz_explicit = parse_datetime_point(update, context, when_infos=when, what_infos=real_what)
+        
+        required_time = do_if_setting_on(read_chat_settings('event.addevent.required_time'))
+        date_str, time, name, date, date_end, datetime, datetime_utc, tz, tz_explicit = parse_datetime_point(update, context, when_infos=when, what_infos=real_what, required_time=required_time)
         
         add_event_to_db(datetime_utc=datetime_utc, name=name, chat_id=chat_id, source_user_id=source_user_id)
 
@@ -2401,9 +2472,10 @@ async def add_event(update: Update, context: CallbackContext):
     source_user_id = update.message.from_user.id
     chat_id = update.effective_chat.id
 
+    required_time = do_if_setting_on(read_chat_settings('event.addevent.required_time'))
     date_str, time, name, date, date_end, datetime, datetime_utc, tz, tz_explicit = \
         parse_datetime_point(update, context, has_inline_kargs=has_inline_kwargs,
-                             when_infos=CanonInfo.when_infos, what_infos=CanonInfo.what_infos)
+                             when_infos=CanonInfo.when_infos, what_infos=CanonInfo.what_infos, required_time=required_time)
     
     if do_unless_setting_off(read_chat_settings('event.location.autocomplete')):
         name = update_name_using_locations(name, chat_id=chat_id)
@@ -4788,10 +4860,12 @@ ACCEPTED_SETTINGS_CHAT = (
     'event.addevent.display_link',
     'event.addevent.display_file',
     'event.addevent.display_forwarded_infos',
+    'event.addevent.required_time',
     'event.listtoday.display_time_marker',
     'event.delevent.display',
     'event.location.autocomplete',
     'event.commands.dayofweek',
+    'sharemoney.required_for',
     'list.space_between_lines',
     'list.indent',
 ) + tuple(
