@@ -273,7 +273,10 @@ async def locationinfo(update, context):
         for edge in ' '.join(context.args).split('//'):
             source, dest, dist = edge.split(' / ')
             source, dest = map(str.strip, (source, dest))
-            dist = int(dist)
+            if dist.lower() == 'delete':
+                dist = 'delete'
+            else:
+                dist = int(dist)
             edges.append((source, dest, dist))
     except ValueError:
         return await send('User: /locationinfo from / to / distance // from / to / distance')
@@ -287,7 +290,9 @@ async def locationinfo(update, context):
 
 def save_location_distance(chat_id, source, dest, distance, conn):
     conn.execute('begin transaction')
-    if conn.execute('select count(*) from LocationDistanceEdge where chat_id = ? and (LOWER(source) = LOWER(?) and LOWER(dest) = LOWER(?) or LOWER(dest) = LOWER(?) and LOWER(source) = LOWER(?))', (chat_id, source, dest, source, dest)).fetchone()[0] == 0:
+    if distance == 'delete':
+        conn.execute('delete from LocationDistanceEdge where chat_id = ? and (LOWER(source) = LOWER(?) and LOWER(dest) = LOWER(?) or LOWER(dest) = LOWER(?) and LOWER(source) = LOWER(?))', (chat_id, source, dest, source, dest))
+    elif conn.execute('select count(*) from LocationDistanceEdge where chat_id = ? and (LOWER(source) = LOWER(?) and LOWER(dest) = LOWER(?) or LOWER(dest) = LOWER(?) and LOWER(source) = LOWER(?))', (chat_id, source, dest, source, dest)).fetchone()[0] == 0:
         conn.execute('insert into LocationDistanceEdge(chat_id, source, dest, distance) values (?, ?, ?, ?)', (chat_id, source, dest, distance))
     else:
         conn.execute('update LocationDistanceEdge set distance = ? where chat_id = ? and (LOWER(source) = LOWER(?) and LOWER(dest) = LOWER(?) or LOWER(dest) = LOWER(?) and LOWER(source) = LOWER(?))', (distance, chat_id, source, dest, source, dest))
