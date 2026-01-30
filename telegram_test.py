@@ -259,7 +259,7 @@ async def locationdistance_responder(msg:str, send: AsyncSend, *, update, contex
             for neigh_name, neigh_dist in Graph[current_name]:
                 if neigh_name not in dists:
                     new_dist = current_dist + neigh_dist
-                    if neigh_name not in open_list or new_dist > dists[neigh_name]:
+                    if neigh_name not in open_list or new_dist > open_list[neigh_name]:
                         open_list[neigh_name] = new_dist
         
         if len(dists) == 1:
