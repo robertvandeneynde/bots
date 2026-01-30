@@ -262,6 +262,9 @@ async def locationdistance_responder(msg:str, send: AsyncSend, *, update, contex
                     if neigh_name not in open_list or new_dist > dists[neigh_name]:
                         open_list[neigh_name] = new_dist
         
+        if len(dists) == 1:
+            return
+        
         send = make_send(update, context)
         return await send('\n'.join(f"- {dist} from {name}" for name, dist in dists.items()))
 
