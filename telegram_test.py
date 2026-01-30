@@ -275,13 +275,14 @@ async def locationinfo(update, context):
     try:
         for edge in ' '.join(context.args).split('//'):
             source, dest, dist = edge.split(' / ')
-            source, dest = map(str.strip, (source, dest))
+            source, dest, dist = map(str.strip, (source, dest, dist))
             if dist.lower() == 'delete':
                 dist = 'delete'
             else:
                 dist = int(dist)
             edges.append((source, dest, dist))
-    except ValueError:
+    except ValueError as e:
+        print(e)
         return await send('User: /locationinfo from / to / distance // from / to / distance')
 
     chat_id = update.effective_chat.id
@@ -290,6 +291,18 @@ async def locationinfo(update, context):
             save_location_distance(chat_id, source, dest, distance, conn)
 
     return await send(f'Edges modified: {len(edges)}')
+
+async def listlocationinfo(update, context):
+    send = make_send(update, context)
+
+    with sqlite3.connect('db.sqlite') as conn:
+        conn.execute('begin transaction')
+        cursor = conn.cursor()
+        cursor.execute('select source, dest, distance from LocationDistanceEdge where chat_id = ?', (update.effective_chat.id,))
+        edges = cursor.fetchall()
+        conn.execute('end transaction')
+
+    return await send(' //\n'.join(f"{source} / {dest} / {distance}" for source, dest, distance in edges) or '/')
 
 def save_location_distance(chat_id, source, dest, distance, conn):
     conn.execute('begin transaction')
@@ -6106,6 +6119,7 @@ if __name__ == '__main__':
     application.add_handler(CommandHandler('delthereis', delthereis))
     application.add_handler(CommandHandler('delwhereis', delthereis))
     application.add_handler(CommandHandler('locationinfo', locationinfo))
+    application.add_handler(CommandHandler('listlocationinfo', listlocationinfo))
     application.add_handler(ConversationHandler(
         entry_points=[CommandHandler("delevent", delevent)],
         states={
