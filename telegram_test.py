@@ -364,8 +364,7 @@ async def list_responder(msg: str, send: AsyncSend, *, update, context):
                 else:
                     force_creation = False
 
-                if ((dynamic_list_match := requested_type /fullmatches/ (re.escape('[') + '(.+)' + re.escape(']')))
-                    or (dynamic_list_match := requested_type /fullmatches/ ('dynamic\s+((\p{L}|[.])+)'))):
+                if dynamic_list_match := requested_type /fullmatches/ ('dynamic\s+((\p{L}|[.])+)'):
                     dynamic_list = dynamic_list_match.group(1)
                     if not(dynamic_list in ('event.today', 'flashcard.current')):
                         raise UserError(f"Dynamic list {dynamic_list} is not implemented")
