@@ -5,3 +5,4 @@ pyparsing>=3
 tzdata
 openpyxl
 pyyaml
+funcoperators
