@@ -236,6 +236,63 @@ async def money_responder(msg:str, send: AsyncSend, *, update, context):
 class DoNotAnswer(Exception):
     pass
 
+async def locationdistance_responder(msg:str, send: AsyncSend, *, update, context):
+    if match := msg /fullmatches_with_flags(re.I)/ 'now\s+[@]\s+(.*)':
+        loc = match.group(1)
+        edges = simple_sql(('select source, dest, distance from LocationDistanceEdge where chat_id = ?', (chat_id := update.effective_chat.id, )))
+
+        from collections import defaultdict
+        Graph = defaultdict(list)
+        for source, dest, distance in edges:
+            Graph[source.lower()].append((dest.lower(), distance))
+            Graph[dest.lower()].append((source.lower(), distance))
+        
+        open_list = {loc: 0}
+        dists = {}
+        while open_list:
+            current_name, current_dist = min(open_list.items(), key=lambda t:t[1])
+            del open_list[current_name]
+
+            assert current_name not in dists, "Strange"
+            dists[current_name] = current_dist
+
+            for neigh_name, neigh_dist in Graph[current_name]:
+                if neigh_name not in dists:
+                    new_dist = current_dist + neigh_dist
+                    if neigh_name not in open_list or new_dist > dists[neigh_name]:
+                        open_list[neigh_name] = new_dist
+        
+        send = make_send(update, context)
+        return await send('\n'.join(f"- {dist} from {name}" for name, dist in dists.items()))
+
+async def locationinfo(update, context):
+    send = make_send(update, context)
+
+    edges = []
+    try:
+        for edge in ' '.join(context.args).split('//'):
+            source, dest, dist = edge.split(' / ')
+            source, dest = map(str.strip, (source, dest))
+            dist = int(dist)
+            edges.append((source, dest, dist))
+    except ValueError:
+        return await send('User: /locationinfo from / to / distance // from / to / distance')
+
+    chat_id = update.effective_chat.id
+    with sqlite3.connect('db.sqlite') as conn:
+        for source, dest, distance in edges:
+            save_location_distance(chat_id, source, dest, distance, conn)
+
+    return await send(f'Edges modified: {len(edges)}')
+
+def save_location_distance(chat_id, source, dest, distance, conn):
+    conn.execute('begin transaction')
+    if conn.execute('select count(*) from LocationDistanceEdge where chat_id = ? and (LOWER(source) = LOWER(?) and LOWER(dest) = LOWER(?) or LOWER(dest) = LOWER(?) and LOWER(source) = LOWER(?))', (chat_id, source, dest, source, dest)).fetchone()[0] == 0:
+        conn.execute('insert into LocationDistanceEdge(chat_id, source, dest, distance) values (?, ?, ?, ?)', (chat_id, source, dest, distance))
+    else:
+        conn.execute('update LocationDistanceEdge set distance = ? where chat_id = ? and (LOWER(source) = LOWER(?) and LOWER(dest) = LOWER(?) or LOWER(dest) = LOWER(?) and LOWER(source) = LOWER(?))', (distance, chat_id, source, dest, source, dest))
+    conn.execute('end transaction')
+
 async def whereisanswer_responder(msg:str, send: AsyncSend, *, update, context):
     reply = get_reply(update.message)
 
@@ -848,6 +905,7 @@ RESPONDERS = (
     (eventedit_responder, 'eventedit', 'on'),
     (list_responder, 'list', 'off'),
     (englishpractice_responder, 'englishpractice', 'off'),
+    (locationdistance_responder, 'locationdistance', 'off')
 )
 
 async def on_message(update: Update, context: CallbackContext):
@@ -5335,6 +5393,12 @@ def migration21():
         conn.execute('''alter table Flashcard drop column user_id''')
         conn.execute('end transaction')
 
+def migration22():
+    with sqlite3.connect('db.sqlite') as conn:
+        conn.execute('begin transaction')
+        conn.execute('create table LocationDistanceEdge(chat_id, source, dest, distance)')
+        conn.execute('end transaction')
+
 def get_latest_euro_rates_from_api() -> json:
     import requests
     from telegram_settings_local import FIXER_TOKEN
@@ -6033,6 +6097,7 @@ if __name__ == '__main__':
     application.add_handler(CommandHandler('thereis', thereis))
     application.add_handler(CommandHandler('delthereis', delthereis))
     application.add_handler(CommandHandler('delwhereis', delthereis))
+    application.add_handler(CommandHandler('locationinfo', locationinfo))
     application.add_handler(ConversationHandler(
         entry_points=[CommandHandler("delevent", delevent)],
         states={
