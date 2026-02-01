@@ -22,6 +22,7 @@ class FriendsUser(enum.StrEnum):
     KERRICYBERGOOSE = 'KERRICYBERGOOSE'.lower()
     DANCING_UNICORN = 'DANCING_UNICORN'.replace('_', '-').lower()
     KARL = "Karl"
+    BIRD_FLOCK_MASTER = "bird-flock-master"
 
 class SpecialUsers(enum.StrEnum):
     CRAZY_JAM = 'CRAZY_JAM'.lower().replace('_', '-')  # Crazy Jam Channel
@@ -189,8 +190,22 @@ async def hello_responder(msg:str, send: AsyncSend, *, update, context):
     elif user.id == FRIENDS_USER.get(FriendsUser.KARL):
         if msg.lower().startswith("hello"):
             await send("Hello, your Majesty!")
-    else:
+    elif user.id == FRIENDS_USER.get(FriendsUser.BIRD_FLOCK_MASTER):
         if msg.lower().startswith("hello"):
+            birds = (
+                'Moineau',
+                'Geai de chênes',
+                'Mésange à long queue',
+                'Albatross',
+                'Calopsitte',
+                'Perruche ondulée',
+                'Corbeau',
+            )
+            todays_bird = birds[Datetime.now(UTC).weekday()]
+
+            await send(f"Bonjour Maître des Oiseaux! Connais-tu l'oiseau du jour (UTC)? J'ai nommé... {todays_bird} 🐦")
+    else:
+        if msg.lower().startswith('hello'):
             await send("Hello ! :3")
         elif msg == "Hi":
             await send("Yo")
