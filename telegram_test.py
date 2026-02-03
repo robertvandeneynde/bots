@@ -151,6 +151,9 @@ def get_reply(message):
     else:
         return message.reply_to_message
 
+def update_get_reply(update: Update):
+    return get_reply(update.effective_message)
+
 def strip_botname(update: Update, context: CallbackContext):
     # TODO analyse message.entities with message.parse_entity and message.parse_entities
     bot_mention: str = '@' + context.bot.username
@@ -330,7 +333,7 @@ def save_location_distance(chat_id, source, dest, distance, conn):
     conn.execute('end transaction')
 
 async def whereisanswer_responder(msg:str, send: AsyncSend, *, update, context):
-    reply = get_reply(update.message)
+    reply = update_get_reply(update)
 
     assert_true(reply and reply.text, DoNotAnswer)
     assert_true(reply.text.startswith('/whereis') or reply.text.startswith('/whereis@' + context.bot.username), DoNotAnswer)
@@ -677,7 +680,7 @@ def int_or_none(setting):
         return None
 
 async def eventedit_responder(msg:str, send: AsyncSend, *, update, context):
-    reply = get_reply(update.message)
+    reply = update_get_reply(update)
     assert_true(reply and reply.text, DoNotAnswer)
     user_id, chat_id = update.effective_user.id, update.effective_chat.id
 
@@ -768,7 +771,7 @@ async def eventedit_responder(msg:str, send: AsyncSend, *, update, context):
     new_event_db = only_one(simple_sql_dict(('select rowid, date, name from Events where rowid=?', (event_db['rowid'],))))
     date_utc = new_event_db['date']
     name = new_event_db['name']
-    tz = induce_my_timezone(user_id=update.message.from_user.id, chat_id=update.effective_chat.id)
+    tz = induce_my_timezone_from_update(update)
     datetime = DatetimeDbSerializer.strptime(date_utc).replace(tzinfo=ZoneInfo('UTC')).astimezone(tz)
     date, time = datetime.date(), datetime.time()
     read_chat_settings = make_read_chat_settings(update, context)
@@ -985,7 +988,7 @@ def unilinetext(x):
 
 async def uniline(update, context):
     send = make_send(update, context)
-    if not (reply := get_reply(update.message)) and not context.args:
+    if not (reply := update_get_reply(update)) and not context.args:
         return await send("Usage: /uniline word1 word2\nCan also be used on a reply message")
     for arg in ([reply.text] if reply else []) + list(context.args):
         S = map(unilinetext, arg)
@@ -994,7 +997,7 @@ async def uniline(update, context):
 async def nuniline(update, context):
     send = make_send(update, context)
     nonascii = lambda x: ord(x) > 0x7F
-    if not (reply := get_reply(update.message)) and not context.args:
+    if not (reply := update_get_reply(update)) and not context.args:
         return await send("Usage: /nuniline word1 word2\nCan also be used on a reply message")
     for arg in ([reply.text] if reply else []) + list(context.args):
         S = map(unilinetext, filter(nonascii, arg))
@@ -1010,7 +1013,7 @@ async def befluent(update, context):
 async def ru(update: Update, context: CallbackContext):
     send = make_send(update, context)
     
-    if reply := get_reply(update.message):
+    if reply := update_get_reply(update):
         pass
     elif not context.args:
         return await send("Usage: /ru word1 word2 word3...")
@@ -1114,7 +1117,7 @@ def get_or_empty(L: list, i:int) -> str | object:
 
 def make_read_my_settings(update: Update, context: CallbackContext):
     from functools import partial
-    return partial(read_settings, id=update.message.from_user.id, settings_type='user')
+    return partial(read_settings, id=update.effective_message.from_user.id, settings_type='user')
 
 def make_read_chat_settings(update: Update, context: CallbackContext):
     from functools import partial
@@ -1130,7 +1133,7 @@ async def dict_command(update: Update, context: CallbackContext, *, engine:Liter
     send = make_send(update, context)
     read_my_settings = make_read_my_settings(update, context)
 
-    reply = get_reply(update.message)
+    reply = update_get_reply(update)
     if not context.args:
         if not reply:
             return await send(f"Usage: /{command_name} word1 word2 word3...\nCan also be used on a reply message")
@@ -1239,7 +1242,7 @@ class UsageError(Exception):
 async def add_flashcard(update, context, *, scope=Literal['personal', 'general']):
     send = make_send(update, context)
     try:
-      if reply := get_reply(update.message):
+      if reply := update_get_reply(update):
         sentence = reply.text 
         translation = ' '.join(context.args)
       else:
@@ -2012,6 +2015,9 @@ def split_bracket_comma_format(fmt):
 def raise_error(error):
     raise error
 
+def induce_my_timezone_from_update(update):
+    return induce_my_timezone(user_id=update.effective_message.from_user.id, chat_id=update.effective_chat.id)
+
 def induce_my_timezone(*, user_id, chat_id):
     if tz := get_my_timezone(user_id):
         return tz
@@ -2054,7 +2060,7 @@ def parse_datetime_point(update, context, when_infos=None, what_infos=None, has_
         # timezone explicit: no need to be in chat.event.timezones
         tz_explicit = True
     else:
-        tz = induce_my_timezone(user_id=update.message.from_user.id, chat_id=update.effective_chat.id)
+        tz = induce_my_timezone_from_update(update)
         # timezone implicit: need to be in chat.event.timezones to avoid confusion
         tz_explicit = False
 
@@ -2313,7 +2319,7 @@ async def addschedule(update: Update, context: ContextTypes.DEFAULT_TYPE):
     send = make_send(update, context)
     read_chat_settings = make_read_chat_settings(update, context)
 
-    reply = get_reply(update.message)
+    reply = update_get_reply(update)
 
     if not context.args:
         if reply:
@@ -2330,9 +2336,9 @@ async def addschedule(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # Later commit: do_event_admin_check('add', setting=read_chat_settings('event.admins'), user_id=update.effective_user.id)
 
-    source_user_id = update.message.from_user.id
+    source_user_id = update.effective_message.from_user.id
     chat_id = update.effective_chat.id
-    tz = induce_my_timezone(user_id=source_user_id, chat_id=chat_id)
+    tz = induce_my_timezone_from_update(update)
 
     events: list[ParsedEventFinal] = parse_datetime_schedule(tz=tz, args=context.args)
 
@@ -2545,7 +2551,7 @@ async def add_event(update: Update, context: CallbackContext):
     read_my_settings = make_read_my_settings(update, context)
 
     infos_event = {}
-    if (reply := get_reply(update.message)) and reply.text:
+    if (reply := update_get_reply(update)) and reply.text:
         try:
             infos_event |= addevent_analyse(update, context)
         except EventAnalyseError as e:
@@ -2568,7 +2574,7 @@ async def add_event(update: Update, context: CallbackContext):
     infos_event = {k.lower():v for k,v in infos_event.items()}
     CanonInfo = add_event_canon_infos(infos_event=infos_event)
 
-    source_user_id = update.message.from_user.id
+    source_user_id = update.effective_message.from_user.id
     chat_id = update.effective_chat.id
 
     required_time = do_if_setting_on(read_chat_settings('event.addevent.required_time'))
@@ -2621,7 +2627,7 @@ def add_event_enrich_reply_with_link(update: Update, context: CallbackContext, *
     if not reply:
         return {}
     
-    if (update.message.chat.id, update.message.message_thread_id) == (SPECIAL_ENTITIES[SpecialUsers.CRAZY_JAM_BACKEND], SPECIAL_ENTITIES[SpecialUsers.CRAZY_JAM_BACKEND_THREAD_IN]):
+    if (update.effective_message.chat.id, update.effective_message.message_thread_id) == (SPECIAL_ENTITIES[SpecialUsers.CRAZY_JAM_BACKEND], SPECIAL_ENTITIES[SpecialUsers.CRAZY_JAM_BACKEND_THREAD_IN]):
         orig_id_tuple = simple_sql(( ''' select original_message_id, original_chat_username, original_chat_id from FwdRelation where fwd_message_id = ?''', (reply.id, )))
         if orig_id_tuple:
             message_id, username, chat_id = only_one(orig_id_tuple)
@@ -3769,8 +3775,8 @@ def only_one_with_error(error):
     return partial(only_one, many=error, none=error)
 
 def addevent_analyse_from_bot(update, context, text:str) -> EventDictAnalysed:
-    my_timezone = induce_my_timezone(user_id=update.message.from_user.id, chat_id=update.effective_chat.id)
-
+    my_timezone = induce_my_timezone_from_update(update)
+    
     lines = GetOrEmpty(text.splitlines())
     if lines[0] in ("Event!", "Event added:", "Event edited:") or re.match('^Event from.*[:]', lines[0]):
         del lines[0]
@@ -3884,7 +3890,7 @@ def split_event_with_where_etc(event):
     return event
 
 def addevent_analyse(update, context) -> EventDictAnalysed:
-    if not (reply := get_reply(update.message)):
+    if not (reply := update_get_reply(update)):
         raise UserError("Cannot analyse if there is nothing to analyse")
 
     exceptions = []
@@ -3941,7 +3947,7 @@ async def whereisto(update, context, *, command: Literal['whereis', 'whereto']):
     send = make_send(update, context)
 
     key = None
-    if reply := get_reply(update.message):
+    if reply := update_get_reply(update):
         try:
             infos_event = addevent_analyse(update, context)
             infos_event = enrich_event_with_where(infos_event)
@@ -4063,7 +4069,7 @@ async def thereis(update:Update, context:CallbackContext):
         else:
             raise UsageError
 
-    if reply := get_reply(update.message):
+    if reply := update_get_reply(update):
         if reply.text.startswith('/whereis') or reply.text.startswith("/whereis@" + context.bot.username):
             keys = [GetOrEmpty(reply.text.split(maxsplit=1))[1]]
             values = [' '.join(context.args)]
@@ -4167,8 +4173,8 @@ def parse_datetime_range(update, *, args, default="week"):
         raise UserError("<when> must be a day of the week, or a day of the month")
     
     time = Time(0, 0)
-    tz = induce_my_timezone(user_id=update.message.from_user.id, chat_id=update.effective_chat.id)
-    
+    tz = induce_my_timezone_from_update(update)
+
     def make(when):
         beg_date, end_date = DatetimeText.to_date_range(when, tz=tz)
         beg_local, end_local = Datetime.combine(beg_date, time), Datetime.combine(end_date, time)
@@ -4216,7 +4222,7 @@ async def next_or_last_event(update: Update, context: CallbackContext, n:int, *,
         skip_n = 1
     
     chat_timezones = read_chat_settings("event.timezones")
-    tz = induce_my_timezone(user_id=update.message.from_user.id, chat_id=update.effective_chat.id)
+    tz = induce_my_timezone_from_update(update)
     now = Datetime.now(UTC) if not datetime_str else DatetimeDbSerializer.strptime(datetime_str.replace('T', ' ')).replace(tzinfo=tz).astimezone(ZoneInfo('UTC'))
 
     events = simple_sql_dict(('''
@@ -4570,7 +4576,7 @@ async def delevent(update, context):
 
     do_event_admin_check('del', setting=read_chat_settings('event.admins'), user_id=update.effective_user.id)
 
-    if reply := get_reply(update.message):
+    if reply := update_get_reply(update):
         await send("Not implemented yet but will allow to deleent an event by responding to it.")
         return ConversationHandler.END
 
@@ -4822,7 +4828,7 @@ async def mytimezone(update: Update, context: CallbackContext):
 
     if not context.args:
         # get timezone
-        tz = get_my_timezone_from_timezone_table(update.message.from_user.id)
+        tz = get_my_timezone_from_timezone_table(update.effective_message.from_user.id)
         base_text = ("You don't have any timezone set.\n"
                      "Use /mytimezone Continent/City to set it.\n"
                      "Example: /mytimezone Europe/Brussels\n"
@@ -4853,7 +4859,7 @@ async def mytimezone(update: Update, context: CallbackContext):
                     raise e
         else:
             raise default_error
-        set_my_timezone(update.message.from_user.id, tz)
+        set_my_timezone(update.effective_message.from_user.id, tz)
         return await send("Your timezone is now: {}".format(tz))
 
 async def timezonealias(update: Update, context: CallbackContext):
@@ -5246,7 +5252,7 @@ async def settings_command(update: Update, context: CallbackContext, *, command_
         value = rest[0] if rest else None
 
     if settings_type == 'user':
-        id = update.message.from_user.id
+        id = update.effective_message.from_user.id
     elif settings_type == 'chat':
         id = update.effective_chat.id
     else:
@@ -5269,7 +5275,7 @@ async def delsettings_command(update:Update, context: CallbackContext, *, key: s
     send = make_send(update, context)
     
     if settings_type == 'user':
-        id = update.message.from_user.id
+        id = update.effective_message.from_user.id
     elif settings_type == 'chat':
         id = update.effective_chat.id
     else:
