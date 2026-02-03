@@ -1672,8 +1672,8 @@ class DatetimeText:
         return beg, end
     
     @classmethod
-    def format_td_T_minus(cls, td:timedelta, *, format='unit'):
-        assert format in ('unit', 'short', 'long')
+    def format_td_T_minus(cls, td:timedelta, *, format='multiple'):
+        assert format in ('unit', 'short', 'long', 'multiple')
         from datetime import timedelta
         sign = "-" if td >= timedelta(seconds=0) else "+"
         td = abs(td)
@@ -1691,7 +1691,13 @@ class DatetimeText:
                     f"H{sign}{h + d*24}" if td > 10 * hours else 
                     f"M{sign}{m + h*60 + d*24}" if td > 60 * minutes else 
                     f"S{sign}{s + m*60 + h*60 + d*24}")
-        return (
+        if format == 'multiple':
+            return (f"D{sign}{d}, H{sign}{h}" if d else
+                    f"H{sign}{h}, M{sign}{m}" if h else
+                    f"M{sign}{m}, S{sign}{s}" if m else
+                    f"S{sign}{s}")
+        
+        return (                    
             "D{}{}".format(sign, d) if d else
             "H{}{}".format(sign, h) if h else 
             "M{}{}".format(sign, m) if m else 
