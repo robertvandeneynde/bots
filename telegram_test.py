@@ -5581,6 +5581,38 @@ async def convertmoney(update, context):
         raise UserError(f"Unknown currency: {e}")
     await send(format_currency(currency_list=[currency] + currencies_to_convert, amount_list=[amount_base] + amounts_converted))
 
+async def implicit_setting_command(update, context, type: Literal['disable', 'only', 'known']):
+    if not (reply := update_get_reply(update)):
+        raise UserError("Use this on a message")
+    if not reply.from_user.id == context.bot.id:
+        raise UserError("Use this on a bot message")
+
+    send = make_send(update, context)
+    async def send_command(msg):
+        import html
+        return await send("<code>" + html.escape(msg) + "</code>", parse_mode="HTML")
+    
+    def is_currency_list():
+        return all(re.compile('^[A-Z]{3}[:].*$').match(line) for line in reply.text.splitlines())
+
+    if type == 'disable':
+        if is_currency_list():
+            return await send_command('/chatsettings money.active off')
+        if reply.text == 'Click the file below to add the event to your calendar:':
+            return await send_command('/chatsettings event.addevent.help_file off')
+        if reply.document and reply.document.file_name == 'event.ics':
+            return await send_command('/chatsettings event.addevent.display_file off')
+    elif type in ('only', 'known') and is_currency_list():
+        if type == 'only':
+            read_chat_settings = make_read_chat_settings(update, context)
+            currencies = read_chat_settings('money.currencies')
+            new_currencies = ordered_set_remove(currencies, list(map(str.upper, context.args)))
+        elif type == 'known':
+            new_currencies = list(map(str.upper, context.args))
+        return await send_command('/chatsettings money.known_currencies {}'.format(' '.join(new_currencies)))
+    
+    return await send("Unknown type of message")
+
 async def sharemoney(update, context):
     send = make_send(update, context)
     Args = GetOrEmpty(context.args)
@@ -6202,7 +6234,9 @@ if __name__ == '__main__':
     application.add_handler(CommandHandler('deletefromlist', listsmodule.removefromlist()))
     application.add_handler(CommandHandler('printlist', listsmodule.printlist()))
     application.add_handler(CommandHandler('dirlist', listsmodule.dirlist()))
-    application.add_handler(CommandHandler('dellist', listsmodule.dellist()))
+    application.add_handler(CommandHandler('disable', partial(implicit_setting_command, type='disable')))
+    application.add_handler(CommandHandler('only', partial(implicit_setting_command, type='only')))
+    application.add_handler(CommandHandler('known', partial(implicit_setting_command, type='known')))
 
     for i in irange(1, 7):
         application.add_handler(CommandHandler(DatetimeText.days_english[i-1], partial(day_of_week_command, n=i), filters=DayOfWeekFilter()))
