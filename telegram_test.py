@@ -1395,7 +1395,7 @@ def make_send(update: Update, context: CallbackContext, *, save_info: SendSaveIn
 def make_send_save_info(update: Update, context: CallbackContext) -> SendSaveInfo:
     return SendSaveInfo(
         chat_id=update.effective_chat.id,
-        thread_id=update.message.message_thread_id if update.message and update.message.is_topic_message else None,
+        thread_id=update.effective_message.message_thread_id if update.effective_message and update.effective_message.is_topic_message else None,
     )
 
 async def switchpageflashcard(update, context):
@@ -1495,7 +1495,7 @@ async def exportflashcards(update, context):
         update.effective_chat.id,
         file_content,
         filename="flashcards." + extension,
-        message_thread_id=update.message.message_thread_id if update.message.is_topic_message else None)
+        message_thread_id=update.effective_message.message_thread_id if update.effective_message.is_topic_message else None)
 
 async def export_event(update, context, *, name, datetime_utc):
     from datetime import date, time, datetime, timedelta
@@ -1512,7 +1512,7 @@ async def export_event(update, context, *, name, datetime_utc):
         update.effective_chat.id,
         file_content,
         filename="event.ics",
-        message_thread_id=update.message.message_thread_id if update.message.is_topic_message else None)
+        message_thread_id=update.effective_message.message_thread_id if update.effective_message.is_topic_message else None)
 
 import zoneinfo
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
