@@ -70,6 +70,8 @@ class DayOfWeekFilter(MessageFilter):
             return False
 
 async def on_crazy_jam_message(update: Update, context):
+    if not update.message:
+        return
     try:
         original_message_id = update.effective_message.id
         sent_message = await update.message.forward(SPECIAL_ENTITIES[SpecialUsers.CRAZY_JAM_BACKEND], message_thread_id=SPECIAL_ENTITIES[SpecialUsers.CRAZY_JAM_BACKEND_THREAD_IN])
