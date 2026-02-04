@@ -200,7 +200,7 @@ async def hello_responder(msg:str, send: AsyncSend, *, update, context):
             birds = (
                 'Moineau',
                 'Geai de chênes',
-                'Mésange à long queue',
+                'Mésange à longue queue',
                 'Albatross',
                 'Calopsitte',
                 'Perruche ondulée',
