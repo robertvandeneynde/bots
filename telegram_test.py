@@ -100,6 +100,8 @@ def fullmatches_with_flags(flags):
         return regex.compile(reg, flags).fullmatch(string)
     return fullmatches_with_flags__inner
 
+fullmatchesI = fullmatches_with_flags(re.I)
+
 from functools import partial
 MONEY_CURRENCIES_ALIAS = {
     "eur": "eur",
@@ -390,13 +392,15 @@ class ListLang:
     DYNAMIC_TYPES = [
         'flashcard.current',
         # 'event.today',
+        # 'flashcard.page something',
     ]
 
     POSSIBLE_TYPES = [
         'list',
         'tasklist',
         'tree',
-        'tasktree'
+        'tasktree',
+        'alias',
     ] + ['dynamic' + '.' + x for x in DYNAMIC_TYPES]
     
     OPS_1L = '|'.join(map(re.escape, OPERATIONS_ONE_LINE))
@@ -462,12 +466,21 @@ async def list_responder(msg: str, send: AsyncSend, *, update, context):
                 else:
                     force_creation = False
 
+                re_spaces = '\s+'
+                re_group = lambda x: '(' + x + ')'
+                re_letters = '\p{L}+'
+                re_bits = lambda *args: ''.join(args)
+
                 if dynamic_list_match := requested_type /fullmatches/ ('dynamic\s+((\p{L}|[.])+)'):
                     dynamic_list = dynamic_list_match.group(1)
                     if not(dynamic_list in ('event.today', 'flashcard.current')):
                         raise UserError(f"Dynamic list {dynamic_list} is not implemented")
                     type_list = ('dynamic', dynamic_list)
-                    
+                
+                elif alias_list_match := requested_type /fullmatchesI/ re_bits('alias', re_spaces, re_group(re_letters)):
+                    target_alias = alias_list_match.group(1)
+                    type_list = ('alias', target_alias)
+
                 elif re.fullmatch(re.escape('[') + '\s*' + re.escape(']'), requested_type):
                     # name = list
                     # name = []
@@ -518,7 +531,11 @@ async def list_responder(msg: str, send: AsyncSend, *, update, context):
                 conn.execute('begin transaction')
 
                 chat_id = update.effective_chat.id
-                if listsmodule.list_exists(conn=conn, chat_id=chat_id, name=list_name):
+
+                async def operation_one_line(*, list_name, previous_aliases):
+                  if list_name in previous_aliases:
+                      raise UserError("Alias loop")
+                  if listsmodule.list_exists(conn=conn, chat_id=chat_id, name=list_name):
                     
                     P = lambda: dict(conn=conn, name=list_name, chat_id=chat_id)
                     PP = lambda: P() | dict(parameters=parameters)
@@ -527,6 +544,14 @@ async def list_responder(msg: str, send: AsyncSend, *, update, context):
                     list_type_is_tree = list_type in ('tree', 'tasktree')
                     dynamic_match = list_type /fullmatches/ ('dynamic' + re.escape('.') + '(.*)')
                     dynamic_list = dynamic_match.group(1) if dynamic_match else None
+                    alias_match = list_type /fullmatches/ ('alias' + re.escape('.') + '(.*)')
+                    alias_list = alias_match.group(1) if alias_match else None
+
+                    if alias_match:
+                        if listsmodule.list_exists(conn=conn, chat_id=chat_id, name=alias_list):
+                            return await operation_one_line(list_name=alias_list, previous_aliases=previous_aliases + (list_name, ))
+                        else:
+                            raise UserError(f"Alias target {alias_list!r} does not exist")
 
                     did_edit = True
                     if operation in ('add', 'append'):
@@ -668,6 +693,7 @@ async def list_responder(msg: str, send: AsyncSend, *, update, context):
                     if did_edit:
                         await send(f"List {list_name!r} edited")
 
+                await operation_one_line(list_name=list_name, previous_aliases=())
                 conn.execute('end transaction')
             
         else:
@@ -3044,6 +3070,10 @@ class listsmodule:
                         raise UserError(f'List {copy_from_name!r} does not exist')  # transaction will rollback
                 case 'dynamic', dynamic_list:
                     actual_type = 'dynamic' + '.' + dynamic_list
+                case 'alias', alias_list:
+                    actual_type = 'alias' + '.' + alias_list
+                    if not listsmodule.list_exists(conn=conn, chat_id=chat_id, name=alias_list):
+                        raise UserError(f"List {alias_list!r} does not exist")
                 case _:
                     assert isinstance(type_list, str)
                     actual_type = type_list.lower()
@@ -3057,6 +3087,9 @@ class listsmodule:
                     pass # nothing to do more
                     
                 case 'dynamic', _:
+                    pass
+
+                case 'alias', _:
                     pass
 
                 case 'copy', copy_from_name:
@@ -5741,7 +5774,6 @@ async def detaildebts(update, context):
             elif (debt.creditor_id, debt.debitor_id, ) == tuple(account_filter[1]):
                 directed_amount = - debt.amount
             else:
-                print(debt.debitor_id, debt.creditor_id, account_filter[1])
                 raise ValueError('Logic problem in identify directed_amount')
             
             to_print.append(' '.join(filter(None, (
@@ -6258,6 +6290,8 @@ if __name__ == '__main__':
     application.add_handler(CommandHandler('deletefromlist', listsmodule.removefromlist()))
     application.add_handler(CommandHandler('printlist', listsmodule.printlist()))
     application.add_handler(CommandHandler('dirlist', listsmodule.dirlist()))
+    application.add_handler(CommandHandler('dellist', listsmodule.dellist()))
+    application.add_handler(CommandHandler('delist', listsmodule.dellist()))
     application.add_handler(CommandHandler('disable', partial(implicit_setting_command, type='disable')))
     application.add_handler(CommandHandler('only', partial(implicit_setting_command, type='only')))
     application.add_handler(CommandHandler('known', partial(implicit_setting_command, type='known')))
