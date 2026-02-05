@@ -1,5 +1,6 @@
 from __future__ import annotations
 import logging
+import queue
 from telegram import Update, Message, Chat, InlineKeyboardMarkup, InlineKeyboardButton
 from telegram.ext import ApplicationBuilder, CallbackContext, CommandHandler, MessageHandler, ContextTypes, CallbackQueryHandler
 from telegram.ext import filters
@@ -5000,6 +5001,44 @@ def remove_dup_keep_order(it):
             S.add(x)
             yield x
 
+async def menu(update, context):
+    send = make_send(update, context)
+    keyboard = [
+        [
+            InlineKeyboardButton("Help", callback_data="cmd:help"),
+            InlineKeyboardButton("Settings", callback_data="cmd:mysettings")
+        ],
+        [
+            InlineKeyboardButton("List events", callback_data="cmd:listevents"),
+            InlineKeyboardButton("List days", callback_data="cmd:listdays")
+        ],
+    ]
+    await send("The main menu\nChoose a command", reply_markup=InlineKeyboardMarkup(keyboard))
+
+async def menu_button_handler(update, context):
+    query = update.callback_query
+    await query.answer()
+    if not query.data.startswith("cmd:"):
+        return
+    cmd = query.data.split(":", 1)[1]
+
+    handlers = {
+        'help': help,
+        'mysettings': mysettings,
+        'listdays': list_days,
+        'listevents': list_events,
+    }
+    fn = handlers.get(cmd)
+    if not fn:
+        return await make_send(update, context)(f"/{cmd} is not supported")
+
+    old_args = getattr(context, 'args', None)
+    context.args = []  # getting the command without arguments
+    try:
+        await fn(update,context)
+    finally:
+        context.args = old_args
+
 ACCEPTED_SETTINGS_USER = (
     'event.timezone',
     'wikt.text',
@@ -6093,6 +6132,7 @@ COMMAND_DESC = {
     'printlist': 'Print a list using dashes',
     'dirlist': 'List all lists',
     'dellist': 'Delete a list from all lists',
+    'menu': 'Menu with buttons'
 }
 
 import itertools
@@ -6133,6 +6173,7 @@ COMMAND_LIST = (
     'printlist',
     'dirlist',
     'dellist', 'delist',
+    'menu',
 )
 
 
@@ -6295,6 +6336,9 @@ if __name__ == '__main__':
     application.add_handler(CommandHandler('disable', partial(implicit_setting_command, type='disable')))
     application.add_handler(CommandHandler('only', partial(implicit_setting_command, type='only')))
     application.add_handler(CommandHandler('known', partial(implicit_setting_command, type='known')))
+
+    application.add_handler(CommandHandler('menu', menu))
+    application.add_handler(CallbackQueryHandler(menu_button_handler, pattern="^cmd:"))
 
     for i in irange(1, 7):
         application.add_handler(CommandHandler(DatetimeText.days_english[i-1], partial(day_of_week_command, n=i), filters=DayOfWeekFilter()))
