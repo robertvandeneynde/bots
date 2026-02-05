@@ -1168,7 +1168,7 @@ async def dict_command(update: Update, context: CallbackContext, *, engine:Liter
     Args = InfiniteEmptyList(context.args)
     if Args[-1].startswith('/'):
         language = Args[-1][1:]
-        parameter_words = Args[-1][:-1]
+        parameter_words = Args[:-1]
         if ':' in language:
             base_lang, target_lang, *_ = language.split(':')
         else:
