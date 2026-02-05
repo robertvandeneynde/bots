@@ -1165,15 +1165,16 @@ async def dict_command(update: Update, context: CallbackContext, *, engine:Liter
                 else:
                     yield item
 
-    if get_or_empty(context.args, -1).startswith('/'):
-        language = context.args[-1][1:]
-        parameter_words = context.args[:-1]
+    Args = InfiniteEmptyList(context.args)
+    if Args[-1].startswith('/'):
+        language = Args[-1][1:]
+        parameter_words = Args[-1][:-1]
         if ':' in language:
             base_lang, target_lang, *_ = language.split(':')
         else:
             base_lang, target_lang = '', language
     else:
-        parameter_words = context.args[:]
+        parameter_words = Args[:]
         base_lang = None
         target_lang = None
     
@@ -1184,6 +1185,19 @@ async def dict_command(update: Update, context: CallbackContext, *, engine:Liter
             words = reply_message_words + parameter_words
     else:
         words = parameter_words
+    
+    new_words = []
+    for w in words:
+        if "'" in w:
+            bits = w.strip("'").split("'")
+            if bits:
+                for bit in bits:
+                    new_words.append(bit)
+                    new_words.append("'")
+                new_words.pop()
+        else:
+            new_words.append(w)
+    words = new_words
     
     base_lang, target_lang
 
