@@ -1201,6 +1201,8 @@ async def dict_command(update: Update, context: CallbackContext, *, engine:Liter
     else:
         raise UsageError("Engine is misconfigured, please run /mysettings dict.engine {}".format('|'.join(DICT_ENGINES)))
 
+    display_html = do_unless_setting_off(read_my_settings(f"{command_name}.html"))
+    
     # url maker
     if engine == 'wikt':
       def url(x):
@@ -1223,13 +1225,16 @@ async def dict_command(update: Update, context: CallbackContext, *, engine:Liter
         x = x.lower()
         return f'https://glosbe.com/{target_lang}/{base_lang}/{x}'
 
-    return await send('\n\n'.join(url(x) for x in words))
+    import html
+    if display_html:
+        send_html = partial(send, parse_mode='HTML', disable_web_page_preview=len(words) > 2)
+        return await send_html(' | '.join(f'<a href="{html.escape(url(x))}">{x}</a>' for x in words))
+    else:
+        return await send('\n\n'.join(url(x) for x in words))
+    
 
-async def wikt(update: Update, context: CallbackContext):
-    return await dict_command(update, context, command_name='wikt', engine='wikt')
-
-async def larousse(update: Update, context: CallbackContext):
-    return await dict_command(update, context, command_name='larousse', engine='larousse')
+wikt = partial(dict_command, command_name='wikt', engine='wikt')
+larousse = partial(dict_command, command_name='larousse', engine='larousse')
 
 async def dict_(update: Update, context: CallbackContext):
     read_my_settings = make_read_my_settings(update, context)
@@ -4952,11 +4957,14 @@ ACCEPTED_SETTINGS_USER = (
     'event.timezone',
     'wikt.text',
     'wikt.description',
+    'wikt.html',
     'larousse.text',
     'larousse.description',
+    'larousse.html',
     'dict.text',
     'dict.description',
     'dict.engine',
+    'dict.html',
 )
 ACCEPTED_SETTINGS_CHAT = (
     'money.currencies',
