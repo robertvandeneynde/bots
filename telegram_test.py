@@ -304,7 +304,6 @@ async def locationinfo(update, context):
                 dist = int(dist)
             edges.append((source, dest, dist))
     except ValueError as e:
-        print(e)
         return await send('User: /locationinfo from / to / distance // from / to / distance')
 
     chat_id = update.effective_chat.id
@@ -2631,7 +2630,6 @@ def tg_url_id_from_chat_id(chat_id):
 
 import sqlite3
 async def add_event(update: Update, context: CallbackContext):
-    print('update', update, 'message', update.message, 'effective', update.effective_message, 'edited', update.edited_message, sep='\n\n')
     send = make_send(update, context)
     read_chat_settings = make_read_chat_settings(update, context)
     read_my_settings = make_read_my_settings(update, context)
@@ -5051,44 +5049,49 @@ def remove_dup_keep_order(it):
             S.add(x)
             yield x
 
-ACCEPTED_SETTINGS_USER = (
-    'event.timezone',
-    'wikt.text',
-    'wikt.description',
-    'wikt.html',
-    'larousse.text',
-    'larousse.description',
-    'larousse.html',
-    'dict.text',
-    'dict.description',
-    'dict.engine',
-    'dict.html',
-)
-ACCEPTED_SETTINGS_CHAT = (
-    'money.currencies',
-    'money.known_currencies',
-    'event.timezones',
-    'event.admins',
-    'event.addevent.help_file',
-    'event.addevent.display_link',
-    'event.addevent.display_file',
-    'event.addevent.display_forwarded_infos',
-    'event.addevent.required_time',
-    'event.listtoday.display_time_marker',
-    'event.delevent.display',
-    'event.location.autocomplete',
-    'event.commands.dayofweek',
-    'sharemoney.required_for',
-    'list.space_between_lines',
-    'list.indent',
-    'main.language',
-    'main.languages',
-) + tuple(
-    remove_dup_keep_order(setting + '.active' for _, setting, _ in RESPONDERS)
-)
+@dataclass
+class SettingsSpecs:
+    type: Literal['single', 'list', 'bool'] = 'single'
+    default: Optional[object] = None
 
-assert len(set(ACCEPTED_SETTINGS_USER)) == len(ACCEPTED_SETTINGS_USER), "Duplicates in ACCEPTED_SETTINGS_USER" 
-assert len(set(ACCEPTED_SETTINGS_CHAT)) == len(ACCEPTED_SETTINGS_CHAT), "Duplicates in ACCEPTED_SETTINGS_CHAT" 
+ACCEPTED_SETTINGS_USER = {
+    'event.timezone': SettingsSpecs('single'),
+    'wikt.text': SettingsSpecs('single'),
+    'wikt.description': SettingsSpecs('single'),
+    'wikt.html': SettingsSpecs('bool'),
+    'larousse.text': SettingsSpecs('single'),
+    'larousse.description': SettingsSpecs('single'),
+    'larousse.html': SettingsSpecs('bool'),
+    'dict.text': SettingsSpecs('single'),
+    'dict.description': SettingsSpecs('single'),
+    'dict.engine': SettingsSpecs('single'),
+    'dict.html': SettingsSpecs('bool'),
+}
+ACCEPTED_SETTINGS_CHAT = {
+    'money.currencies': SettingsSpecs('list'),
+    'money.known_currencies': SettingsSpecs('list'),
+    'event.timezones': SettingsSpecs('list'),
+    'event.admins': SettingsSpecs('list'),
+    'event.addevent.help_file': SettingsSpecs('bool'),
+    'event.addevent.display_link': SettingsSpecs('bool'),
+    'event.addevent.display_file': SettingsSpecs('bool'),
+    'event.addevent.display_forwarded_infos': SettingsSpecs('bool'),
+    'event.addevent.required_time': SettingsSpecs('bool'),
+    'event.listtoday.display_time_marker': SettingsSpecs('bool'),
+    'event.delevent.display': SettingsSpecs('bool'),
+    'event.location.autocomplete': SettingsSpecs('bool'),
+    'event.commands.dayofweek': SettingsSpecs('bool'),
+    'sharemoney.required_for': SettingsSpecs('bool'),
+    'list.space_between_lines': SettingsSpecs('bool'),
+    'list.indent': SettingsSpecs('single'),
+    'main.language': SettingsSpecs('single'),
+    'main.languages': SettingsSpecs('list'),
+} | {
+    setting + '.active': SettingsSpecs('bool', default) for _, setting, default in RESPONDERS
+}
+
+assert all(isinstance(x, SettingsSpecs) for x in (ACCEPTED_SETTINGS_USER | ACCEPTED_SETTINGS_CHAT).values()), "All settings must have a valid type Specification"
+assert not(ACCEPTED_SETTINGS_USER.keys() & ACCEPTED_SETTINGS_CHAT.keys()), "Some settings are both user and chat settings, which is not allowed"
 
 def assert_true(condition, error=AssertionError):
     if not condition:
@@ -5207,11 +5210,7 @@ def CONVERSION_SETTINGS_BUILDER():
         'to_db': lambda x: assert_true(is_timezone(x), UserError(f"{x} is not a timezone"))
                  and x,
     }
-    list_of_timezone_serializer = {
-        'from_db': lambda s: list(map(ZoneInfo, json.loads(s))),
-        'to_db': lambda L: json.dumps(list(map(timezone_serializer['to_db'], L)))
-    }
-    list_of_currencies_serializer = {
+    currency_serializer = {
         'from_db': lambda s: list(map(str.upper, json.loads(s))),
         'to_db': lambda L: json.dumps(list(map(str.upper, L)))
     }
@@ -5234,9 +5233,9 @@ def CONVERSION_SETTINGS_BUILDER():
     }
     # mappings
     mapping_chat = {
-        'money.currencies': list_of_currencies_serializer,
-        'money.known_currencies': list_of_currencies_serializer,
-        'event.timezones': list_of_timezone_serializer,
+        'money.currencies': list_of(currency_serializer),
+        'money.known_currencies': list_of(currency_serializer),
+        'event.timezones': list_of(timezone_serializer),
         'event.admins': list_of_event_admins,
         'event.addevent.display_link': on_off_serializer,
         'event.addevent.display_file': on_off_serializer,
@@ -5296,7 +5295,7 @@ async def listallsettings(update: Update, context: CallbackContext):
     await send('\n'.join("- {} ({})".format(
             setting,
             '|'.join(['user'] * (setting in ACCEPTED_SETTINGS_USER) + ['chat'] * (setting in ACCEPTED_SETTINGS_CHAT)))
-        for setting in sorted(ACCEPTED_SETTINGS_USER + ACCEPTED_SETTINGS_CHAT)))
+        for setting in sorted(ACCEPTED_SETTINGS_USER | ACCEPTED_SETTINGS_CHAT)))
 
 async def settings_command(update: Update, context: CallbackContext, *, command_name: str, settings_type:Literal['chat'] | Literal['user'], accepted_settings:list[str]):
     send = make_send(update, context)
@@ -5347,7 +5346,7 @@ async def settings_command(update: Update, context: CallbackContext, *, command_
         raise UserError(f"Usage: /{command_name} set command.key value")
 
     list_type_and_extend = False
-    if list_type := key in ('money.currencies', 'money.known_currencies', 'event.timezones', 'event.admins'):
+    if list_type := accepted_settings[key].type == 'list':
         if InfiniteEmptyList(rest)[0] == '+=':
             rest = rest[1:]
             list_type_and_extend = True
