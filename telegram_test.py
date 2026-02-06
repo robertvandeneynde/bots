@@ -1143,11 +1143,11 @@ def get_or_empty(L: list, i:int) -> str | object:
     except IndexError:
         return ''
 
-def make_read_my_settings(update: Update, context: CallbackContext):
+def make_read_my_settings(update: Update, context: CallbackContext=None):
     from functools import partial
     return partial(read_settings, id=update.effective_message.from_user.id, settings_type='user')
 
-def make_read_chat_settings(update: Update, context: CallbackContext):
+def make_read_chat_settings(update: Update, context: CallbackContext=None):
     from functools import partial
     return partial(read_settings, id=update.effective_chat.id, settings_type='chat')
 
@@ -1572,12 +1572,38 @@ import functools
 
 class DatetimeText:
     days_english = "monday tuesday wednesday thursday friday saturday sunday".split() 
+    days_english_short = "mon tue wed thu fri sat sun".split() 
     days_french = "lundi mardi mercredi jeudi vendredi samedi dimanche".split()
+    days_french_short = "lun mar mer jeu ven sam dim".split()
     _days_russian = "понедельник вторник среда четверг пятница суббота воскресенье".split()
     _days_russian_short = "пн вт ср чт пт сб вс".split()
     _days_russian_short_dotted = "пн. вт. ср. чт. пт. сб. вс.".split()
     days_russian_short = _days_russian_short
     days_russian = _days_russian
+
+    class days:
+        @staticmethod
+        def in_lang(x):
+            x = x.upper()
+            if x == 'EN':
+                return DatetimeText.days_english
+            elif x == 'FR':
+                return DatetimeText.days_french
+            elif x == 'RU':
+                return DatetimeText.days_russian
+            return DatetimeText.days_english
+
+    class days_short:
+        @staticmethod
+        def in_lang(x):
+            x = x.upper()
+            if x == 'EN':
+                return DatetimeText.days_english_short
+            elif x == 'FR':
+                return DatetimeText.days_french_short
+            elif x == 'RU':
+                return DatetimeText.days_russian_short
+            return DatetimeText.days_english_short
 
     months_english = [
         "january",
@@ -1612,6 +1638,18 @@ class DatetimeText:
     month_in_russian = [
         *'январь февраль март апрель май июнь июль август сентябрь октябрь ноябрь декабрь'.split(),
     ]
+
+    class months:
+        @staticmethod
+        def in_lang(x):
+            x = x.upper()
+            if x == 'EN':
+                return DatetimeText.months_english
+            elif x == 'FR':
+                return DatetimeText.months_french
+            elif x == 'RU':
+                return DatetimeText.month_in_russian
+            return DatetimeText.months_english
 
     _other_months_list = month_in_russian
 
@@ -2593,6 +2631,7 @@ def tg_url_id_from_chat_id(chat_id):
 
 import sqlite3
 async def add_event(update: Update, context: CallbackContext):
+    print('update', update, 'message', update.message, 'effective', update.effective_message, 'edited', update.edited_message, sep='\n\n')
     send = make_send(update, context)
     read_chat_settings = make_read_chat_settings(update, context)
     read_my_settings = make_read_my_settings(update, context)
@@ -4398,6 +4437,16 @@ def enrich_location_with_db(events, *, chat_id):
         new_events.append(new_event)
     return new_events
 
+def get_chat_language(update):
+    return get_all_chat_languages(update)[0]
+
+def get_all_chat_languages(update):
+    read_chat_settings = make_read_chat_settings(update)
+    x = read_chat_settings('main.language')
+    L = read_chat_settings('main.languages')
+    final_list = remove_dup_keep_order([x] if x else [] + (L if L else []))
+    return final_list if final_list else ['EN']
+
 async def list_days_or_today(
         update: Update,
         context: CallbackContext,
@@ -4438,6 +4487,8 @@ async def list_days_or_today(
     read_chat_settings = make_read_chat_settings(update, context)
 
     do_event_admin_check('list', setting=read_chat_settings('event.admins'), user_id=update.effective_user.id)
+
+    language = get_chat_language(update)
     
     real_args = (context.args if mode == 'list' else
                  ('today',) if mode == 'today' else
@@ -4496,7 +4547,7 @@ async def list_days_or_today(
     for day in sorted(days):
         date = days[day][0][0].date()
         if formatting == 'crazyjamdays':
-          day_of_week = DatetimeText._days_russian_short[date.weekday()]
+          day_of_week = DatetimeText.days_short.in_lang(language)[date.weekday()]
           month_ru = DatetimeText.padezh_month(date.month, date.day)
           days_as_lines.append(
             f"\n    {date:%d} {month_ru} ({day_of_week})\n\n"
@@ -4506,7 +4557,7 @@ async def list_days_or_today(
                 for n, (event_date, event_name, event_link) in enumerate(days[day], start=1)
             ))
         elif formatting == 'linkdays':
-          day_of_week = DatetimeText.days_english[date.weekday()]
+          day_of_week = DatetimeText.days.in_lang(language)[date.weekday()]
           days_as_lines.append(
             f"\n    {date:%d/%m} ({day_of_week.capitalize()})\n\n"
             + "\n\n".join(
@@ -4517,7 +4568,7 @@ async def list_days_or_today(
                 for n, (event_date, event_name, event_link) in enumerate(days[day], start=1)
             ))
         elif formatting == 'linkdayshtml':
-            day_of_week = DatetimeText.days_russian[date.weekday()]
+            day_of_week = DatetimeText.days.in_lang(language)[date.weekday()]
             days_as_lines.append(
             f"{day_of_week.capitalize()} {date:%d/%m}\n"
             + "\n".join(
@@ -4528,7 +4579,7 @@ async def list_days_or_today(
                 for n, (event_date, event_name, event_link) in enumerate(days[day], start=1)
             ))
         elif formatting in ('short', ):
-            day_of_week = DatetimeText.days_english[date.weekday()]
+            day_of_week = DatetimeText.days.in_lang(language)[date.weekday()]
             days_as_lines.append(
                 f"{day_of_week.capitalize()} {date:%d/%m}\n"
                 + "\n".join(
@@ -4538,7 +4589,7 @@ async def list_days_or_today(
                 )
             )
         elif formatting in ('shorthtml', ):
-            day_of_week = DatetimeText.days_english[date.weekday()] 
+            day_of_week = DatetimeText.days.in_lang(language)[date.weekday()]
             days_as_lines.append(
                 f"{day_of_week.capitalize()} {date:%d/%m}\n"
                 + "\n".join(
@@ -4548,7 +4599,7 @@ async def list_days_or_today(
                 )
             )
         else:
-          day_of_week = DatetimeText.days_english[date.weekday()]
+          day_of_week = DatetimeText.days.in_lang(language)[date.weekday()]
           days_as_lines.append(
             f"{day_of_week.capitalize()} {date:%d/%m}"
             + "\n"
@@ -5030,6 +5081,8 @@ ACCEPTED_SETTINGS_CHAT = (
     'sharemoney.required_for',
     'list.space_between_lines',
     'list.indent',
+    'main.language',
+    'main.languages',
 ) + tuple(
     remove_dup_keep_order(setting + '.active' for _, setting, _ in RESPONDERS)
 )
@@ -5191,6 +5244,8 @@ def CONVERSION_SETTINGS_BUILDER():
         'event.addevent.display_forwarded_infos': on_off_serializer,
         'list.space_between_lines': on_off_serializer,
         'list.indent': int_serializer,
+        'main.language': default_serializer,
+        'main.languages': list_of(default_serializer),
     }
     mapping_user = {
         'event.timezone': timezone_serializer,
