@@ -5238,22 +5238,26 @@ def CONVERSION_SETTINGS_BUILDER():
         'money.known_currencies': list_of(currency_serializer),
         'event.timezones': list_of(timezone_serializer),
         'event.admins': list_of_event_admins,
-        'event.addevent.display_link': on_off_serializer,
-        'event.addevent.display_file': on_off_serializer,
-        'event.delevent.display': on_off_serializer,
-        'event.addevent.display_forwarded_infos': on_off_serializer,
-        'list.space_between_lines': on_off_serializer,
         'list.indent': int_serializer,
-        'main.language': default_serializer,
         'main.languages': list_of(default_serializer),
+    } | {
+        name: on_off_serializer
+        for name, specs in ACCEPTED_SETTINGS_CHAT.items()
+        if specs.type == 'bool'
     }
+    
     mapping_user = {
         'event.timezone': timezone_serializer,
         'dict.engine': {
             'from_db': lambda x: x,
             'to_db': lambda x: x if assert_true(x in DICT_ENGINES, UserError("{!r} is not a known engine.\nAvaiblable options: {}".format(x, ', '.join(DICT_ENGINES)))) else None
         }
+    } | {
+        name: on_off_serializer
+        for name, specs in ACCEPTED_SETTINGS_USER.items()
+        if specs.type == 'bool'
     }
+
     from collections import defaultdict
     return {
         'chat': defaultdict(lambda: default_serializer, mapping_chat),
