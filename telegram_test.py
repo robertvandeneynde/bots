@@ -769,9 +769,9 @@ async def eventedit_responder(msg:str, send: AsyncSend, *, update, context):
             check_tz_in_chat(tz=tz, chat_timezones=read_chat_settings('event.timezones'))
 
             datetime_object = DatetimeDbSerializer.strptime(event_db['date']).replace(tzinfo=UTC).astimezone(tz)
-            datetime_object = Datetime.combine(datetime_object.date(), time)
+            datetime_object = Datetime.combine(datetime_object.date(), time).replace(tzinfo=tz)
             db_datetime = DatetimeDbSerializer.strftime(datetime_object.astimezone(UTC))
-        
+
         elif field_name in ('date', ):
             mini_event, rest = parse_event_date(new_value.split())
             assert_true(not rest, UserError("Too much values for date"))
@@ -783,7 +783,7 @@ async def eventedit_responder(msg:str, send: AsyncSend, *, update, context):
             date, date_end = DatetimeText.to_date_range(mini_event.date_str, tz=tz)
 
             datetime_object = DatetimeDbSerializer.strptime(event_db['date']).replace(tzinfo=UTC).astimezone(tz)
-            datetime_object = Datetime.combine(date, datetime_object.time())
+            datetime_object = Datetime.combine(date, datetime_object.time()).replace(tzinfo=tz)
             db_datetime = DatetimeDbSerializer.strftime(datetime_object.astimezone(UTC))
 
         else:
@@ -3905,19 +3905,29 @@ def addevent_analyse_from_bot(update, context, text:str) -> EventDictAnalysed:
                 return time_str, tz
             return data.strip(), None
         
-        if 'date' in infos_raw:
-            ldate = infos_raw['date']
-            local_only_one = only_one_with_error(EventAnalyseError(f'Multiple values for timezone {my_timezone!s}'))
-            all_timezone_info = [local_only_one(x[0] for x in infos_raw['date'] if my_timezone == x[1])]
-            local_time, local_time_tz = extract_timezone(all_timezone_info)
-            infos_raw['date'] = [ '{} ({})'.format(local_time, local_time_tz) ]
+        if infos_raw.get('time'):
+            all_times = [
+                (local_time_str, local_tz_str)
+                for local_time_str, local_tz_str in map(extract_timezone, infos_raw['time'])
+            ]
+
+            if any(y is not None for x,y in all_times):
+                local_only_one: Callable = partial(only_one, none=EventAnalyseError('Timezone not found'), many=EventAnalyseError(f'Multiple values for timezone {my_timezone!s}'))
+
+                local_time_str, local_tz = local_only_one(
+                    (local_time_str, local_tz)
+                    for local_time_str, local_tz in all_times
+                    if my_timezone == local_tz)
+
+                infos_raw['time'] = [ local_time_str ]
 
         return infos_raw
+    
+    infos_raw = deal_with_timezones(infos_raw)
     
     def reduce_multi_values(infos_raw):
         return {k: ' & '.join(v) for k,v in infos_raw.items()} 
 
-    # infos_raw = deal_with_timezones(infos_raw)  # TODO
     infos_raw = reduce_multi_values(infos_raw)
 
     what = infos_raw.get('name', '')
