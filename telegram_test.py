@@ -5211,11 +5211,12 @@ def CONVERSION_SETTINGS_BUILDER():
                  and x,
     }
     currency_serializer = {
-        'from_db': lambda s: list(map(str.upper, json.loads(s))),
-        'to_db': lambda L: json.dumps(list(map(str.upper, L)))
+        'from_db': str.upper,
+        'to_db': str.upper,
     }
+        
     int_serializer = {
-        'from_db': lambda s: int(s),
+        'from_db': int,
         'to_db': lambda v: v,
     }
     list_of_event_admins = list_of({
