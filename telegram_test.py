@@ -293,36 +293,65 @@ async def locationdistance_responder(msg:str, send: AsyncSend, *, update, contex
 async def locationinfo(update, context):
     send = make_send(update, context)
 
+    def parse_edge(edge):
+        if len(bits := edge.split()) == 3:
+            source, dest, dist = bits
+        elif len(bits := edge.split(' / ')) == 2:
+            source, dest = bits
+            B = InfiniteEmptyList(dest.split())
+            if B[-1] /fullmatches/ '\d+' or B[-1] == 'delete':
+                dist = B[-1]
+                dest = ' '.join(B[:-1])
+            else:
+                raise ValueError
+        else:
+            source, dest, dist = bits
+        source, dest, dist = map(str.strip, (source, dest, dist))
+        if dist.lower() == 'delete':
+            dist = 'delete'
+        else:
+            dist = int(dist)
+        return source, dest, dist
+    
+    def parse_semi_edge(edge):
+        if not (bits := InfiniteEmptyList(edge.split())) and (bits[-1] /fullmatches/ '\d+'):
+            raise ValueError
+        *destL, dist = bits
+        return ' '.join(destL), int(dist)
+
     edges = []
     try:
         for edge in ' '.join(context.args).split('//'):
-            if len(bits := edge.split()) == 3:
-                source, dest, dist = bits
-            elif len(bits := edge.split(' / ')) == 2:
-                source, dest = bits
-                B = InfiniteEmptyList(dest.split())
-                if B[-1] /fullmatches/ '\d+' or B[-1] == 'delete':
-                    dist = B[-1]
-                    dest = ' '.join(B[:-1])
-                else:
+            if m := edge /fullmatchesI/ 'path\s*:\s*(.*)':
+                data = m.group(1)
+                data_list = InfiniteEmptyList(data.split('/'))
+                prev = data_list[0]
+                if not prev:
                     raise ValueError
+                if len(data_list) == 1:
+                    # /locationinfo path: Hello 5 World in house 10 Tada
+                    S = prev.split()
+                    first = S[0]
+                    for dist, dest in zip(S[1::2], S[2::2]):
+                        edges.append((first, dest, dist))
+                else:
+                    # /locationinfo path: Hello / World 5 / Tada 5
+                    for target in data_list[1:]:
+                        dest, dist = parse_semi_edge(target.strip())
+                        edges.append((prev, dest, dist))
+                        prev = dest
             else:
-                source, dest, dist = bits
-            source, dest, dist = map(str.strip, (source, dest, dist))
-            if dist.lower() == 'delete':
-                dist = 'delete'
-            else:
-                dist = int(dist)
-            edges.append((source, dest, dist))
+                edges.append(parse_edge(edge.strip()))
+        edges = [(a, b, int(c)) for a,b,c in edges]
     except ValueError as e:
-        return await send('Usage: /locationinfo from / to / distance // from / to / distance')
+        return await send('Usage:\n/locationinfo from / to / distance // from / to / distance\n/locationinfo path: A dist B dist C')
 
     chat_id = update.effective_chat.id
     with sqlite3.connect('db.sqlite') as conn:
         for source, dest, distance in edges:
             save_location_distance(chat_id, source, dest, distance, conn)
 
-    return await send(f'Edges modified: {len(edges)}')
+    return await send(f'Edges modified: {len(edges)} {edges}')
 
 async def listlocationinfo(update, context):
     send = make_send(update, context)
