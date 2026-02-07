@@ -10,6 +10,7 @@ from telegram_settings_local import SPECIAL_ENTITIES
 from typing import Callable, Awaitable, Tuple, Union, Iterable, Literal, TypedDict, NamedTuple, Optional
 
 import json
+from dataclasses import dataclass
 
 import enum
 class FriendsUser(enum.StrEnum):
@@ -261,7 +262,7 @@ class DoNotAnswer(Exception):
 async def locationdistance_responder(msg:str, send: AsyncSend, *, update, context):
     if match := msg /fullmatches_with_flags(re.I)/ 'now\s+[@]\s+(.*)':
         loc = match.group(1)
-        dists = location_distance_apply(loc, chat_id=update.effective_chat.id)
+        dists = location_distance_apply(loc, chat_id=update.effective_chat.id).dists
         if len(dists) > 1:
             return await send('\n'.join(f"• {dist} from {name}" for name, dist in dists.items()))
 
@@ -290,22 +291,70 @@ def separate_based_on_indices(L, indices):
 async def distfrom(update, context):
     send = make_send(update, context)
 
-    tos = [i for i, x in enumerate(context.args) if x.lower() == 'to:']
+    if not context.args:
+        return await send("Usage:\n/distfrom place\n/distfrom place to: destination")
+
+    tos = [i for i, x in enumerate(context.args) if x.lower() in ('to:', ':to')]
 
     if not tos:
-        targets = [] 
+        targets = None
         loc = ' '.join(context.args)
     else:
         bits = split_based_on_indices(context.args, tos)
         loc = ' '.join(bits[0])
         targets = [' '.join(sub) for sub in bits[1:]]
         
-    dists = location_distance_apply(loc, chat_id=update.effective_chat.id, targets=targets)
+    dists = (d := location_distance_apply(loc, chat_id=update.effective_chat.id, targets=targets)).dists
 
-    return await send('\n'.join(f"• {dist} from {name}" for name, dist in dists.items()))
+    if targets is None:
+        display = dists.keys()
+    else:
+        display = list(map(str.lower, targets))
 
-def location_distance_apply(loc, *, chat_id, targets=[]):
-    targets = set(map(str.lower, targets))
+    return await send('\n'.join(f"• {dists[name]} from {name}" for name in display))
+
+
+async def pathfrom(update, context):
+    send = make_send(update, context)
+
+    if not context.args:
+        return await send("Usage:\n/pathfrom place\n/pathfrom place to: destination")
+
+    tos = [i for i, x in enumerate(context.args) if x.lower() in ('to:', ':to')]
+
+    if not tos:
+        targets = None
+        loc = ' '.join(context.args)
+    else:
+        bits = split_based_on_indices(context.args, tos)
+        loc = ' '.join(bits[0])
+        targets = [' '.join(sub) for sub in bits[1:]]
+
+    assert_true(targets is None or len(targets) <= 1, UserError("Not implemented"))
+        
+    dijkstra = location_distance_apply(loc, chat_id=update.effective_chat.id, targets=targets)
+
+    dists, prevs = dijkstra.dists, dijkstra.prevs
+
+    if targets is None:
+        return await send('\n'.join(f"• {dists[name]} to {name} (by {prevs.get(name)})" for name in dists))
+
+    c = targets[0].lower()
+    path = L = [c]
+    while c in prevs:
+        L.append(prevs[c])
+        c = prevs[c]
+    path.reverse()
+        
+    return await send('\n'.join(f"• {name} (at {dists[name]})" for name in path))
+
+@dataclass
+class DijkstraResult:
+    dists: dict
+    prevs: dict
+
+def location_distance_apply(loc, *, chat_id, targets=None):
+    targets = set(map(str.lower, targets)) if targets is not None else None
     loc = loc.lower()      
     edges = simple_sql(('select source, dest, distance from LocationDistanceEdge where chat_id = ?', (chat_id, )))
 
@@ -314,11 +363,10 @@ def location_distance_apply(loc, *, chat_id, targets=[]):
     for source, dest, distance in edges:
         Graph[source.lower()].append((dest.lower(), distance))
         Graph[dest.lower()].append((source.lower(), distance))
-    
-    
 
     open_list = {loc: 0}
     dists = {}
+    prevs = {}
     while open_list:
         current_name, current_dist = min(open_list.items(), key=lambda t:t[1])
         del open_list[current_name]
@@ -326,18 +374,20 @@ def location_distance_apply(loc, *, chat_id, targets=[]):
         assert current_name not in dists, "Strange"
         dists[current_name] = current_dist
 
-        if current_name in targets:
-            targets.discard(current_name)
-        if not targets:
-            break
+        if targets is not None:
+            if current_name in targets:
+                targets.discard(current_name)
+            if not targets:
+                break
 
         for neigh_name, neigh_dist in Graph[current_name]:
             if neigh_name not in dists:
                 new_dist = current_dist + neigh_dist
                 if neigh_name not in open_list or new_dist > open_list[neigh_name]:
                     open_list[neigh_name] = new_dist
+                    prevs[neigh_name] = current_name
     
-    return dists
+    return DijkstraResult(dists=dists, prevs=prevs)
         
 async def locationinfo(update, context):
     send = make_send(update, context)
@@ -411,7 +461,7 @@ async def locationinfo(update, context):
                             prev = dest
             else:
                 edges.append(parse_edge(edge.strip()))
-        edges = [(a, b, int(c)) for a,b,c in edges]
+        edges = [(a, b, int(c) if c != 'delete' else c) for a,b,c in edges]
     except ValueError as e:
         return await send('Usage:\n/locationinfo from / to / distance // from / to / distance\n/locationinfo path: A dist B dist C')
 
@@ -420,7 +470,7 @@ async def locationinfo(update, context):
         for source, dest, distance in edges:
             save_location_distance(chat_id, source, dest, distance, conn)
 
-    return await send(f'Edges modified: {len(edges)} {edges}')
+    return await send(f'Edges modified: {len(edges)}')
 
 async def listlocationinfo(update, context):
     send = make_send(update, context)
@@ -1968,8 +2018,6 @@ class ParsedEventFinal(NamedTuple):
     datetime_utc: Datetime 
     tz: ZoneInfo
     tz_explicit: bool
-
-from dataclasses import dataclass
 
 @dataclass
 class ParsedEventDate:
@@ -6486,6 +6534,7 @@ if __name__ == '__main__':
     application.add_handler(CommandHandler('locationinfo', locationinfo))
     application.add_handler(CommandHandler('listlocationinfo', listlocationinfo))
     application.add_handler(CommandHandler('distfrom', distfrom))
+    application.add_handler(CommandHandler('pathfrom', pathfrom))
     application.add_handler(ConversationHandler(
         entry_points=[CommandHandler("delevent", delevent)],
         states={
