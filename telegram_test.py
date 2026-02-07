@@ -260,9 +260,10 @@ class DoNotAnswer(Exception):
 
 async def locationdistance_responder(msg:str, send: AsyncSend, *, update, context):
     if match := msg /fullmatches_with_flags(re.I)/ 'now\s+[@]\s+(.*)':
-        loc = match.group(1).lower()
+        loc = match.group(1)
         dists = location_distance_apply(loc, chat_id=update.effective_chat.id)
-        return await send('\n'.join(f"• {dist} from {name}" for name, dist in dists.items()))
+        if len(dists) > 1:
+            return await send('\n'.join(f"• {dist} from {name}" for name, dist in dists.items()))
 
 async def distfrom(update, context):
     send = make_send(update, context)
@@ -272,7 +273,8 @@ async def distfrom(update, context):
 
     return await send('\n'.join(f"• {dist} from {name}" for name, dist in dists.items()))
 
-def location_distance_apply(loc, *, chat_id):        
+def location_distance_apply(loc, *, chat_id):
+    loc = loc.lower()      
     edges = simple_sql(('select source, dest, distance from LocationDistanceEdge where chat_id = ?', (chat_id, )))
 
     from collections import defaultdict
