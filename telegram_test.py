@@ -293,7 +293,7 @@ async def distfrom(update, context):
     tos = [i for i, x in enumerate(context.args) if x.lower() == 'to:']
 
     if not tos:
-        targets = None 
+        targets = [] 
         loc = ' '.join(context.args)
     else:
         bits = split_based_on_indices(context.args, tos)
@@ -304,7 +304,8 @@ async def distfrom(update, context):
 
     return await send('\n'.join(f"• {dist} from {name}" for name, dist in dists.items()))
 
-def location_distance_apply(loc, *, chat_id, targets=None):
+def location_distance_apply(loc, *, chat_id, targets=[]):
+    targets = set(map(str.lower, targets))
     loc = loc.lower()      
     edges = simple_sql(('select source, dest, distance from LocationDistanceEdge where chat_id = ?', (chat_id, )))
 
@@ -314,6 +315,8 @@ def location_distance_apply(loc, *, chat_id, targets=None):
         Graph[source.lower()].append((dest.lower(), distance))
         Graph[dest.lower()].append((source.lower(), distance))
     
+    
+
     open_list = {loc: 0}
     dists = {}
     while open_list:
@@ -322,6 +325,11 @@ def location_distance_apply(loc, *, chat_id, targets=None):
 
         assert current_name not in dists, "Strange"
         dists[current_name] = current_dist
+
+        if current_name in targets:
+            targets.discard(current_name)
+        if not targets:
+            break
 
         for neigh_name, neigh_dist in Graph[current_name]:
             if neigh_name not in dists:
