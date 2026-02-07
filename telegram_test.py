@@ -265,15 +265,46 @@ async def locationdistance_responder(msg:str, send: AsyncSend, *, update, contex
         if len(dists) > 1:
             return await send('\n'.join(f"• {dist} from {name}" for name, dist in dists.items()))
 
+def split_based_on_indices(L, indices):
+    if len(indices) == 0:
+        return [L[:]]
+    O = []
+    c = 0
+    for b in indices:
+        O.append(L[c:b])
+        c = b+1
+    O.append(L[c:])
+    return O
+
+def separate_based_on_indices(L, indices):
+    if len(indices) == 0:
+        return [L[:]]
+    O = []
+    c = 0
+    for b in indices:
+        O.append(L[c:b])
+        c = b
+    O.append(L[c:])
+    return O
+
 async def distfrom(update, context):
     send = make_send(update, context)
 
-    loc = ' '.join(context.args)
-    dists = location_distance_apply(loc, chat_id=update.effective_chat.id)
+    tos = [i for i, x in enumerate(context.args) if x.lower() == 'to:']
+
+    if not tos:
+        targets = None 
+        loc = ' '.join(context.args)
+    else:
+        bits = split_based_on_indices(context.args, tos)
+        loc = ' '.join(bits[0])
+        targets = [' '.join(sub) for sub in bits[1:]]
+        
+    dists = location_distance_apply(loc, chat_id=update.effective_chat.id, targets=targets)
 
     return await send('\n'.join(f"• {dist} from {name}" for name, dist in dists.items()))
 
-def location_distance_apply(loc, *, chat_id):
+def location_distance_apply(loc, *, chat_id, targets=None):
     loc = loc.lower()      
     edges = simple_sql(('select source, dest, distance from LocationDistanceEdge where chat_id = ?', (chat_id, )))
 
