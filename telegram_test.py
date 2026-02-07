@@ -794,16 +794,20 @@ async def eventedit_responder(msg:str, send: AsyncSend, *, update, context):
 
     else:
         raise DoNotAnswer
-    
-    new_event_db = only_one(simple_sql_dict(('select rowid, date, name from Events where rowid=?', (event_db['rowid'],))))
+
+    return await send(format_event_emoji_style_from_event_id(event_db['rowid'], chat_id=chat_id, user_id=user_id))
+
+def format_event_emoji_style_from_event_id(event_id, *, chat_id, user_id):
+    new_event_db = only_one(simple_sql_dict(('select rowid, date, name from Events where rowid=?', (event_id,))))
     date_utc = new_event_db['date']
     name = new_event_db['name']
-    tz = induce_my_timezone_from_update(update)
+    tz = induce_my_timezone(chat_id=chat_id, user_id=user_id)
     datetime = DatetimeDbSerializer.strptime(date_utc).replace(tzinfo=ZoneInfo('UTC')).astimezone(tz)
     date, time = datetime.date(), datetime.time()
-    read_chat_settings = make_read_chat_settings(update, context)
+    read_chat_settings = make_read_chat_settings_from_chat_id(chat_id)
     chat_timezones = read_chat_settings("event.timezones")
-    return await send("Event edited:\n" + format_event_emoji_style(name=name, datetime=datetime, date=date, time=time, tz=tz, chat_timezones=chat_timezones))
+    return format_event_emoji_style(name=name, datetime=datetime, date=date, time=time, tz=tz, chat_timezones=chat_timezones)
+
 
 class GetOrEmpty(list):
     def __getitem__(self, i):
@@ -4748,6 +4752,60 @@ async def do_delete_event(update, context):
         
     return ConversationHandler.END
 
+async def selectevent(update, context):
+    send = make_send(update, context)
+    read_chat_settings = make_read_chat_settings(update, context)
+
+    do_event_admin_check('list', setting=read_chat_settings('event.admins'), user_id=update.effective_user.id)
+
+    datetime_range = parse_datetime_range(update, args=context.args, default="future")
+    beg, end, tz = datetime_range['beg_utc'], datetime_range['end_utc'], datetime_range['tz']
+    events = simple_sql_dict(('''
+        SELECT rowid, date, name
+        FROM Events
+        WHERE ? <= date AND date < ?
+        AND chat_id=?
+        ORDER BY date''',
+        (DatetimeDbSerializer.strftime(beg), DatetimeDbSerializer.strftime(end), update.effective_chat.id,)))
+
+    saved_info_dict: dict = make_send_save_info(update, context)._asdict()
+
+    keyboard = [
+        [InlineKeyboardButton("{} - {}".format(
+            DatetimeDbSerializer.strftime_minutes(DatetimeDbSerializer.strptime(event['date']).replace(tzinfo=UTC).astimezone(tz)),
+            event['name']
+        ), callback_data=json.dumps(saved_info_dict | dict(rowid=str(event['rowid']))))]
+        for event in events
+    ]
+
+    if not keyboard:
+        await send("No events to select !")
+        return ConversationHandler.END
+
+    cancel = [[InlineKeyboardButton("/cancel", callback_data=json.dumps(saved_info_dict | dict(rowid="null")))]]
+
+    await send("Choose an event:", reply_markup=InlineKeyboardMarkup(keyboard + cancel))
+
+    return 0
+
+async def do_selectevent(update, context):
+    query = update.callback_query
+    user = query.from_user
+    await query.answer()
+
+    data_dict: dict = json.loads(query.data)
+    send = make_send(update, context, save_info=SendSaveInfo(chat_id=data_dict['chat_id'], thread_id=data_dict['thread_id']))
+
+    rowid = data_dict["rowid"]
+    if rowid == "null":
+        await send("Cancelled: No event selected")
+    else:
+        await send(format_event_emoji_style_from_event_id(rowid, chat_id=query.message.chat.id, user_id=query.from_user.id))
+    
+    await query.delete_message()
+
+    return ConversationHandler.END
+
 async def db_delete_event(update, context, send, *, chat_id, event_id, tz):
     read_chat_settings = make_read_chat_settings(update, context)
 
@@ -6313,6 +6371,14 @@ if __name__ == '__main__':
         },
         fallbacks=[],
     ), group=2)
+    application.add_handler(ConversationHandler(
+        entry_points=[CommandHandler("selectevent", selectevent)],
+        states={
+            0: [CallbackQueryHandler(do_selectevent)],
+        },
+        fallbacks=[],
+    ), group=4)
+    
     application.add_handler(CommandHandler('ru', ru))
     application.add_handler(CommandHandler('ipa', ipa))
     application.add_handler(CommandHandler('iparu', iparu))
