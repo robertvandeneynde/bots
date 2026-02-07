@@ -296,7 +296,18 @@ async def locationinfo(update, context):
     edges = []
     try:
         for edge in ' '.join(context.args).split('//'):
-            source, dest, dist = edge.split(' / ')
+            if len(bits := edge.split()) == 3:
+                source, dest, dist = bits
+            elif len(bits := edge.split(' / ')) == 2:
+                source, dest = bits
+                B = InfiniteEmptyList(dest.split())
+                if B[-1] /fullmatches/ '\d+' or B[-1] == 'delete':
+                    dist = B[-1]
+                    dest = ' '.join(B[:-1])
+                else:
+                    raise ValueError
+            else:
+                source, dest, dist = bits
             source, dest, dist = map(str.strip, (source, dest, dist))
             if dist.lower() == 'delete':
                 dist = 'delete'
@@ -304,7 +315,7 @@ async def locationinfo(update, context):
                 dist = int(dist)
             edges.append((source, dest, dist))
     except ValueError as e:
-        return await send('User: /locationinfo from / to / distance // from / to / distance')
+        return await send('Usage: /locationinfo from / to / distance // from / to / distance')
 
     chat_id = update.effective_chat.id
     with sqlite3.connect('db.sqlite') as conn:
