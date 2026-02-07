@@ -261,35 +261,43 @@ class DoNotAnswer(Exception):
 async def locationdistance_responder(msg:str, send: AsyncSend, *, update, context):
     if match := msg /fullmatches_with_flags(re.I)/ 'now\s+[@]\s+(.*)':
         loc = match.group(1).lower()
-        edges = simple_sql(('select source, dest, distance from LocationDistanceEdge where chat_id = ?', (chat_id := update.effective_chat.id, )))
-
-        from collections import defaultdict
-        Graph = defaultdict(list)
-        for source, dest, distance in edges:
-            Graph[source.lower()].append((dest.lower(), distance))
-            Graph[dest.lower()].append((source.lower(), distance))
-        
-        open_list = {loc: 0}
-        dists = {}
-        while open_list:
-            current_name, current_dist = min(open_list.items(), key=lambda t:t[1])
-            del open_list[current_name]
-
-            assert current_name not in dists, "Strange"
-            dists[current_name] = current_dist
-
-            for neigh_name, neigh_dist in Graph[current_name]:
-                if neigh_name not in dists:
-                    new_dist = current_dist + neigh_dist
-                    if neigh_name not in open_list or new_dist > open_list[neigh_name]:
-                        open_list[neigh_name] = new_dist
-        
-        if len(dists) == 1:
-            return
-        
-        send = make_send(update, context)
+        dists = location_distance_apply(loc, chat_id=update.effective_chat.id)
         return await send('\n'.join(f"• {dist} from {name}" for name, dist in dists.items()))
 
+async def distfrom(update, context):
+    send = make_send(update, context)
+
+    loc = ' '.join(context.args)
+    dists = location_distance_apply(loc, chat_id=update.effective_chat.id)
+
+    return await send('\n'.join(f"• {dist} from {name}" for name, dist in dists.items()))
+
+def location_distance_apply(loc, *, chat_id):        
+    edges = simple_sql(('select source, dest, distance from LocationDistanceEdge where chat_id = ?', (chat_id, )))
+
+    from collections import defaultdict
+    Graph = defaultdict(list)
+    for source, dest, distance in edges:
+        Graph[source.lower()].append((dest.lower(), distance))
+        Graph[dest.lower()].append((source.lower(), distance))
+    
+    open_list = {loc: 0}
+    dists = {}
+    while open_list:
+        current_name, current_dist = min(open_list.items(), key=lambda t:t[1])
+        del open_list[current_name]
+
+        assert current_name not in dists, "Strange"
+        dists[current_name] = current_dist
+
+        for neigh_name, neigh_dist in Graph[current_name]:
+            if neigh_name not in dists:
+                new_dist = current_dist + neigh_dist
+                if neigh_name not in open_list or new_dist > open_list[neigh_name]:
+                    open_list[neigh_name] = new_dist
+    
+    return dists
+        
 async def locationinfo(update, context):
     send = make_send(update, context)
 
@@ -343,10 +351,11 @@ async def locationinfo(update, context):
                         for i, b in enumerate(S):
                             if b /fullmatches/ '\d+':
                                 breaks.append(i)
+                        if not breaks:
+                            raise ValueError
                         c = breaks[0]
                         prev = ' '.join(S[0:c])
-                        for i in breaks[1:]:
-                            print(S[c:i])
+                        for i in breaks[1:] + [len(S)]:
                             dist, *destL = S[c:i]
                             dest = ' '.join(destL)
                             assert_true(prev.strip() and dest.strip(), ValueError)
@@ -370,7 +379,7 @@ async def locationinfo(update, context):
         for source, dest, distance in edges:
             save_location_distance(chat_id, source, dest, distance, conn)
 
-    return await send(f'Edges modified: {len(edges)}')
+    return await send(f'Edges modified: {len(edges)} {edges}')
 
 async def listlocationinfo(update, context):
     send = make_send(update, context)
@@ -6435,6 +6444,7 @@ if __name__ == '__main__':
     application.add_handler(CommandHandler('delwhereis', delthereis))
     application.add_handler(CommandHandler('locationinfo', locationinfo))
     application.add_handler(CommandHandler('listlocationinfo', listlocationinfo))
+    application.add_handler(CommandHandler('distfrom', distfrom))
     application.add_handler(ConversationHandler(
         entry_points=[CommandHandler("delevent", delevent)],
         states={
