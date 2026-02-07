@@ -368,6 +368,7 @@ def location_distance_apply(loc, *, chat_id, targets=None):
     dists = {}
     prevs = {}
     while open_list:
+        print(open_list, dists)
         current_name, current_dist = min(open_list.items(), key=lambda t:t[1])
         del open_list[current_name]
 
@@ -375,15 +376,14 @@ def location_distance_apply(loc, *, chat_id, targets=None):
         dists[current_name] = current_dist
 
         if targets is not None:
-            if current_name in targets:
-                targets.discard(current_name)
+            targets.discard(current_name)
             if not targets:
                 break
 
         for neigh_name, neigh_dist in Graph[current_name]:
             if neigh_name not in dists:
                 new_dist = current_dist + neigh_dist
-                if neigh_name not in open_list or new_dist > open_list[neigh_name]:
+                if neigh_name not in open_list or new_dist < open_list[neigh_name]:
                     open_list[neigh_name] = new_dist
                     prevs[neigh_name] = current_name
     
