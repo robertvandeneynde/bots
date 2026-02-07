@@ -322,24 +322,32 @@ async def locationinfo(update, context):
     edges = []
     try:
         for edge in ' '.join(context.args).split('//'):
-            if m := edge /fullmatchesI/ 'path\s*:\s*(.*)':
-                data = m.group(1)
+            if m := edge /fullmatchesI/ '(path|star)\s*:\s*(.*)':
+                pattern, data = m.group(1), m.group(2)
                 data_list = InfiniteEmptyList(data.split('/'))
                 prev = data_list[0]
                 if not prev:
                     raise ValueError
-                if len(data_list) == 1:
-                    # /locationinfo path: Hello 5 World in house 10 Tada
-                    S = prev.split()
-                    first = S[0]
-                    for dist, dest in zip(S[1::2], S[2::2]):
-                        edges.append((first, dest, dist))
-                else:
-                    # /locationinfo path: Hello / World 5 / Tada 5
+
+                if pattern.lower() == 'star':
+                    first = prev
                     for target in data_list[1:]:
-                        dest, dist = parse_semi_edge(target.strip())
-                        edges.append((prev, dest, dist))
-                        prev = dest
+                        dest, dist = parse_semi_edge(target)
+                        edges.append((first, dest, dist))
+
+                elif pattern.lower() == 'path':
+                    if len(data_list) == 1:
+                        # /locationinfo path: Hello 5 World in house 10 Tada
+                        S = prev.split()
+                        first = S[0]
+                        for dist, dest in zip(S[1::2], S[2::2]):
+                            edges.append((first, dest, dist))
+                    else:
+                        # /locationinfo path: Hello / World 5 / Tada 5
+                        for target in data_list[1:]:
+                            dest, dist = parse_semi_edge(target.strip())
+                            edges.append((prev, dest, dist))
+                            prev = dest
             else:
                 edges.append(parse_edge(edge.strip()))
         edges = [(a, b, int(c)) for a,b,c in edges]
