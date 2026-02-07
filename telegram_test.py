@@ -732,14 +732,26 @@ async def eventedit_responder(msg:str, send: AsyncSend, *, update, context):
 
         simple_sql(('''UPDATE Events SET date=? where rowid=?''', (DatetimeDbSerializer.strftime(after), event_db['rowid'], )))
 
-    elif match_field_edit := msg /fullmatches_with_flags(re.I)/ '(\p{L}+)[ ]*[=][ ]*(.*)':
+    elif match_field_edit := msg /fullmatches_with_flags(re.I)/ '(\p{L}*)[ ]*([=]?)[ ]*(.*)':
         read_chat_settings = make_read_chat_settings(update, context)
 
         field_name = match_field_edit.group(1).lower()
-        new_value = match_field_edit.group(2)
+        equal_present = match_field_edit.group(2)
+        new_value = match_field_edit.group(3)
         possible_fields = ['name', 'date', 'datetime', 'time', 'when', 'what', 'where', 'location']
-        if field_name not in possible_fields:
-            raise DoNotAnswer
+
+        if not field_name:
+            # Guessing
+            time, rest = ParseEvents.parse_time(new_value.split())
+            if time and not rest:
+                field_name = 'time'
+            else:
+                raise DoNotAnswer
+        else:
+            if not equal_present:
+                raise DoNotAnswer
+            if field_name not in possible_fields:
+                raise DoNotAnswer
 
         event_db = retrieve_event_from_db(update=update, context=context, what=event['what'], when=event['when'])
         event_rich = split_event_with_where_etc({'what': event_db['name']})
