@@ -5728,6 +5728,8 @@ async def implicit_setting_command(update, context, type: Literal['disable', 'on
             return await send_command('/chatsettings event.addevent.help_file off')
         if reply.document and reply.document.file_name == 'event.ics':
             return await send_command('/chatsettings event.addevent.display_file off')
+        if reply.text.startswith('Error: Time must be specified (policy of the group)'):
+            return await send_command('/chatsettings event.addevent.required_time off')
     elif type in ('only', 'known') and is_currency_list():
         if type == 'only':
             read_chat_settings = make_read_chat_settings(update, context)
