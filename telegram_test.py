@@ -339,9 +339,20 @@ async def locationinfo(update, context):
                     if len(data_list) == 1:
                         # /locationinfo path: Hello 5 World in house 10 Tada
                         S = prev.split()
-                        first = S[0]
-                        for dist, dest in zip(S[1::2], S[2::2]):
-                            edges.append((first, dest, dist))
+                        breaks = []
+                        for i, b in enumerate(S):
+                            if b /fullmatches/ '\d+':
+                                breaks.append(i)
+                        c = breaks[0]
+                        prev = ' '.join(S[0:c])
+                        for i in breaks[1:]:
+                            print(S[c:i])
+                            dist, *destL = S[c:i]
+                            dest = ' '.join(destL)
+                            assert_true(prev.strip() and dest.strip(), ValueError)
+                            edges.append((prev.strip(), dest.strip(), dist))
+                            prev = dest
+                            c = i
                     else:
                         # /locationinfo path: Hello / World 5 / Tada 5
                         for target in data_list[1:]:
@@ -359,7 +370,7 @@ async def locationinfo(update, context):
         for source, dest, distance in edges:
             save_location_distance(chat_id, source, dest, distance, conn)
 
-    return await send(f'Edges modified: {len(edges)} {edges}')
+    return await send(f'Edges modified: {len(edges)}')
 
 async def listlocationinfo(update, context):
     send = make_send(update, context)
