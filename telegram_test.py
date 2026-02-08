@@ -5549,12 +5549,19 @@ def read_raw_settings(key, *, id, settings_type: SettingType):
         results = cursor.execute(*query).fetchall()
         return results[0][0] if results else None
 
-async def listallsettings(update: Update, context: CallbackContext):
+async def listallsettings(update: Update, context: CallbackContext, scope:Literal[None, 'chat', 'user']=None):
     send = make_send(update, context)
+
+    Args = InfiniteEmptyList(context.args)
+    scope = scope or Args[0]
+    assert (not scope) or scope in ('chat', 'user')
+
     await send('\n'.join("- {} ({})".format(
             setting,
             '|'.join(['user'] * (setting in ACCEPTED_SETTINGS_USER) + ['chat'] * (setting in ACCEPTED_SETTINGS_CHAT)))
-        for setting in sorted(ACCEPTED_SETTINGS_USER | ACCEPTED_SETTINGS_CHAT)))
+        for setting in sorted(ACCEPTED_SETTINGS_USER | ACCEPTED_SETTINGS_CHAT)
+        if scope == 'user' and setting in ACCEPTED_SETTINGS_USER or scope == 'chat' and setting in ACCEPTED_SETTINGS_CHAT or not scope 
+    ))
 
 async def settings_command(update: Update, context: CallbackContext, *, command_name: str, settings_type:Literal['chat'] | Literal['user'], accepted_settings:list[str]):
     send = make_send(update, context)
@@ -5563,7 +5570,8 @@ async def settings_command(update: Update, context: CallbackContext, *, command_
         await send(f"Usage:" + "\n"
                    f"/{command_name} command.key" + "\n"
                    f"/{command_name} command.key value" + "\n"
-                   f"/{command_name} delete command.key")
+                   f"/{command_name} delete command.key" + "\n\n"
+                   f"Use /listallsettings {settings_type}, for complete list of {settings_type} settings")
 
     if len(context.args) == 0:
         return await print_usage()
