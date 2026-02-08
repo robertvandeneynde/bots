@@ -3508,25 +3508,37 @@ class listsmodule:
             my_simple_sql(('''update ListElement set value=? where listid=? LIMIT 1 OFFSET ? ''', (to_rep, listid, value)))
 
     @staticmethod
-    def parse_interval(value:str) -> range:
+    def parse_interval(value:str, N:int=None) -> range:
         """
         '1' → [1]: range
         '-5' → [-5]: range
         '2-4' → [2, 3, 4]: range
+        '2:4' → [2, 3, 4]: range
+        '-2:-1' → [-2, -1]: range
         """
-        if '-' in value:
-            a,b = value.split('-')
+        if (dot := ':' in value) or (dash := '-' in value):
+            a,b = value.split(':' if dot else '-')
             if a and b:
-                # interval
+                # interval: a:b or a-b or -a:b or -a:-b or a:-b
                 int(a), int(b)
                 assert int(a) <= int(b)
                 return irange(int(a), int(b))
             
             elif a and not b:
-                raise ValueError("Invalid number or range")
+                # 5: or 5-
+                if N is None:
+                    raise ValueError("Invalid format for number or range")
+                else:
+                    return irange(int(a), N)
             elif b and not a:
-                # negative number
-                return irange(- int(b), - int(b))
+                if dot:
+                    # :5
+                    assert int(b) >= 0
+                    return irange(1, int(b))
+                    raise ValueError("Not implemented yet")
+                elif dash:
+                    # negative number
+                    return irange(- int(b), - int(b))
             else:
                 raise AssertionError
                 
@@ -3593,7 +3605,7 @@ class listsmodule:
                 my_simple_sql((''' update ListElement set value=? where rowid=?''', (new_value, rowid)))
             
             for value in value.split():
-                for i in listsmodule.parse_interval(value):
+                for i in listsmodule.parse_interval(value, len(rowids)):
                     action(i)
 
     class tasktreecheck(OnTreeAction):
@@ -3632,7 +3644,7 @@ class listsmodule:
             rowids = my_simple_sql((''' select rowid from ListElement where listid=? ''', (listid, )))
 
             for v in value.split():
-                for i in map(listsmodule.one_based_to_zero_based, listsmodule.parse_interval(v)):
+                for i in map(listsmodule.one_based_to_zero_based, listsmodule.parse_interval(v, len(rowids))):
                     delrowid = rowids[i][0]
                     my_simple_sql((''' delete from ListElement where listid=? and rowid=?''', (listid, delrowid, )))
 
@@ -3798,11 +3810,10 @@ class listsmodule:
             if not parameters:
                 result_list = [x[0] for x in my_simple_sql((''' select value from ListElement where listid=?''', (listid, ) ))]
             else:
-                r: range = listsmodule.parse_intesrval(parameters)
-
-                if listsmodule.is_negative_range(r):
-                    N = only_one(only_one(my_simple_sql(('''select count(*) from ListElement where listid=?''', (listid,)))))
-                    r = listsmodule.to_positive_range(r, N, based=1)
+                N = only_one(only_one(my_simple_sql(('''select count(*) from ListElement where listid=?''', (listid,)))))
+                
+                r: range = listsmodule.parse_interval(parameters, N)
+                r = listsmodule.to_positive_range(r, N, based=1)
                 
                 offset = listsmodule.one_based_to_zero_based(r.start)
                 limit = r.stop - r.start
