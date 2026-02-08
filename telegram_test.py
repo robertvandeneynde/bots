@@ -5554,24 +5554,33 @@ async def listallsettings(update: Update, context: CallbackContext, scope:Litera
 
     Args = InfiniteEmptyList(context.args)
     scope = scope or Args[0]
-    assert (not scope) or scope in ('chat', 'user')
+    if scope and '.' in scope:
+        scope_base, scope_bits = scope.split('.', maxsplit=1)
+    else:
+        scope_base, scope_bits = scope, ''
+    assert (not scope_base) or scope_base in ('chat', 'user')
 
     await send('\n'.join("- {} ({})".format(
             setting,
             '|'.join(['user'] * (setting in ACCEPTED_SETTINGS_USER) + ['chat'] * (setting in ACCEPTED_SETTINGS_CHAT)))
         for setting in sorted(ACCEPTED_SETTINGS_USER | ACCEPTED_SETTINGS_CHAT)
-        if scope == 'user' and setting in ACCEPTED_SETTINGS_USER or scope == 'chat' and setting in ACCEPTED_SETTINGS_CHAT or not scope 
+        if scope_base == 'user' and setting in ACCEPTED_SETTINGS_USER or scope_base == 'chat' and setting in ACCEPTED_SETTINGS_CHAT or not scope_base
+        if setting.startswith(scope_bits)
     ))
 
 async def settings_command(update: Update, context: CallbackContext, *, command_name: str, settings_type:Literal['chat'] | Literal['user'], accepted_settings:list[str]):
     send = make_send(update, context)
+    send_html = partial(send, parse_mode='HTML')
+    import html
 
     async def print_usage():
-        await send(f"Usage:" + "\n"
-                   f"/{command_name} command.key" + "\n"
-                   f"/{command_name} command.key value" + "\n"
-                   f"/{command_name} delete command.key" + "\n\n"
-                   f"Use /listallsettings {settings_type}, for complete list of {settings_type} settings")
+        await send_html(
+            f"Usage:" + "\n"
+            f"/{command_name} command.key" + "\n"
+            f"/{command_name} command.key value" + "\n"
+            f"/{command_name} delete command.key" + "\n\n"
+            f"- Type /listallsettings for a list of all settings" '\n'
+            f"- Type <code>/listallsettings {settings_type}</code> for a list of {settings_type} settings")
 
     if len(context.args) == 0:
         return await print_usage()
@@ -5597,7 +5606,10 @@ async def settings_command(update: Update, context: CallbackContext, *, command_
     key, *rest = args
 
     if key not in accepted_settings:
-        return await send(f'Unknown settings: {key!r}\n\nType /listallsettings for complete list of settings (hidden command)')
+        return await send_html(
+            f'Unknown settings: "{html.escape(key)}"' "\n\n"
+            f"- Type /listallsettings for a list of all settings" "\n"
+            f"- Type <code>/listallsettings {settings_type}.{html.escape(key)}</code> to see all settings starting with your command" "\n")
 
     if rest and rest[0] == '=' and action in ("set", "getset"):
         rest = rest[1:]
