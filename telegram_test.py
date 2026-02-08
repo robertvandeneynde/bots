@@ -5949,15 +5949,17 @@ async def implicit_setting_command(update, context, type: Literal['disable', 'on
         return all(re.compile('^[A-Z]{3}[:].*$').match(line) for line in reply.text.splitlines())
 
     if type == 'disable':
-        if is_currency_list():
-            return await send_command('/chatsettings money.active off')
-        if reply.text == 'Click the file below to add the event to your calendar:':
-            return await send_command('/chatsettings event.addevent.help_file off')
-        if reply.document and reply.document.file_name == 'event.ics':
+        if reply.text:
+            if is_currency_list():
+                return await send_command('/chatsettings money.active off')
+            if reply.text == 'Click the file below to add the event to your calendar:':
+                return await send_command('/chatsettings event.addevent.help_file off')
+            if reply.text and reply.text.startswith('Error: Time must be specified (policy of the group)'):
+                return await send_command('/chatsettings event.addevent.required_time off')
+        elif reply.document and reply.document.file_name == 'event.ics':
             return await send_command('/chatsettings event.addevent.display_file off')
-        if reply.text.startswith('Error: Time must be specified (policy of the group)'):
-            return await send_command('/chatsettings event.addevent.required_time off')
-    elif type in ('only', 'known') and is_currency_list():
+
+    elif type in ('only', 'known') and reply.text and is_currency_list():
         if type == 'only':
             read_chat_settings = make_read_chat_settings(update, context)
             currencies = read_chat_settings('money.currencies')
