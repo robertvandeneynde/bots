@@ -3542,18 +3542,24 @@ class listsmodule:
         return r.start < 0 or r.stop <= 0
     
     @staticmethod
-    def to_positive_range(r: range, N: int):
+    def to_positive_range(r: range, N: int, *, based:Literal[0, 1]):
+        """
+        range( 0, 5) (N = 10) (based = 0) → range(0, 5)
+        range(-1, 0) (N = 10) (based = 0) → range(9, 10)
+        range(-1, 0) (N = 10) (based = 1) → range(10, 11)
+        """
         if listsmodule.is_negative_range(r):
-            start = r.start + N if r.start < 0 else r.start
-            stop = r.stop + N if r.stop <= 0 else r.stop
+            start = r.start + N + based if r.start < 0 else r.start
+            stop = r.stop + N + based if r.stop <= 0 else r.stop
 
-            assert start in range(0, N)
-            assert stop in irange(0, N)
+            assert start in range(based, N+based)
+            assert stop in irange(based, N+based)
             assert start < stop
 
             return range(start, stop)
         else:
             return r
+            
     class tasklistcheck:
         @staticmethod
         def do_it(*, conn, chat_id, name, value, direction:Literal['x', '', 'toggle']):
@@ -3792,11 +3798,11 @@ class listsmodule:
             if not parameters:
                 result_list = [x[0] for x in my_simple_sql((''' select value from ListElement where listid=?''', (listid, ) ))]
             else:
-                r: range = listsmodule.parse_interval(parameters)
+                r: range = listsmodule.parse_intesrval(parameters)
 
                 if listsmodule.is_negative_range(r):
                     N = only_one(only_one(my_simple_sql(('''select count(*) from ListElement where listid=?''', (listid,)))))
-                    r = listsmodule.to_positive_range(r, N)
+                    r = listsmodule.to_positive_range(r, N, based=1)
                 
                 offset = listsmodule.one_based_to_zero_based(r.start)
                 limit = r.stop - r.start
