@@ -1070,6 +1070,8 @@ async def sharemoney_responder(msg:str, send: AsyncSend, *, update, context):
             reason = ' '.join(Args[i+1:])
         elif Args[i].startswith('#') and Args[i][1:]:
             reason = ' '.join([Args[i][1:]] + Args[i+1:])
+        elif Args[i]:
+            raise UserError("Too much infos")
         else:
             reason = None
 
@@ -1093,14 +1095,13 @@ async def sharemoney_responder(msg:str, send: AsyncSend, *, update, context):
             if first_currency or second_currency:
                 if not(first_currency.upper() == second_currency.upper() == currency_string.upper()):
                     raise UserError("Currencies must match")
-
-        if currency_string:
-            raise UserError('I cannot deal properly with currencies atm, but you can use the equivalent "account" notation: A.EUR owes B.EUR 5')
-
-        if first_currency:
-            first_name = name.fullmatch(first_name).group(1) + "." + first_currency.upper()
-        if second_currency:
-            second_name = name.fullmatch(second_name).group(1) + "." + second_currency.upper()
+        
+        the_currency = currency_string or first_currency or second_currency
+        del currency_string, first_currency, second_currency
+        
+        if the_currency:
+            first_name = name.fullmatch(first_name).group(1) + "." + the_currency.upper()
+            second_name = name.fullmatch(second_name).group(1) + "." + the_currency.upper()
         
         debt = NamedChatDebt(
             debitor_id=first_name,
@@ -1108,7 +1109,7 @@ async def sharemoney_responder(msg:str, send: AsyncSend, *, update, context):
             chat_id=chat_id,
             amount=amount.parse_string(amount_str, parse_all=True)[0].eval(),
             reason=reason,
-            currency=currency_string)
+            currency=the_currency and the_currency.upper())
     
         read_chat_settings = make_read_chat_settings(update, context)
 
@@ -1121,7 +1122,7 @@ async def sharemoney_responder(msg:str, send: AsyncSend, *, update, context):
             (debt.debitor_id, debt.creditor_id, debt.chat_id, debt.amount, debt.currency, debt.reason)))
         
         return await send(' '.join(filter(None,
-            ('Debt created:', f'"{debt.debitor_id}"', 'owes', f'"{debt.creditor_id}"', f'{debt.amount}', f'{debt.currency}' if debt.currency else '', (f'for {debt.reason}' if debt.reason else ''))
+            ('Debt created:', f'"{debt.debitor_id}"', 'owes', f'"{debt.creditor_id}"', f'{debt.amount}', (f'# {debt.reason}' if debt.reason else ''))
         )))
 
 async def englishpractice_responder(msg: str, send: AsyncSend, *, update, context):
@@ -5995,6 +5996,8 @@ async def implicit_setting_command(update, context, type: Literal['disable', 'on
                 return await send_command('/chatsettings event.addevent.required_time off')
             if reply.text /fullmatches/ 'Forwarded to \d+ chats':
                 return await send_command('/chatsettings event.addevent.display_forwarded_infos off')
+            if reply.text.startswith('Error: You must specify a reason'):
+                return await send_command('/chatsettings sharemoney.required_for off')
         elif reply.document and reply.document.file_name == 'event.ics':
             return await send_command('/chatsettings event.addevent.display_file off')
             
@@ -6030,9 +6033,6 @@ async def listdebts(update, context):
     debts_sum = {}
     
     for debt in (NamedChatDebt(**x) for x in lines):
-        if debt.currency:
-            return await send("I cannot deal with debt with currencies atm...")
-        
         if (debt.debitor_id, debt.creditor_id) in debts_sum or (debt.creditor_id, debt.debitor_id) in debts_sum:
             key = ((debt.debitor_id, debt.creditor_id) if (debt.debitor_id, debt.creditor_id) in debts_sum else
                    (debt.creditor_id, debt.debitor_id))
@@ -6106,6 +6106,15 @@ async def detaildebts(update, context):
 
     debt: NamedChatDebt
     for debt in reversed([NamedChatDebt(**x) for x in lines]):
+        name_re = regex.compile(r"(\p{L}\w*)([.]([A-Za-z]+))?")
+        debitor_name = name_re.fullmatch(debt.debitor_id).group(1)
+        creditor_name = name_re.fullmatch(debt.creditor_id).group(1)
+        currency_1 = name_re.fullmatch(debt.creditor_id).group(3)
+        currency_2 = name_re.fullmatch(debt.creditor_id).group(3)
+        assert currency_1.upper() == currency_2.upper()
+        currency = currency_1 or currency_2
+        currency = currency and currency.upper()
+    
         if account_filter and account_filter[0] == 'multi':
             
             if (debt.debitor_id, debt.creditor_id, ) == tuple(account_filter[1]):
@@ -6118,7 +6127,7 @@ async def detaildebts(update, context):
             to_print.append(' '.join(filter(None, (
                 '+' if directed_amount >= 0 else '-',
                 str(abs(directed_amount)),
-                str(debt.currency) if debt.currency else '',
+                str(currency) if currency else '',
                 f'# {debt.reason}' if debt.reason else '',
             ))))
 
@@ -6127,12 +6136,12 @@ async def detaildebts(update, context):
         else:
             to_print.append(' '.join(filter(None, (
                 'Debt',
-                f'"{debt.debitor_id}"',
+                f'"{debitor_name}"',
                 'owes',
-                f'"{debt.creditor_id}"',
+                f'"{creditor_name}"',
                 f'{debt.amount}',
-                f'{debt.currency}' if debt.currency else '',
-                f'for {debt.reason}' if debt.reason else ''
+                f'{currency}',
+                f'# {debt.reason}' if debt.reason else ''
             ))))
     
     if account_filter and account_filter[0] == 'multi':
