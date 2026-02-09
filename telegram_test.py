@@ -4753,6 +4753,31 @@ def get_all_chat_languages(update):
     final_list = remove_dup_keep_order([x] if x else [] + (L if L else []))
     return final_list if final_list else ['EN']
 
+def kwarg_prop_re_match(x: None|str, s):
+    import regex
+    X = regex.escape(x) if x is not None else r'\p{L}+'
+    if m := regex.compile(rf'[:]({X})|({X})[:]', re.I).fullmatch(s):
+        return m.group(1) or m.group(2)
+    else:
+        return None
+
+def clean_kwarg_args(args):
+    D = dict()
+    bits = [0]
+    for i, x in enumerate(args):
+        if m := kwarg_prop_re_match(None, x):
+            bits.append(i)
+    bits.append(len(args))
+
+    parts = []
+    for a,b in zip(bits[0:], bits[1:]):
+        parts.append(args[a:b])
+    
+    D = {}
+    for p in parts[1:]:
+        D[kwarg_prop_re_match(None, p[0])] = p[1:]
+    return D, parts[0]
+
 async def list_days_or_today(
         update: Update,
         context: CallbackContext,
@@ -4795,8 +4820,13 @@ async def list_days_or_today(
     do_event_admin_check('list', setting=read_chat_settings('event.admins'), user_id=update.effective_user.id)
 
     language = get_chat_language(update)
+
+    args = context.args
     
-    real_args = (context.args if mode == 'list' else
+
+    if (i,x) for i,x in enumerate(args) if (v := kwarg_prop_re_match('to', x))
+
+    real_args = (args if mode == 'list' else
                  ('today',) if mode == 'today' else
                  ('tomorrow',) if mode == 'tomorrow' else 
                  (DatetimeText.days_english[dayofweek-1], ) if mode == 'dayofweek' else raise_error(AssertionError('mode must be a correct value')))
@@ -6308,6 +6338,13 @@ class EnglishPracticeData:
                 return("Она никогда не [читает] книги. Неделю назад она [прочитала] 3 поста в соц сетях. Поэма [будет прочтена] со стадиона.")
             raise ValueError
 
+def grouped_dict(it):
+    from collections import defaultdict
+    d = defaultdict(list)
+    for k, v in it:
+        d[k].append(v)
+    return dict(d)
+
 class LanguagePractice:
   async def practice_command(update, context):
     # only accessible when the practiceenglish.active is
@@ -6378,9 +6415,7 @@ async def help(update, context):
           [x.name for x in COMMAND_LIST_HELP])
 
     from collections import defaultdict
-    by_modules = defaultdict(list)
-    for c in li:
-        by_modules[COMMAND_LIST_HELP_DICT[c].module].append(c)
+    by_modules = grouped_dict((COMMAND_LIST_HELP_DICT[c].module, c) for c in li)
 
     if bot_father:
         return await send('\n'.join(fmt.format(command, COMMAND_DESC.get(command, command)) for command in li))
