@@ -6259,11 +6259,31 @@ async def help(update, context):
     fmt = ('{} - {}' if bot_father else
            '/{} {}')
     
-    li = (ordered_set_remove(COMMAND_LIST, BOT_FATHER_HIDDEN_COMMANDS) if bot_father else
-          ordered_set_union(COMMAND_LIST, BOT_FATHER_HIDDEN_COMMANDS))
-    
-    return await send('\n'.join(fmt.format(command, COMMAND_DESC.get(command, command)) for command in li))
+    li = ([x.name for x in COMMAND_LIST_HELP if x.botfather] if bot_father else
+          [x.name for x in COMMAND_LIST_HELP])
 
+    from collections import defaultdict
+    by_modules = defaultdict(list)
+    for c in li:
+        by_modules[COMMAND_LIST_HELP_DICT[c].module].append(c)
+
+    if bot_father:
+        return await send('\n'.join(fmt.format(command, COMMAND_DESC.get(command, command)) for command in li))
+    else:
+        lines = []
+        first = True
+        for mod, L in by_modules.items():
+            if first:
+                first = False
+            else:
+                lines.append('')
+
+            lines.append(f'[Module "{mod}"]')
+            
+            for command in L:
+                lines.append('  ' + fmt.format(command, COMMAND_DESC.get(command, command)))
+        return await send('\n'.join(lines) or '?')
+    
 class UserError(ValueError):
     pass
 
@@ -6464,37 +6484,83 @@ def ordered_set_remove(A, B):
 def ordered_set_union(A, B):
     return (''.join if isinstance(A, str) else type(A))(x for x in itertools.chain(A, B))
 
-BOT_FATHER_HIDDEN_COMMANDS = (
-    # 'createlist',
-    # 'addtolist',
-    'removefromlist', 'delfromlist', 'deletefromlist',
-    # 'printlist',
+
+CommandModules = Literal['event', 'eventlocation', 'money', 'sharemoney', 'lang', 'dict', 'flashcard', 'list']
+@dataclass
+class CommandInfoSpecs:
+    name: str
+    module: CommandModules
+    botfather: bool = True
+
+all_modules = ('event', 'eventlocation', 'money', 'sharemoney', 'lang', 'dict', 'flashcard', 'list')
+all_modules_parent = {
+    'event': None,
+    'eventlocation': 'event',
+    'money': None,
+    'sharemoney': 'money',
+    'lang': None,
+    'dict': 'lang',
+    'flashcard': 'lang',
+    'list': None,
+}
+
+COMMAND_LIST_HELP = (
+    CommandInfoSpecs('addevent', 'event'),
+    CommandInfoSpecs('addschedule', 'event'),
+    CommandInfoSpecs('delevent', 'event'),
+    CommandInfoSpecs('iaddevent', 'event'),
+    CommandInfoSpecs('nextevent', 'event'),
+    CommandInfoSpecs('lastevent', 'event'),
+    CommandInfoSpecs('listevents', 'event'),
+    CommandInfoSpecs('listdays', 'event'),
+    CommandInfoSpecs('listtoday', 'event'),
+    CommandInfoSpecs('today', 'event'),
+    CommandInfoSpecs('tomorrow', 'event'),
+    CommandInfoSpecs('mytimezone', 'event'),
+    
+    CommandInfoSpecs('eventfollow', 'event'),
+    CommandInfoSpecs('eventacceptfollow', 'event'),
+    CommandInfoSpecs('deleventfollow', 'event'),
+    CommandInfoSpecs('deleventacceptfollow', 'event'),
+
+    CommandInfoSpecs('whereis', 'eventlocation'),
+    CommandInfoSpecs('whereto', 'eventlocation'),
+    CommandInfoSpecs('delwhereis', 'eventlocation'),
+    CommandInfoSpecs('delthereis', 'eventlocation'),
+
+    CommandInfoSpecs('convertmoney', 'money'),
+    CommandInfoSpecs('sharemoney', 'sharemoney'),
+
+    CommandInfoSpecs('ru', 'lang'),
+
+    CommandInfoSpecs('dict', 'dict'),
+    CommandInfoSpecs('wikt', 'dict'),
+    CommandInfoSpecs('larousse', 'dict'),
+    
+    CommandInfoSpecs('flashcard', 'flashcard'),
+    CommandInfoSpecs('myflashcard', 'flashcard'),
+    CommandInfoSpecs('exportflashcards', 'flashcard'),
+    CommandInfoSpecs('practiceflashcards', 'flashcard'),
+    CommandInfoSpecs('switchpageflashcard', 'flashcard'),
+    CommandInfoSpecs('listflashcard', 'flashcard'),
+    CommandInfoSpecs('listpageflashcard', 'flashcard'),
+
+    CommandInfoSpecs('mysettings', 'settings'),
+    CommandInfoSpecs('delmysettings', 'settings'),
+    CommandInfoSpecs('chatsettings', 'settings'),
+    CommandInfoSpecs('delchatsettings', 'settings'),
+
+    CommandInfoSpecs('createlist', 'list'),
+    CommandInfoSpecs('addtolist', 'list'),
+    CommandInfoSpecs('removefromlist', 'list'),
+    CommandInfoSpecs('delfromlist', 'list'),
+    CommandInfoSpecs('deletefromlist', 'list'),
+    CommandInfoSpecs('printlist', 'list'),
+    CommandInfoSpecs('dirlist', 'list'),
+    CommandInfoSpecs('dellist', 'list'),
 )
 
-COMMAND_LIST = (
-    'caps',
-    'addevent', 'addschedule', 'delevent', 'iaddevent',
-    'nextevent', 'lastevent', 'listevents', 'listdays', 'listtoday', 'today', 'tomorrow',
-    'eventfollow', 'eventacceptfollow', 'deleventfollow', 'deleventacceptfollow',
-    'whereis', 'thereis', 'whereto', "delwhereis", "delthereis",
-    'ru',
-    'dict', 'wikt', 'larousse',
-    'convertmoney', 'eur', 'brl', 'rub',
-    'mytimezone', 'mysettings', 'delmysettings', 'chatsettings', 'delchatsettings',
-    'flashcard', 'exportflashcards', 'practiceflashcards', 'switchpageflashcard', 'listflashcard', 'listpageflashcard',
-    'myflashcard',
-    'help',
-    'uniline', 'nuniline',
-    #'sleep',
-    'sharemoney', 'listdebts', 'detaildebts',
-    #
-    'createlist',
-    'addtolist',
-    'removefromlist', 'delfromlist', 'deletefromlist',
-    'printlist',
-    'dirlist',
-    'dellist', 'delist',
-)
+COMMAND_LIST_HELP_DICT = {x.name: x for x in COMMAND_LIST_HELP}
 
 
 if __name__ == '__main__':
