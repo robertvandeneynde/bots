@@ -2399,7 +2399,56 @@ def is_correct_day_of_week(date, day_of_week):
     return date.weekday() == DatetimeText.parse_valid_weekday(day_of_week)
     # return date.weekday() == (DatetimeText.days_english + DatetimeText.days_french).index(day_of_week.lower()) % 7
 
-async def eventfollow(update, context):
+async def macro_event_follow(update, context):
+    send = make_send(update, context)
+    number_re = re.compile('[-]?\\d+')
+
+    Args = InfiniteEmptyList(context.args)
+    if not Args:
+        return await event_action_follow(update, context)
+    
+    elif number_re.fullmatch(Args[0]):
+        context.args = tuple(Args)
+        return await event_action_follow(update, context)
+    
+    elif Args[0].lower() in ('delete', 'del'):
+        if Args[1].lower() in ('follower', 'followers'):
+            context.args = tuple(Args[2:])
+            return await deleventacceptfollow(update, context)
+        
+        elif number_re.fullmatch(Args[1]):
+            context.args = tuple(Args[1:])
+            return await deleventfollow(update, context)
+        
+        elif Args[1].lower() in ('sub', 'subscription', 'subscriptions'):
+            context.args = tuple(Args[2:])
+            return await deleventfollow(update, context)
+        
+        return await send('/eventfollow delete (follower|subscription)')
+        
+    elif Args[0].lower() in ('accept', ):
+        context.args = tuple(Args[1:])
+        return await eventacceptfollow(update, context)
+    
+    elif Args[0].lower() in ('rename', ):
+        if Args[1].lower() in ('follower', ):
+            context.args = tuple(Args[2:])
+            return await renameeventacceptfollow(update, context)
+        
+        elif Args[1].lower() in ('sub', 'subscription'):
+            context.args = tuple(Args[2:])
+            return await renameeventfollow(update, context)
+    
+    elif Args[0].lower() in ('list', ):
+        if Args[1].lower() in ('followers', 'follower'):
+            pass 
+        elif Args[1].lower() in ('sub', 'subscription', 'subscriptions'):
+            pass
+        raise UserError("Not implemented yet")
+      
+    return await send("Wrong parameters")
+
+async def event_action_follow(update, context):
     send = make_send(update, context)
 
     chat_id = update.effective_chat.id
@@ -2430,7 +2479,7 @@ async def eventfollow(update, context):
 
     if True:  # do_unless_setting_off(the_target_chat . event.follow.notify_my_followers):
         await context.bot.send_message(
-            text=f'Event follow request received!\n\nTo accept, type:\n/eventacceptfollow {chat_id}\n\nOr:\n/eventacceptfollow {chat_id} Custom Name',
+            text=f'Event follow request received!\n\nTo accept, type:\n/eventfollow accept {chat_id}\n\nOr:\n/eventfollow accept {chat_id} Custom Name',
             chat_id=target_chat_id)
             # message_thread_id=target_thread_id # read target_chat's "bot channel/admin channel" setting (ie. where they receive the follow requests)
 
@@ -2476,7 +2525,7 @@ async def eventacceptfollow(update, context):
         'You are now followed by this chat{}!'.format(" (that you named {})".format(my_relation_name) if my_relation_name else '') + " " +
         'Every event you add will be forwarded to them.' +
         "\n\n" +
-        'To see and manage all your followers, see:\n/deleventacceptfollow')
+        'To see and manage all your followers, see:\n/eventfollow list followers')
 
 async def send_you_are_following_these_chats(update, context):
     send = make_send(update, context)
@@ -2507,7 +2556,7 @@ async def deleventfollow(update, context):
 
     if not context.args:
         await send_you_are_following_these_chats(update, context)
-        return await send('Usage: /deleventfollow [chat_id]')
+        return await send('Usage: /eventfollow delete [chat_id]')
 
     target_chat_id = str(int(context.args[0]))
 
@@ -2525,7 +2574,7 @@ async def deleventacceptfollow(update, context):
 
     if not context.args:
         await send_these_chats_are_following_you(update, context)
-        return await send('Usage: /deleventacceptfollow [chat_id]')
+        return await send('Usage: /eventfollow delete follower [chat_id]')
 
     target_chat_id = str(int(context.args[0]))
 
@@ -2547,7 +2596,7 @@ async def eventanyfollowrename(update, context, *, direction: Literal['follow', 
     except IndexError:
         listing = {'follow': send_you_are_following_these_chats, 'accept': send_these_chats_are_following_you}[direction]
         await listing(update, context)
-        return await send("Usage: /{command} chat_id new name".format(command={'follow': 'renameeventfollow', 'accept': 'renameeventacceptfollow'}[direction]))
+        return await send("Usage: /{command} chat_id new name".format(command={'follow': 'eventfollow follower', 'accept': 'eventfollow rename subscription'}[direction]))
 
     if direction == 'follow':
         base_query = 'update %s set a_name = ? where a_chat_id = ? and b_chat_id = ?'
@@ -6639,12 +6688,7 @@ if __name__ == '__main__':
     ), group=3)
     application.add_handler(CommandHandler('events', events()))
     application.add_handler(CommandHandler('addschedule', addschedule))
-    application.add_handler(CommandHandler('eventfollow', eventfollow))
-    application.add_handler(CommandHandler('eventacceptfollow', eventacceptfollow))
-    application.add_handler(CommandHandler('deleventfollow', deleventfollow))
-    application.add_handler(CommandHandler('deleventacceptfollow', deleventacceptfollow))
-    application.add_handler(CommandHandler('renameeventfollow', renameeventfollow))
-    application.add_handler(CommandHandler('renameeventacceptfollow', renameeventacceptfollow))
+    application.add_handler(CommandHandler('eventfollow', macro_event_follow))
     application.add_handler(CommandHandler('nextevent', next_event))
     application.add_handler(CommandHandler('rnextevent', partial(next_event, relative=True)))
     application.add_handler(CommandHandler('listevents', list_events))
