@@ -572,17 +572,21 @@ class ListLang:
 
     IsTask = re.compile("^\\[\\s*(x|)\\s*\\]\\s*(.*)\\s*$")
 
+class ListLangRegexes:
+    NAME = r"[\p{L}-_][\p{L}-_\d]*"
+    ONE_LINE, OP_MULTI_LINE, MULTI_EQUALS_PLUS_TYPE = (
+        regex.compile(fr"({NAME})(\s*[.]\s*|\s+)({ListLang.OPS_1L}|[=])\s*(.*?)", regex.IGNORECASE),
+        regex.compile(fr"({NAME})\s*([+][=]|[=])\s*()\s*\n(.*)", regex.DOTALL),
+        regex.compile(fr"({NAME})\s*([=])\s*(.*?)\s*\n(.*)", regex.DOTALL))
+
 async def list_responder(msg: str, send: AsyncSend, *, update, context):
     import regex
 
     read_chat_settings = make_read_chat_settings(update, context)
+
+    RE = ListLangRegexes
     
-    RE_ONE_LINE, RE_OP_MULTI_LINE, RE_MULTI_EQUALS_PLUS_TYPE = (
-        regex.compile(r"(\p{L}+)(\s*[.]\s*|\s+)(" + ListLang.OPS_1L + "|[=])\s*(.*?)", regex.IGNORECASE),
-        regex.compile(r"(\p{L}+)\s*([+][=]|[=])\s*()\s*\n(.*)", regex.DOTALL),
-        regex.compile(r"(\p{L}+)\s*([=])\s*(.*?)\s*\n(.*)", regex.DOTALL))
-    
-    if (match := RE_ONE_LINE.fullmatch(msg)) or (match_multi := RE_OP_MULTI_LINE.fullmatch(msg)) or (match_multi_equals_plus_type := RE_MULTI_EQUALS_PLUS_TYPE.fullmatch(msg)):
+    if (match := RE.ONE_LINE.fullmatch(msg)) or (match_multi := RE.OP_MULTI_LINE.fullmatch(msg)) or (match_multi_equals_plus_type := RE.MULTI_EQUALS_PLUS_TYPE.fullmatch(msg)):
         if match: # one line operation
             list_name, _, operation_raw, parameters = match.groups()
 
