@@ -3981,9 +3981,14 @@ class listsmodule:
                 start = 0
                 result_list = [x[0] for x in simple_sql((''' select value from ListElement where listid=?''', (listid, ) ))]
             else:
-                offset = int(parameters) - 1
-                start = offset
-                result_list = [x[0] for x in simple_sql((''' select value from ListElement where listid=? LIMIT 1 OFFSET ?''', (listid, offset) ))]
+                N = only_one(only_one(my_simple_sql(('''select count(*) from ListElement where listid=?''', (listid,)))))
+                
+                r: range = listsmodule.parse_interval(parameters, N)
+                r = listsmodule.to_positive_range(r, N, based=1)
+                
+                start = offset = listsmodule.one_based_to_zero_based(r.start)
+                limit = r.stop - r.start
+                result_list = [x[0] for x in my_simple_sql((''' select value from ListElement where listid=? LIMIT ? OFFSET ?''', (listid, limit, offset)))]
 
             sep = lambda: '\n' if not space_between_lines else '\n\n'
 
