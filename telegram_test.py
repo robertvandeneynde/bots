@@ -198,7 +198,7 @@ async def hello_responder(msg:str, send: AsyncSend, *, update, context):
     elif user.id == FRIENDS_USER.get(FriendsUser.KARL):
         if msg.lower().startswith("hello"):
             await send("Hello, your Majesty!")
-    elif True or user.id == FRIENDS_USER.get(FriendsUser.BIRD_FLOCK_MASTER):
+    elif user.id == FRIENDS_USER.get(FriendsUser.BIRD_FLOCK_MASTER):
         if msg.lower().startswith("hello"):
             birds = (
                 'Moineau',
