@@ -5357,13 +5357,45 @@ async def menu(update, context):
     send = make_send(update, context)
     keyboard = [
         [
-            InlineKeyboardButton("Help", callback_data="cmd:help"),
-            InlineKeyboardButton("Settings", callback_data="cmd:mysettings")
+            InlineKeyboardButton("Help", callback_data="cmd:help")
+        ],
+        [
+            InlineKeyboardButton("My timezone", callback_data="cmd:mytimezone")
+        ],
+        [
+            InlineKeyboardButton("Settings", callback_data="cmd:mysettings"),
+            InlineKeyboardButton("Delete settings", callback_data="cmd:delsettings_command")
+        ],
+        [
+            InlineKeyboardButton("Chat settings", callback_data="cmd:chatsettings"),
+            InlineKeyboardButton("Delete chat settings", callback_data="cmd:delchatsettings")
         ],
         [
             InlineKeyboardButton("List events", callback_data="cmd:listevents"),
-            InlineKeyboardButton("List days", callback_data="cmd:listdays")
+            InlineKeyboardButton("Next event", callback_data="cmd:nextevent"),
+            InlineKeyboardButton("Last event", callback_data="cmd:lastevent")
         ],
+        [
+            InlineKeyboardButton("Event follow", callback_data="cmd:eventfollow"),
+            InlineKeyboardButton("Event accept follow", callback_data="cmd:eventacceptfollow")
+        ],
+        [
+            InlineKeyboardButton("Event delete follow", callback_data="cmd:deleventfollow"),
+            InlineKeyboardButton("Event delete accept follow", callback_data="cmd:deleventacceptfollow")
+        ],
+        [
+            InlineKeyboardButton("List days", callback_data="cmd:listdays"),
+            InlineKeyboardButton("List today", callback_data="cmd:listtoday")
+        ],
+        [
+            InlineKeyboardButton("Today", callback_data="cmd:today"),
+            InlineKeyboardButton("Tomorrow", callback_data="cmd:tomorrow")
+        ],
+        [
+            InlineKeyboardButton("Add event", callback_data="cmd:addevent"),
+            InlineKeyboardButton("IAdd event", callback_data="cmd:iaddevent"),
+            InlineKeyboardButton("Delete event", callback_data="cmd:delevent")
+        ]
     ]
     await send("The main menu\nChoose a command", reply_markup=InlineKeyboardMarkup(keyboard))
 
@@ -5376,9 +5408,28 @@ async def menu_button_handler(update, context):
 
     handlers = {
         'help': help,
+        'mytimezone': mytimezone,
         'mysettings': mysettings,
+        'delsettings_command': delsettings_command,
         'listdays': list_days,
         'listevents': list_events,
+        'addevent': add_event,
+        'addschedule': addschedule,
+        'delevent': delevent,
+        'iaddevent': InteractiveAddEvent.ask_when,
+        'nextevent': next_event,
+        'lastevent': last_event,
+        'listdays': list_days,
+        'listevents': list_events,
+        'listtoday': list_today,
+        'today': list_today,
+        'tomorrow': list_days_or_today,
+        'timezonealias': timezonealias,
+        'listallsettings': listallsettings,
+        'mysettings': mysettings,
+        'chatsettings': chatsettings,
+        # 'delchatsettings': del_chat_settings,
+        'menu': menu
     }
     fn = handlers.get(cmd)
     if not fn:
@@ -6657,7 +6708,7 @@ COMMAND_LIST_HELP = (
     CommandInfoSpecs('printlist', 'list'),
     CommandInfoSpecs('dirlist', 'list'),
     CommandInfoSpecs('dellist', 'list'),
-    CommandInfoSpecs('menu', 'list'),
+    CommandInfoSpecs('menu', 'menu'),
 )
 
 COMMAND_LIST_HELP_DICT = {x.name: x for x in COMMAND_LIST_HELP}
