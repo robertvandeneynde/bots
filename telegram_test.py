@@ -6044,11 +6044,23 @@ async def listdebts(update, context):
         else:
             debts_sum[debt.debitor_id, debt.creditor_id] = Decimal(debt.amount)
     
+    name_re = regex.compile(r"(\p{L}\w*)([.]([A-Za-z]+))?")
+
+    def my_sort(keys):
+        def key(x):
+            full_a, full_b = x
+            a_name, b_name = name_re.fullmatch(full_a).group(1), name_re.fullmatch(full_b).group(1)
+            a_cur,  b_cur  = name_re.fullmatch(full_a).group(3), name_re.fullmatch(full_b).group(3)
+            return (a_name, b_name, a_cur or '', b_cur or '')
+        return sorted(keys, key=key)
+    
+    debts_sum_sorted = [(k, debts_sum[k]) for k in my_sort(debts_sum)]
+
     return await send('\n'.join(
         "{} owes {} {}".format(debitor, creditor, amount) if amount > 0 else
         "{} owes {} {}".format(creditor, debitor, -amount) if amount < 0 else
         "{} and {} are even".format(debitor, creditor)
-        for (debitor, creditor), amount in debts_sum.items()) or 'No debts in this chat !')
+        for (debitor, creditor), amount in debts_sum_sorted) or 'No debts in this chat !')
 
 async def detaildebts(update, context):
     Args = GetOrEmpty(context.args)
@@ -6111,7 +6123,8 @@ async def detaildebts(update, context):
         creditor_name = name_re.fullmatch(debt.creditor_id).group(1)
         currency_1 = name_re.fullmatch(debt.creditor_id).group(3)
         currency_2 = name_re.fullmatch(debt.creditor_id).group(3)
-        assert currency_1.upper() == currency_2.upper()
+        if currency_1 or currency_2:
+            assert currency_1.upper() == currency_2.upper()
         currency = currency_1 or currency_2
         currency = currency and currency.upper()
     
@@ -6140,7 +6153,7 @@ async def detaildebts(update, context):
                 'owes',
                 f'"{creditor_name}"',
                 f'{debt.amount}',
-                f'{currency}',
+                f'{currency}' if currency else '',
                 f'# {debt.reason}' if debt.reason else ''
             ))))
     
