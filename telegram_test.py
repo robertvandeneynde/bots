@@ -3638,7 +3638,17 @@ class listsmodule:
             return range(start, stop)
         else:
             return r
-            
+    
+    @staticmethod
+    def parse_interval_to_positive_range(value:str, *, N, based):
+        return listsmodule.to_positive_range(listsmodule.parse_interval(value, N), N, based=based)
+    
+    @staticmethod
+    def limit_offset_based1(r: range):
+        limit = r.stop - r.start
+        offset = listsmodule.one_based_to_zero_based(r.start)
+        return limit, offset   
+     
     class tasklistcheck:
         @staticmethod
         def do_it(*, conn, chat_id, name, value, direction:Literal['x', '', 'toggle']):
@@ -3879,12 +3889,9 @@ class listsmodule:
             else:
                 N = only_one(only_one(my_simple_sql(('''select count(*) from ListElement where listid=?''', (listid,)))))
                 
-                r: range = listsmodule.parse_interval(parameters, N)
-                r = listsmodule.to_positive_range(r, N, based=1)
-                
-                offset = listsmodule.one_based_to_zero_based(r.start)
-                limit = r.stop - r.start
-                result_list = [x[0] for x in my_simple_sql((''' select value from ListElement where listid=? LIMIT ? OFFSET ?''', (listid, limit, offset)))]
+                r = listsmodule.parse_interval_to_positive_range(parameters, N=N, based=1)
+                limit, offset = listsmodule.limit_offset_based1(r)
+                result_list = [x for x, in my_simple_sql((''' select value from ListElement where listid=? LIMIT ? OFFSET ?''', (listid, limit, offset)))]
 
             sep = lambda: '\n' if not space_between_lines else '\n\n'
 
@@ -3983,11 +3990,10 @@ class listsmodule:
             else:
                 N = only_one(only_one(my_simple_sql(('''select count(*) from ListElement where listid=?''', (listid,)))))
                 
-                r: range = listsmodule.parse_interval(parameters, N)
-                r = listsmodule.to_positive_range(r, N, based=1)
+                r = listsmodule.parse_interval_to_positive_range(parameters, N=N, based=1)
                 
-                start = offset = listsmodule.one_based_to_zero_based(r.start)
-                limit = r.stop - r.start
+                limit, offset = listsmodule.limit_offset_based1(r)
+                start = offset
                 result_list = [x[0] for x in my_simple_sql((''' select value from ListElement where listid=? LIMIT ? OFFSET ?''', (listid, limit, offset)))]
 
             sep = lambda: '\n' if not space_between_lines else '\n\n'
@@ -4000,18 +4006,24 @@ class listsmodule:
             my_simple_sql = partial(simple_sql, connection=conn)
             args = parameters.split()
 
+            (listid,), = my_simple_sql(('''select rowid from List where chat_id=? and lower(name)=lower(?)''', (chat_id, name,)))
+
             ota = OnTreeAction(conn=conn, chat_id=chat_id, name=name)
 
+            itree = None
+            the_range = None
             if len(args) == 0:
-                itree = ''
+                pass
             elif len(args) == 1:
-                itree = ota.itree(args[0])
-                node = ota.tree_getnode(itree)
+                if '.' in args[0]:
+                    itree = ota.itree(args[0])
+                    node = ota.tree_getnode(itree)
+                else:
+                    N = only_one(only_one(my_simple_sql((''' select count(*) from ListElement where listid=? and tree_parent IS NULL ''', (listid, )))))
+                    the_range = listsmodule.parse_interval_to_positive_range(args[0], N=N, based=1)
             else:
                 raise UserError("Too much parameters")
 
-            (listid,), = my_simple_sql(('''select rowid from List where chat_id=? and lower(name)=lower(?)''', (chat_id, name,)))
-            
             bits = []
 
             def run_on(rowid, level):
@@ -4028,9 +4040,16 @@ class listsmodule:
                 run_on(node, level=1)
 
             else:
+                if the_range:
+                    limit, offset = listsmodule.limit_offset_based1(the_range)
+                    query = (''' select rowid, value from ListElement where listid=? and tree_parent IS NULL LIMIT ? OFFSET ?''', (listid, limit, offset))
+                else:
+                    offset = 0
+                    query = (''' select rowid, value from ListElement where listid=? and tree_parent IS NULL ''', (listid, ))
+
                 trail = []
-                for i, (x, xv) in enumerate(my_simple_sql((''' select rowid, value from ListElement where listid=? and tree_parent IS NULL ''', (listid, )))):
-                    trail.append(str(i+1))
+                for i, (x, xv) in enumerate(my_simple_sql(query), start=1+offset):
+                    trail.append(str(i))
                     bits.append(('.'.join(trail), xv, 0))
                     run_on(x, 1)
                     trail.pop()
