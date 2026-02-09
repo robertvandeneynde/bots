@@ -6254,7 +6254,15 @@ class LanguagePractice:
 async def help(update, context):
     send = make_send(update, context)
 
+    Args = InfiniteEmptyList(context.args)
+    
+    module_filter = Args[0].lower() if Args[0].lower() in COMMAND_LIST_ALL_MODULES else None 
+    display_modules = Args[0].lower() in ('module', 'modules')
+
     bot_father = '--botfather' in context.args
+
+    if display_modules:
+        return await send('\n'.join(map("- {}".format, COMMAND_LIST_ALL_MODULES)))
 
     fmt = ('{} - {}' if bot_father else
            '/{} {}')
@@ -6273,15 +6281,17 @@ async def help(update, context):
         lines = []
         first = True
         for mod, L in by_modules.items():
+            if module_filter is not None and module_filter != mod:
+                continue
             if first:
                 first = False
             else:
                 lines.append('')
 
             lines.append(f'[Module "{mod}"]')
-            
             for command in L:
                 lines.append('  ' + fmt.format(command, COMMAND_DESC.get(command, command)))
+
         return await send('\n'.join(lines) or '?')
     
 class UserError(ValueError):
@@ -6561,6 +6571,8 @@ COMMAND_LIST_HELP = (
 )
 
 COMMAND_LIST_HELP_DICT = {x.name: x for x in COMMAND_LIST_HELP}
+
+COMMAND_LIST_ALL_MODULES = list(remove_dup_keep_order(x.module for x in COMMAND_LIST_HELP))
 
 
 if __name__ == '__main__':
