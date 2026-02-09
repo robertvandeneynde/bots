@@ -788,6 +788,8 @@ async def list_responder(msg: str, send: AsyncSend, *, update, context):
                         if list_type_is_tree:
                             indent = int_or_none(read_chat_settings('list.indent'))
                             await send(listsmodule.enumeratetree.it(**P(), parameters=parameters, indent=indent, space_between_lines=space_between_lines))
+                        elif dynamic_list:
+                            await send(listsmodule.enumerate_dynamic.it(**P(), parameters=parameters, dynamic_list=dynamic_list))
                         elif list_type in ('list', 'tasklist'):
                             await send(listsmodule.enumeratelist.it(**P(), parameters=parameters, space_between_lines=space_between_lines))
                         else:
@@ -1666,6 +1668,14 @@ class flashcard:
             ''', (chat_id, page_id)))
 
         return '\n'.join(f"{sentence}\n→ {translation}" for sentence, translation in results) or '/'
+
+    def enumerate_current_flashcards(chat_id):
+        page_id = get_current_flashcard_page_id(chat_id=chat_id)
+        results = simple_sql((
+            ''' select flashcard.sentence, flashcard.translation from flashcard inner join flashcardpage on flashcard.page_id=flashcardpage.rowid
+                where flashcardpage.chat_id=? and flashcardpage.rowid=?
+            ''', (chat_id, page_id)))
+        return '\n'.join(f"{n}. {sentence}\n→ {translation}" for n, (sentence, translation) in enumerate(results, start=1)) or '/'
 
 async def listflashcards(update, context):
     send = make_send(update, context)
@@ -3903,9 +3913,22 @@ class listsmodule:
     class print_dynamic(GeneralAction):
         @staticmethod
         def it(*, conn, chat_id, name, parameters, dynamic_list):
+            if parameters:
+                raise UserError("This dynamic list does not take parameters")
             match dynamic_list:
                 case 'flashcard.current':
                     return flashcard.print_current_flashcards(chat_id=chat_id)
+                case _:
+                    raise UserError(f'Unknown dynamic list type {dynamic_list}')
+    
+    class enumerate_dynamic(GeneralAction):
+        @staticmethod
+        def it(*, conn, chat_id, name, parameters, dynamic_list):
+            if parameters:
+                raise UserError("This dynamic list does not take parameters")
+            match dynamic_list:
+                case 'flashcard.current':
+                    return flashcard.enumerate_current_flashcards(chat_id=chat_id)
                 case _:
                     raise UserError(f'Unknown dynamic list type {dynamic_list}')
                 
