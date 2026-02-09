@@ -198,7 +198,7 @@ async def hello_responder(msg:str, send: AsyncSend, *, update, context):
     elif user.id == FRIENDS_USER.get(FriendsUser.KARL):
         if msg.lower().startswith("hello"):
             await send("Hello, your Majesty!")
-    elif user.id == FRIENDS_USER.get(FriendsUser.BIRD_FLOCK_MASTER):
+    elif True or user.id == FRIENDS_USER.get(FriendsUser.BIRD_FLOCK_MASTER):
         if msg.lower().startswith("hello"):
             birds = (
                 'Moineau',
@@ -208,8 +208,15 @@ async def hello_responder(msg:str, send: AsyncSend, *, update, context):
                 'Calopsitte',
                 'Perruche ondulée',
                 'Corbeau',
+                'Hirondelle',
+                'Hibou',
+                'Vautour',
+                'Pygargue à tête blanche',
+                'Chouette',
+                'Inséparable',
+                'Pigeon',
             )
-            todays_bird = birds[Datetime.now(UTC).weekday()]
+            todays_bird = birds[(Datetime.now(UTC) - Datetime(2026, 2, 2, tzinfo=UTC)).days % len(birds)]
 
             await send(f"Bonjour Maître des Oiseaux! Connais-tu l'oiseau du jour (UTC)? J'ai nommé... {todays_bird} 🐦")
     else:
