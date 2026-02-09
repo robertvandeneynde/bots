@@ -1,6 +1,5 @@
 from __future__ import annotations
 import logging
-import queue
 from telegram import Update, Message, Chat, InlineKeyboardMarkup, InlineKeyboardButton
 from telegram.ext import ApplicationBuilder, CallbackContext, CommandHandler, MessageHandler, ContextTypes, CallbackQueryHandler
 from telegram.ext import filters
@@ -11,6 +10,7 @@ from telegram_settings_local import SPECIAL_ENTITIES
 from typing import Callable, Awaitable, Tuple, Union, Iterable, Literal, TypedDict, NamedTuple, Optional
 
 import json
+from dataclasses import dataclass
 
 import enum
 class FriendsUser(enum.StrEnum):
@@ -261,52 +261,209 @@ class DoNotAnswer(Exception):
 
 async def locationdistance_responder(msg:str, send: AsyncSend, *, update, context):
     if match := msg /fullmatches_with_flags(re.I)/ 'now\s+[@]\s+(.*)':
-        loc = match.group(1).lower()
-        edges = simple_sql(('select source, dest, distance from LocationDistanceEdge where chat_id = ?', (chat_id := update.effective_chat.id, )))
+        loc = match.group(1)
+        dists = location_distance_apply(loc, chat_id=update.effective_chat.id).dists
+        if len(dists) > 1:
+            return await send('\n'.join(f"• {dist} from {name}" for name, dist in dists.items()))
 
-        from collections import defaultdict
-        Graph = defaultdict(list)
-        for source, dest, distance in edges:
-            Graph[source.lower()].append((dest.lower(), distance))
-            Graph[dest.lower()].append((source.lower(), distance))
+def split_based_on_indices(L, indices):
+    if len(indices) == 0:
+        return [L[:]]
+    O = []
+    c = 0
+    for b in indices:
+        O.append(L[c:b])
+        c = b+1
+    O.append(L[c:])
+    return O
+
+def separate_based_on_indices(L, indices):
+    if len(indices) == 0:
+        return [L[:]]
+    O = []
+    c = 0
+    for b in indices:
+        O.append(L[c:b])
+        c = b
+    O.append(L[c:])
+    return O
+
+async def distfrom(update, context):
+    send = make_send(update, context)
+
+    if not context.args:
+        return await send("Usage:\n/distfrom place\n/distfrom place to: destination")
+
+    tos = [i for i, x in enumerate(context.args) if x.lower() in ('to:', ':to')]
+
+    if not tos:
+        targets = None
+        loc = ' '.join(context.args)
+    else:
+        bits = split_based_on_indices(context.args, tos)
+        loc = ' '.join(bits[0])
+        targets = [' '.join(sub) for sub in bits[1:]]
         
-        open_list = {loc: 0}
-        dists = {}
-        while open_list:
-            current_name, current_dist = min(open_list.items(), key=lambda t:t[1])
-            del open_list[current_name]
+    dists = (d := location_distance_apply(loc, chat_id=update.effective_chat.id, targets=targets)).dists
 
-            assert current_name not in dists, "Strange"
-            dists[current_name] = current_dist
+    if targets is None:
+        display = dists.keys()
+    else:
+        display = list(map(str.lower, targets))
 
-            for neigh_name, neigh_dist in Graph[current_name]:
-                if neigh_name not in dists:
-                    new_dist = current_dist + neigh_dist
-                    if neigh_name not in open_list or new_dist > open_list[neigh_name]:
-                        open_list[neigh_name] = new_dist
+    return await send('\n'.join(f"• {dists[name]} from {name}" for name in display))
+
+
+async def pathfrom(update, context):
+    send = make_send(update, context)
+
+    if not context.args:
+        return await send("Usage:\n/pathfrom place\n/pathfrom place to: destination")
+
+    tos = [i for i, x in enumerate(context.args) if x.lower() in ('to:', ':to')]
+
+    if not tos:
+        targets = None
+        loc = ' '.join(context.args)
+    else:
+        bits = split_based_on_indices(context.args, tos)
+        loc = ' '.join(bits[0])
+        targets = [' '.join(sub) for sub in bits[1:]]
+
+    assert_true(targets is None or len(targets) <= 1, UserError("Not implemented"))
         
-        if len(dists) == 1:
-            return
-        
-        send = make_send(update, context)
-        return await send('\n'.join(f"• {dist} from {name}" for name, dist in dists.items()))
+    dijkstra = location_distance_apply(loc, chat_id=update.effective_chat.id, targets=targets)
 
+    dists, prevs = dijkstra.dists, dijkstra.prevs
+
+    if targets is None:
+        return await send('\n'.join(f"• {dists[name]} to {name} (by {prevs.get(name)})" for name in dists))
+
+    c = targets[0].lower()
+    path = L = [c]
+    while c in prevs:
+        L.append(prevs[c])
+        c = prevs[c]
+    path.reverse()
+        
+    return await send('\n'.join(f"• {name} (at {dists[name]})" for name in path))
+
+@dataclass
+class DijkstraResult:
+    dists: dict
+    prevs: dict
+
+def location_distance_apply(loc, *, chat_id, targets=None):
+    targets = set(map(str.lower, targets)) if targets is not None else None
+    loc = loc.lower()      
+    edges = simple_sql(('select source, dest, distance from LocationDistanceEdge where chat_id = ?', (chat_id, )))
+
+    from collections import defaultdict
+    Graph = defaultdict(list)
+    for source, dest, distance in edges:
+        Graph[source.lower()].append((dest.lower(), distance))
+        Graph[dest.lower()].append((source.lower(), distance))
+
+    open_list = {loc: 0}
+    dists = {}
+    prevs = {}
+    while open_list:
+        print(open_list, dists)
+        current_name, current_dist = min(open_list.items(), key=lambda t:t[1])
+        del open_list[current_name]
+
+        assert current_name not in dists, "Strange"
+        dists[current_name] = current_dist
+
+        if targets is not None:
+            targets.discard(current_name)
+            if not targets:
+                break
+
+        for neigh_name, neigh_dist in Graph[current_name]:
+            if neigh_name not in dists:
+                new_dist = current_dist + neigh_dist
+                if neigh_name not in open_list or new_dist < open_list[neigh_name]:
+                    open_list[neigh_name] = new_dist
+                    prevs[neigh_name] = current_name
+    
+    return DijkstraResult(dists=dists, prevs=prevs)
+        
 async def locationinfo(update, context):
     send = make_send(update, context)
+
+    def parse_edge(edge):
+        if len(bits := edge.split()) == 3:
+            source, dest, dist = bits
+        elif len(bits := edge.split(' / ')) == 2:
+            source, dest = bits
+            B = InfiniteEmptyList(dest.split())
+            if B[-1] /fullmatches/ '\d+' or B[-1] == 'delete':
+                dist = B[-1]
+                dest = ' '.join(B[:-1])
+            else:
+                raise ValueError
+        else:
+            source, dest, dist = bits
+        source, dest, dist = map(str.strip, (source, dest, dist))
+        if dist.lower() == 'delete':
+            dist = 'delete'
+        else:
+            dist = int(dist)
+        return source, dest, dist
+    
+    def parse_semi_edge(edge):
+        if not (bits := InfiniteEmptyList(edge.split())) and (bits[-1] /fullmatches/ '\d+'):
+            raise ValueError
+        *destL, dist = bits
+        return ' '.join(destL), int(dist)
 
     edges = []
     try:
         for edge in ' '.join(context.args).split('//'):
-            source, dest, dist = edge.split(' / ')
-            source, dest, dist = map(str.strip, (source, dest, dist))
-            if dist.lower() == 'delete':
-                dist = 'delete'
+            if m := edge /fullmatchesI/ '(path|star)\s*:\s*(.*)':
+                pattern, data = m.group(1), m.group(2)
+                data_list = InfiniteEmptyList(data.split('/'))
+                prev = data_list[0]
+                if not prev:
+                    raise ValueError
+
+                if pattern.lower() == 'star':
+                    first = prev
+                    for target in data_list[1:]:
+                        dest, dist = parse_semi_edge(target)
+                        edges.append((first, dest, dist))
+
+                elif pattern.lower() == 'path':
+                    if len(data_list) == 1:
+                        # /locationinfo path: Hello 5 World in house 10 Tada
+                        S = prev.split()
+                        breaks = []
+                        for i, b in enumerate(S):
+                            if b /fullmatches/ '\d+':
+                                breaks.append(i)
+                        if not breaks:
+                            raise ValueError
+                        c = breaks[0]
+                        prev = ' '.join(S[0:c])
+                        for i in breaks[1:] + [len(S)]:
+                            dist, *destL = S[c:i]
+                            dest = ' '.join(destL)
+                            assert_true(prev.strip() and dest.strip(), ValueError)
+                            edges.append((prev.strip(), dest.strip(), dist))
+                            prev = dest
+                            c = i
+                    else:
+                        # /locationinfo path: Hello / World 5 / Tada 5
+                        for target in data_list[1:]:
+                            dest, dist = parse_semi_edge(target.strip())
+                            edges.append((prev, dest, dist))
+                            prev = dest
             else:
-                dist = int(dist)
-            edges.append((source, dest, dist))
+                edges.append(parse_edge(edge.strip()))
+        edges = [(a, b, int(c) if c != 'delete' else c) for a,b,c in edges]
     except ValueError as e:
-        print(e)
-        return await send('User: /locationinfo from / to / distance // from / to / distance')
+        return await send('Usage:\n/locationinfo from / to / distance // from / to / distance\n/locationinfo path: A dist B dist C')
 
     chat_id = update.effective_chat.id
     with sqlite3.connect('db.sqlite') as conn:
@@ -734,14 +891,26 @@ async def eventedit_responder(msg:str, send: AsyncSend, *, update, context):
 
         simple_sql(('''UPDATE Events SET date=? where rowid=?''', (DatetimeDbSerializer.strftime(after), event_db['rowid'], )))
 
-    elif match_field_edit := msg /fullmatches_with_flags(re.I)/ '(\p{L}+)[ ]*[=][ ]*(.*)':
+    elif match_field_edit := msg /fullmatches_with_flags(re.I)/ '(\p{L}*)[ ]*([=]?)[ ]*(.*)':
         read_chat_settings = make_read_chat_settings(update, context)
 
         field_name = match_field_edit.group(1).lower()
-        new_value = match_field_edit.group(2)
+        equal_present = match_field_edit.group(2)
+        new_value = match_field_edit.group(3)
         possible_fields = ['name', 'date', 'datetime', 'time', 'when', 'what', 'where', 'location']
-        if field_name not in possible_fields:
-            raise DoNotAnswer
+
+        if not field_name:
+            # Guessing
+            time, rest = ParseEvents.parse_time(new_value.split())
+            if time and not rest:
+                field_name = 'time'
+            else:
+                raise DoNotAnswer
+        else:
+            if not equal_present:
+                raise DoNotAnswer
+            if field_name not in possible_fields:
+                raise DoNotAnswer
 
         event_db = retrieve_event_from_db(update=update, context=context, what=event['what'], when=event['when'])
         event_rich = split_event_with_where_etc({'what': event_db['name']})
@@ -771,9 +940,9 @@ async def eventedit_responder(msg:str, send: AsyncSend, *, update, context):
             check_tz_in_chat(tz=tz, chat_timezones=read_chat_settings('event.timezones'))
 
             datetime_object = DatetimeDbSerializer.strptime(event_db['date']).replace(tzinfo=UTC).astimezone(tz)
-            datetime_object = Datetime.combine(datetime_object.date(), time)
+            datetime_object = Datetime.combine(datetime_object.date(), time).replace(tzinfo=tz)
             db_datetime = DatetimeDbSerializer.strftime(datetime_object.astimezone(UTC))
-        
+
         elif field_name in ('date', ):
             mini_event, rest = parse_event_date(new_value.split())
             assert_true(not rest, UserError("Too much values for date"))
@@ -785,7 +954,7 @@ async def eventedit_responder(msg:str, send: AsyncSend, *, update, context):
             date, date_end = DatetimeText.to_date_range(mini_event.date_str, tz=tz)
 
             datetime_object = DatetimeDbSerializer.strptime(event_db['date']).replace(tzinfo=UTC).astimezone(tz)
-            datetime_object = Datetime.combine(date, datetime_object.time())
+            datetime_object = Datetime.combine(date, datetime_object.time()).replace(tzinfo=tz)
             db_datetime = DatetimeDbSerializer.strftime(datetime_object.astimezone(UTC))
 
         else:
@@ -796,16 +965,20 @@ async def eventedit_responder(msg:str, send: AsyncSend, *, update, context):
 
     else:
         raise DoNotAnswer
-    
-    new_event_db = only_one(simple_sql_dict(('select rowid, date, name from Events where rowid=?', (event_db['rowid'],))))
+
+    return await send(format_event_emoji_style_from_event_id(event_db['rowid'], chat_id=chat_id, user_id=user_id))
+
+def format_event_emoji_style_from_event_id(event_id, *, chat_id, user_id):
+    new_event_db = only_one(simple_sql_dict(('select rowid, date, name from Events where rowid=?', (event_id,))))
     date_utc = new_event_db['date']
     name = new_event_db['name']
-    tz = induce_my_timezone_from_update(update)
+    tz = induce_my_timezone(chat_id=chat_id, user_id=user_id)
     datetime = DatetimeDbSerializer.strptime(date_utc).replace(tzinfo=ZoneInfo('UTC')).astimezone(tz)
     date, time = datetime.date(), datetime.time()
-    read_chat_settings = make_read_chat_settings(update, context)
+    read_chat_settings = make_read_chat_settings_from_chat_id(chat_id)
     chat_timezones = read_chat_settings("event.timezones")
-    return await send("Event edited:\n" + format_event_emoji_style(name=name, datetime=datetime, date=date, time=time, tz=tz, chat_timezones=chat_timezones))
+    return format_event_emoji_style(name=name, datetime=datetime, date=date, time=time, tz=tz, chat_timezones=chat_timezones)
+
 
 class GetOrEmpty(list):
     def __getitem__(self, i):
@@ -897,6 +1070,8 @@ async def sharemoney_responder(msg:str, send: AsyncSend, *, update, context):
             reason = ' '.join(Args[i+1:])
         elif Args[i].startswith('#') and Args[i][1:]:
             reason = ' '.join([Args[i][1:]] + Args[i+1:])
+        elif Args[i]:
+            raise UserError("Too much infos")
         else:
             reason = None
 
@@ -920,14 +1095,13 @@ async def sharemoney_responder(msg:str, send: AsyncSend, *, update, context):
             if first_currency or second_currency:
                 if not(first_currency.upper() == second_currency.upper() == currency_string.upper()):
                     raise UserError("Currencies must match")
-
-        if currency_string:
-            raise UserError('I cannot deal properly with currencies atm, but you can use the equivalent "account" notation: A.EUR owes B.EUR 5')
-
-        if first_currency:
-            first_name = name.fullmatch(first_name).group(1) + "." + first_currency.upper()
-        if second_currency:
-            second_name = name.fullmatch(second_name).group(1) + "." + second_currency.upper()
+        
+        the_currency = currency_string or first_currency or second_currency
+        del currency_string, first_currency, second_currency
+        
+        if the_currency:
+            first_name = name.fullmatch(first_name).group(1) + "." + the_currency.upper()
+            second_name = name.fullmatch(second_name).group(1) + "." + the_currency.upper()
         
         debt = NamedChatDebt(
             debitor_id=first_name,
@@ -935,7 +1109,7 @@ async def sharemoney_responder(msg:str, send: AsyncSend, *, update, context):
             chat_id=chat_id,
             amount=amount.parse_string(amount_str, parse_all=True)[0].eval(),
             reason=reason,
-            currency=currency_string)
+            currency=the_currency and the_currency.upper())
     
         read_chat_settings = make_read_chat_settings(update, context)
 
@@ -948,7 +1122,7 @@ async def sharemoney_responder(msg:str, send: AsyncSend, *, update, context):
             (debt.debitor_id, debt.creditor_id, debt.chat_id, debt.amount, debt.currency, debt.reason)))
         
         return await send(' '.join(filter(None,
-            ('Debt created:', f'"{debt.debitor_id}"', 'owes', f'"{debt.creditor_id}"', f'{debt.amount}', f'{debt.currency}' if debt.currency else '', (f'for {debt.reason}' if debt.reason else ''))
+            ('Debt created:', f'"{debt.debitor_id}"', 'owes', f'"{debt.creditor_id}"', f'{debt.amount}', (f'# {debt.reason}' if debt.reason else ''))
         )))
 
 async def englishpractice_responder(msg: str, send: AsyncSend, *, update, context):
@@ -1144,11 +1318,11 @@ def get_or_empty(L: list, i:int) -> str | object:
     except IndexError:
         return ''
 
-def make_read_my_settings(update: Update, context: CallbackContext):
+def make_read_my_settings(update: Update, context: CallbackContext=None):
     from functools import partial
     return partial(read_settings, id=update.effective_message.from_user.id, settings_type='user')
 
-def make_read_chat_settings(update: Update, context: CallbackContext):
+def make_read_chat_settings(update: Update, context: CallbackContext=None):
     from functools import partial
     return partial(read_settings, id=update.effective_chat.id, settings_type='chat')
 
@@ -1573,12 +1747,38 @@ import functools
 
 class DatetimeText:
     days_english = "monday tuesday wednesday thursday friday saturday sunday".split() 
+    days_english_short = "mon tue wed thu fri sat sun".split() 
     days_french = "lundi mardi mercredi jeudi vendredi samedi dimanche".split()
+    days_french_short = "lun mar mer jeu ven sam dim".split()
     _days_russian = "понедельник вторник среда четверг пятница суббота воскресенье".split()
     _days_russian_short = "пн вт ср чт пт сб вс".split()
     _days_russian_short_dotted = "пн. вт. ср. чт. пт. сб. вс.".split()
     days_russian_short = _days_russian_short
     days_russian = _days_russian
+
+    class days:
+        @staticmethod
+        def in_lang(x):
+            x = x.upper()
+            if x == 'EN':
+                return DatetimeText.days_english
+            elif x == 'FR':
+                return DatetimeText.days_french
+            elif x == 'RU':
+                return DatetimeText.days_russian
+            return DatetimeText.days_english
+
+    class days_short:
+        @staticmethod
+        def in_lang(x):
+            x = x.upper()
+            if x == 'EN':
+                return DatetimeText.days_english_short
+            elif x == 'FR':
+                return DatetimeText.days_french_short
+            elif x == 'RU':
+                return DatetimeText.days_russian_short
+            return DatetimeText.days_english_short
 
     months_english = [
         "january",
@@ -1613,6 +1813,18 @@ class DatetimeText:
     month_in_russian = [
         *'январь февраль март апрель май июнь июль август сентябрь октябрь ноябрь декабрь'.split(),
     ]
+
+    class months:
+        @staticmethod
+        def in_lang(x):
+            x = x.upper()
+            if x == 'EN':
+                return DatetimeText.months_english
+            elif x == 'FR':
+                return DatetimeText.months_french
+            elif x == 'RU':
+                return DatetimeText.month_in_russian
+            return DatetimeText.months_english
 
     _other_months_list = month_in_russian
 
@@ -1807,8 +2019,6 @@ class ParsedEventFinal(NamedTuple):
     datetime_utc: Datetime 
     tz: ZoneInfo
     tz_explicit: bool
-
-from dataclasses import dataclass
 
 @dataclass
 class ParsedEventDate:
@@ -2189,7 +2399,56 @@ def is_correct_day_of_week(date, day_of_week):
     return date.weekday() == DatetimeText.parse_valid_weekday(day_of_week)
     # return date.weekday() == (DatetimeText.days_english + DatetimeText.days_french).index(day_of_week.lower()) % 7
 
-async def eventfollow(update, context):
+async def macro_event_follow(update, context):
+    send = make_send(update, context)
+    number_re = re.compile('[-]?\\d+')
+
+    Args = InfiniteEmptyList(context.args)
+    if not Args:
+        return await event_action_follow(update, context)
+    
+    elif number_re.fullmatch(Args[0]):
+        context.args = tuple(Args)
+        return await event_action_follow(update, context)
+    
+    elif Args[0].lower() in ('delete', 'del'):
+        if Args[1].lower() in ('follower', 'followers'):
+            context.args = tuple(Args[2:])
+            return await deleventacceptfollow(update, context)
+        
+        elif number_re.fullmatch(Args[1]):
+            context.args = tuple(Args[1:])
+            return await deleventfollow(update, context)
+        
+        elif Args[1].lower() in ('sub', 'subscription', 'subscriptions'):
+            context.args = tuple(Args[2:])
+            return await deleventfollow(update, context)
+        
+        return await send('/eventfollow delete (follower|subscription)')
+        
+    elif Args[0].lower() in ('accept', ):
+        context.args = tuple(Args[1:])
+        return await eventacceptfollow(update, context)
+    
+    elif Args[0].lower() in ('rename', ):
+        if Args[1].lower() in ('follower', ):
+            context.args = tuple(Args[2:])
+            return await renameeventacceptfollow(update, context)
+        
+        elif Args[1].lower() in ('sub', 'subscription'):
+            context.args = tuple(Args[2:])
+            return await renameeventfollow(update, context)
+    
+    elif Args[0].lower() in ('list', ):
+        if Args[1].lower() in ('followers', 'follower'):
+            pass 
+        elif Args[1].lower() in ('sub', 'subscription', 'subscriptions'):
+            pass
+        raise UserError("Not implemented yet")
+      
+    return await send("Wrong parameters")
+
+async def event_action_follow(update, context):
     send = make_send(update, context)
 
     chat_id = update.effective_chat.id
@@ -2220,7 +2479,7 @@ async def eventfollow(update, context):
 
     if True:  # do_unless_setting_off(the_target_chat . event.follow.notify_my_followers):
         await context.bot.send_message(
-            text=f'Event follow request received!\n\nTo accept, type:\n/eventacceptfollow {chat_id}\n\nOr:\n/eventacceptfollow {chat_id} Custom Name',
+            text=f'Event follow request received!\n\nTo accept, type:\n/eventfollow accept {chat_id}\n\nOr:\n/eventfollow accept {chat_id} Custom Name',
             chat_id=target_chat_id)
             # message_thread_id=target_thread_id # read target_chat's "bot channel/admin channel" setting (ie. where they receive the follow requests)
 
@@ -2266,7 +2525,7 @@ async def eventacceptfollow(update, context):
         'You are now followed by this chat{}!'.format(" (that you named {})".format(my_relation_name) if my_relation_name else '') + " " +
         'Every event you add will be forwarded to them.' +
         "\n\n" +
-        'To see and manage all your followers, see:\n/deleventacceptfollow')
+        'To see and manage all your followers, see:\n/eventfollow list followers')
 
 async def send_you_are_following_these_chats(update, context):
     send = make_send(update, context)
@@ -2297,7 +2556,7 @@ async def deleventfollow(update, context):
 
     if not context.args:
         await send_you_are_following_these_chats(update, context)
-        return await send('Usage: /deleventfollow [chat_id]')
+        return await send('Usage: /eventfollow delete [chat_id]')
 
     target_chat_id = str(int(context.args[0]))
 
@@ -2315,7 +2574,7 @@ async def deleventacceptfollow(update, context):
 
     if not context.args:
         await send_these_chats_are_following_you(update, context)
-        return await send('Usage: /deleventacceptfollow [chat_id]')
+        return await send('Usage: /eventfollow delete follower [chat_id]')
 
     target_chat_id = str(int(context.args[0]))
 
@@ -2337,7 +2596,7 @@ async def eventanyfollowrename(update, context, *, direction: Literal['follow', 
     except IndexError:
         listing = {'follow': send_you_are_following_these_chats, 'accept': send_these_chats_are_following_you}[direction]
         await listing(update, context)
-        return await send("Usage: /{command} chat_id new name".format(command={'follow': 'renameeventfollow', 'accept': 'renameeventacceptfollow'}[direction]))
+        return await send("Usage: /{command} chat_id new name".format(command={'follow': 'eventfollow follower', 'accept': 'eventfollow rename subscription'}[direction]))
 
     if direction == 'follow':
         base_query = 'update %s set a_name = ? where a_chat_id = ? and b_chat_id = ?'
@@ -3299,25 +3558,37 @@ class listsmodule:
             my_simple_sql(('''update ListElement set value=? where listid=? LIMIT 1 OFFSET ? ''', (to_rep, listid, value)))
 
     @staticmethod
-    def parse_interval(value:str) -> range:
+    def parse_interval(value:str, N:int=None) -> range:
         """
         '1' → [1]: range
         '-5' → [-5]: range
         '2-4' → [2, 3, 4]: range
+        '2:4' → [2, 3, 4]: range
+        '-2:-1' → [-2, -1]: range
         """
-        if '-' in value:
-            a,b = value.split('-')
+        if (dot := ':' in value) or (dash := '-' in value):
+            a,b = value.split(':' if dot else '-')
             if a and b:
-                # interval
+                # interval: a:b or a-b or -a:b or -a:-b or a:-b
                 int(a), int(b)
                 assert int(a) <= int(b)
                 return irange(int(a), int(b))
             
             elif a and not b:
-                raise ValueError("Invalid number or range")
+                # 5: or 5-
+                if N is None:
+                    raise ValueError("Invalid format for number or range")
+                else:
+                    return irange(int(a), N)
             elif b and not a:
-                # negative number
-                return irange(- int(b), - int(b))
+                if dot:
+                    # :5
+                    assert int(b) >= 0
+                    return irange(1, int(b))
+                    raise ValueError("Not implemented yet")
+                elif dash:
+                    # negative number
+                    return irange(- int(b), - int(b))
             else:
                 raise AssertionError
                 
@@ -3333,18 +3604,24 @@ class listsmodule:
         return r.start < 0 or r.stop <= 0
     
     @staticmethod
-    def to_positive_range(r: range, N: int):
+    def to_positive_range(r: range, N: int, *, based:Literal[0, 1]):
+        """
+        range( 0, 5) (N = 10) (based = 0) → range(0, 5)
+        range(-1, 0) (N = 10) (based = 0) → range(9, 10)
+        range(-1, 0) (N = 10) (based = 1) → range(10, 11)
+        """
         if listsmodule.is_negative_range(r):
-            start = r.start + N if r.start < 0 else r.start
-            stop = r.stop + N if r.stop <= 0 else r.stop
+            start = r.start + N + based if r.start < 0 else r.start
+            stop = r.stop + N + based if r.stop <= 0 else r.stop
 
-            assert start in range(0, N)
-            assert stop in irange(0, N)
+            assert start in range(based, N+based)
+            assert stop in irange(based, N+based)
             assert start < stop
 
             return range(start, stop)
         else:
             return r
+            
     class tasklistcheck:
         @staticmethod
         def do_it(*, conn, chat_id, name, value, direction:Literal['x', '', 'toggle']):
@@ -3378,7 +3655,7 @@ class listsmodule:
                 my_simple_sql((''' update ListElement set value=? where rowid=?''', (new_value, rowid)))
             
             for value in value.split():
-                for i in listsmodule.parse_interval(value):
+                for i in listsmodule.parse_interval(value, len(rowids)):
                     action(i)
 
     class tasktreecheck(OnTreeAction):
@@ -3417,7 +3694,7 @@ class listsmodule:
             rowids = my_simple_sql((''' select rowid from ListElement where listid=? ''', (listid, )))
 
             for v in value.split():
-                for i in map(listsmodule.one_based_to_zero_based, listsmodule.parse_interval(v)):
+                for i in map(listsmodule.one_based_to_zero_based, listsmodule.parse_interval(v, len(rowids))):
                     delrowid = rowids[i][0]
                     my_simple_sql((''' delete from ListElement where listid=? and rowid=?''', (listid, delrowid, )))
 
@@ -3583,11 +3860,10 @@ class listsmodule:
             if not parameters:
                 result_list = [x[0] for x in my_simple_sql((''' select value from ListElement where listid=?''', (listid, ) ))]
             else:
-                r: range = listsmodule.parse_interval(parameters)
-
-                if listsmodule.is_negative_range(r):
-                    N = only_one(only_one(my_simple_sql(('''select count(*) from ListElement where listid=?''', (listid,)))))
-                    r = listsmodule.to_positive_range(r, N)
+                N = only_one(only_one(my_simple_sql(('''select count(*) from ListElement where listid=?''', (listid,)))))
+                
+                r: range = listsmodule.parse_interval(parameters, N)
+                r = listsmodule.to_positive_range(r, N, based=1)
                 
                 offset = listsmodule.one_based_to_zero_based(r.start)
                 limit = r.stop - r.start
@@ -3869,19 +4145,29 @@ def addevent_analyse_from_bot(update, context, text:str) -> EventDictAnalysed:
                 return time_str, tz
             return data.strip(), None
         
-        if 'date' in infos_raw:
-            ldate = infos_raw['date']
-            local_only_one = only_one_with_error(EventAnalyseError(f'Multiple values for timezone {my_timezone!s}'))
-            all_timezone_info = [local_only_one(x[0] for x in infos_raw['date'] if my_timezone == x[1])]
-            local_time, local_time_tz = extract_timezone(all_timezone_info)
-            infos_raw['date'] = [ '{} ({})'.format(local_time, local_time_tz) ]
+        if infos_raw.get('time'):
+            all_times = [
+                (local_time_str, local_tz_str)
+                for local_time_str, local_tz_str in map(extract_timezone, infos_raw['time'])
+            ]
+
+            if any(y is not None for x,y in all_times):
+                local_only_one: Callable = partial(only_one, none=EventAnalyseError('Timezone not found'), many=EventAnalyseError(f'Multiple values for timezone {my_timezone!s}'))
+
+                local_time_str, local_tz = local_only_one(
+                    (local_time_str, local_tz)
+                    for local_time_str, local_tz in all_times
+                    if my_timezone == local_tz)
+
+                infos_raw['time'] = [ local_time_str ]
 
         return infos_raw
+    
+    infos_raw = deal_with_timezones(infos_raw)
     
     def reduce_multi_values(infos_raw):
         return {k: ' & '.join(v) for k,v in infos_raw.items()} 
 
-    # infos_raw = deal_with_timezones(infos_raw)  # TODO
     infos_raw = reduce_multi_values(infos_raw)
 
     what = infos_raw.get('name', '')
@@ -4399,6 +4685,16 @@ def enrich_location_with_db(events, *, chat_id):
         new_events.append(new_event)
     return new_events
 
+def get_chat_language(update):
+    return get_all_chat_languages(update)[0]
+
+def get_all_chat_languages(update):
+    read_chat_settings = make_read_chat_settings(update)
+    x = read_chat_settings('main.language')
+    L = read_chat_settings('main.languages')
+    final_list = remove_dup_keep_order([x] if x else [] + (L if L else []))
+    return final_list if final_list else ['EN']
+
 async def list_days_or_today(
         update: Update,
         context: CallbackContext,
@@ -4439,6 +4735,8 @@ async def list_days_or_today(
     read_chat_settings = make_read_chat_settings(update, context)
 
     do_event_admin_check('list', setting=read_chat_settings('event.admins'), user_id=update.effective_user.id)
+
+    language = get_chat_language(update)
     
     real_args = (context.args if mode == 'list' else
                  ('today',) if mode == 'today' else
@@ -4497,7 +4795,7 @@ async def list_days_or_today(
     for day in sorted(days):
         date = days[day][0][0].date()
         if formatting == 'crazyjamdays':
-          day_of_week = DatetimeText._days_russian_short[date.weekday()]
+          day_of_week = DatetimeText.days_short.in_lang(language)[date.weekday()]
           month_ru = DatetimeText.padezh_month(date.month, date.day)
           days_as_lines.append(
             f"\n    {date:%d} {month_ru} ({day_of_week})\n\n"
@@ -4507,7 +4805,7 @@ async def list_days_or_today(
                 for n, (event_date, event_name, event_link) in enumerate(days[day], start=1)
             ))
         elif formatting == 'linkdays':
-          day_of_week = DatetimeText.days_english[date.weekday()]
+          day_of_week = DatetimeText.days.in_lang(language)[date.weekday()]
           days_as_lines.append(
             f"\n    {date:%d/%m} ({day_of_week.capitalize()})\n\n"
             + "\n\n".join(
@@ -4518,7 +4816,7 @@ async def list_days_or_today(
                 for n, (event_date, event_name, event_link) in enumerate(days[day], start=1)
             ))
         elif formatting == 'linkdayshtml':
-            day_of_week = DatetimeText.days_russian[date.weekday()]
+            day_of_week = DatetimeText.days.in_lang(language)[date.weekday()]
             days_as_lines.append(
             f"{day_of_week.capitalize()} {date:%d/%m}\n"
             + "\n".join(
@@ -4529,7 +4827,7 @@ async def list_days_or_today(
                 for n, (event_date, event_name, event_link) in enumerate(days[day], start=1)
             ))
         elif formatting in ('short', ):
-            day_of_week = DatetimeText.days_english[date.weekday()]
+            day_of_week = DatetimeText.days.in_lang(language)[date.weekday()]
             days_as_lines.append(
                 f"{day_of_week.capitalize()} {date:%d/%m}\n"
                 + "\n".join(
@@ -4539,7 +4837,7 @@ async def list_days_or_today(
                 )
             )
         elif formatting in ('shorthtml', ):
-            day_of_week = DatetimeText.days_english[date.weekday()] 
+            day_of_week = DatetimeText.days.in_lang(language)[date.weekday()]
             days_as_lines.append(
                 f"{day_of_week.capitalize()} {date:%d/%m}\n"
                 + "\n".join(
@@ -4549,7 +4847,7 @@ async def list_days_or_today(
                 )
             )
         else:
-          day_of_week = DatetimeText.days_english[date.weekday()]
+          day_of_week = DatetimeText.days.in_lang(language)[date.weekday()]
           days_as_lines.append(
             f"{day_of_week.capitalize()} {date:%d/%m}"
             + "\n"
@@ -4688,6 +4986,60 @@ async def do_delete_event(update, context):
     # await query.edit_message_reply_markup()
     await query.delete_message()
         
+    return ConversationHandler.END
+
+async def selectevent(update, context):
+    send = make_send(update, context)
+    read_chat_settings = make_read_chat_settings(update, context)
+
+    do_event_admin_check('list', setting=read_chat_settings('event.admins'), user_id=update.effective_user.id)
+
+    datetime_range = parse_datetime_range(update, args=context.args, default="future")
+    beg, end, tz = datetime_range['beg_utc'], datetime_range['end_utc'], datetime_range['tz']
+    events = simple_sql_dict(('''
+        SELECT rowid, date, name
+        FROM Events
+        WHERE ? <= date AND date < ?
+        AND chat_id=?
+        ORDER BY date''',
+        (DatetimeDbSerializer.strftime(beg), DatetimeDbSerializer.strftime(end), update.effective_chat.id,)))
+
+    saved_info_dict: dict = make_send_save_info(update, context)._asdict()
+
+    keyboard = [
+        [InlineKeyboardButton("{} - {}".format(
+            DatetimeDbSerializer.strftime_minutes(DatetimeDbSerializer.strptime(event['date']).replace(tzinfo=UTC).astimezone(tz)),
+            event['name']
+        ), callback_data=json.dumps(saved_info_dict | dict(rowid=str(event['rowid']))))]
+        for event in events
+    ]
+
+    if not keyboard:
+        await send("No events to select !")
+        return ConversationHandler.END
+
+    cancel = [[InlineKeyboardButton("/cancel", callback_data=json.dumps(saved_info_dict | dict(rowid="null")))]]
+
+    await send("Choose an event:", reply_markup=InlineKeyboardMarkup(keyboard + cancel))
+
+    return 0
+
+async def do_selectevent(update, context):
+    query = update.callback_query
+    user = query.from_user
+    await query.answer()
+
+    data_dict: dict = json.loads(query.data)
+    send = make_send(update, context, save_info=SendSaveInfo(chat_id=data_dict['chat_id'], thread_id=data_dict['thread_id']))
+
+    rowid = data_dict["rowid"]
+    if rowid == "null":
+        await send("Cancelled: No event selected")
+    else:
+        await send(format_event_emoji_style_from_event_id(rowid, chat_id=query.message.chat.id, user_id=query.from_user.id))
+    
+    await query.delete_message()
+
     return ConversationHandler.END
 
 async def db_delete_event(update, context, send, *, chat_id, event_id, tz):
@@ -5039,42 +5391,50 @@ async def menu_button_handler(update, context):
     finally:
         context.args = old_args
 
-ACCEPTED_SETTINGS_USER = (
-    'event.timezone',
-    'wikt.text',
-    'wikt.description',
-    'wikt.html',
-    'larousse.text',
-    'larousse.description',
-    'larousse.html',
-    'dict.text',
-    'dict.description',
-    'dict.engine',
-    'dict.html',
-)
-ACCEPTED_SETTINGS_CHAT = (
-    'money.currencies',
-    'money.known_currencies',
-    'event.timezones',
-    'event.admins',
-    'event.addevent.help_file',
-    'event.addevent.display_link',
-    'event.addevent.display_file',
-    'event.addevent.display_forwarded_infos',
-    'event.addevent.required_time',
-    'event.listtoday.display_time_marker',
-    'event.delevent.display',
-    'event.location.autocomplete',
-    'event.commands.dayofweek',
-    'sharemoney.required_for',
-    'list.space_between_lines',
-    'list.indent',
-) + tuple(
-    remove_dup_keep_order(setting + '.active' for _, setting, _ in RESPONDERS)
-)
 
-assert len(set(ACCEPTED_SETTINGS_USER)) == len(ACCEPTED_SETTINGS_USER), "Duplicates in ACCEPTED_SETTINGS_USER" 
-assert len(set(ACCEPTED_SETTINGS_CHAT)) == len(ACCEPTED_SETTINGS_CHAT), "Duplicates in ACCEPTED_SETTINGS_CHAT" 
+@dataclass
+class SettingsSpecs:
+    type: Literal['single', 'list', 'bool'] = 'single'
+    default: Optional[object] = None
+
+ACCEPTED_SETTINGS_USER = {
+    'event.timezone': SettingsSpecs('single'),
+    'wikt.text': SettingsSpecs('single'),
+    'wikt.description': SettingsSpecs('single'),
+    'wikt.html': SettingsSpecs('bool'),
+    'larousse.text': SettingsSpecs('single'),
+    'larousse.description': SettingsSpecs('single'),
+    'larousse.html': SettingsSpecs('bool'),
+    'dict.text': SettingsSpecs('single'),
+    'dict.description': SettingsSpecs('single'),
+    'dict.engine': SettingsSpecs('single'),
+    'dict.html': SettingsSpecs('bool'),
+}
+ACCEPTED_SETTINGS_CHAT = {
+    'money.currencies': SettingsSpecs('list'),
+    'money.known_currencies': SettingsSpecs('list'),
+    'event.timezones': SettingsSpecs('list'),
+    'event.admins': SettingsSpecs('list'),
+    'event.addevent.help_file': SettingsSpecs('bool'),
+    'event.addevent.display_link': SettingsSpecs('bool'),
+    'event.addevent.display_file': SettingsSpecs('bool'),
+    'event.addevent.display_forwarded_infos': SettingsSpecs('bool'),
+    'event.addevent.required_time': SettingsSpecs('bool'),
+    'event.listtoday.display_time_marker': SettingsSpecs('bool'),
+    'event.delevent.display': SettingsSpecs('bool'),
+    'event.location.autocomplete': SettingsSpecs('bool'),
+    'event.commands.dayofweek': SettingsSpecs('bool'),
+    'sharemoney.required_for': SettingsSpecs('bool'),
+    'list.space_between_lines': SettingsSpecs('bool'),
+    'list.indent': SettingsSpecs('single'),
+    'main.language': SettingsSpecs('single'),
+    'main.languages': SettingsSpecs('list'),
+} | {
+    setting + '.active': SettingsSpecs('bool', default) for _, setting, default in RESPONDERS
+}
+
+assert all(isinstance(x, SettingsSpecs) for x in (ACCEPTED_SETTINGS_USER | ACCEPTED_SETTINGS_CHAT).values()), "All settings must have a valid type Specification"
+assert not(ACCEPTED_SETTINGS_USER.keys() & ACCEPTED_SETTINGS_CHAT.keys()), "Some settings are both user and chat settings, which is not allowed"
 
 def assert_true(condition, error=AssertionError):
     if not condition:
@@ -5193,16 +5553,13 @@ def CONVERSION_SETTINGS_BUILDER():
         'to_db': lambda x: assert_true(is_timezone(x), UserError(f"{x} is not a timezone"))
                  and x,
     }
-    list_of_timezone_serializer = {
-        'from_db': lambda s: list(map(ZoneInfo, json.loads(s))),
-        'to_db': lambda L: json.dumps(list(map(timezone_serializer['to_db'], L)))
+    currency_serializer = {
+        'from_db': str.upper,
+        'to_db': str.upper,
     }
-    list_of_currencies_serializer = {
-        'from_db': lambda s: list(map(str.upper, json.loads(s))),
-        'to_db': lambda L: json.dumps(list(map(str.upper, L)))
-    }
+        
     int_serializer = {
-        'from_db': lambda s: int(s),
+        'from_db': int,
         'to_db': lambda v: v,
     }
     list_of_event_admins = list_of({
@@ -5220,24 +5577,30 @@ def CONVERSION_SETTINGS_BUILDER():
     }
     # mappings
     mapping_chat = {
-        'money.currencies': list_of_currencies_serializer,
-        'money.known_currencies': list_of_currencies_serializer,
-        'event.timezones': list_of_timezone_serializer,
+        'money.currencies': list_of(currency_serializer),
+        'money.known_currencies': list_of(currency_serializer),
+        'event.timezones': list_of(timezone_serializer),
         'event.admins': list_of_event_admins,
-        'event.addevent.display_link': on_off_serializer,
-        'event.addevent.display_file': on_off_serializer,
-        'event.delevent.display': on_off_serializer,
-        'event.addevent.display_forwarded_infos': on_off_serializer,
-        'list.space_between_lines': on_off_serializer,
         'list.indent': int_serializer,
+        'main.languages': list_of(default_serializer),
+    } | {
+        name: on_off_serializer
+        for name, specs in ACCEPTED_SETTINGS_CHAT.items()
+        if specs.type == 'bool'
     }
+    
     mapping_user = {
         'event.timezone': timezone_serializer,
         'dict.engine': {
             'from_db': lambda x: x,
             'to_db': lambda x: x if assert_true(x in DICT_ENGINES, UserError("{!r} is not a known engine.\nAvaiblable options: {}".format(x, ', '.join(DICT_ENGINES)))) else None
         }
+    } | {
+        name: on_off_serializer
+        for name, specs in ACCEPTED_SETTINGS_USER.items()
+        if specs.type == 'bool'
     }
+
     from collections import defaultdict
     return {
         'chat': defaultdict(lambda: default_serializer, mapping_chat),
@@ -5275,21 +5638,38 @@ def read_raw_settings(key, *, id, settings_type: SettingType):
         results = cursor.execute(*query).fetchall()
         return results[0][0] if results else None
 
-async def listallsettings(update: Update, context: CallbackContext):
+async def listallsettings(update: Update, context: CallbackContext, scope:Literal[None, 'chat', 'user']=None):
     send = make_send(update, context)
+
+    Args = InfiniteEmptyList(context.args)
+    scope = scope or Args[0]
+    if scope and '.' in scope:
+        scope_base, scope_bits = scope.split('.', maxsplit=1)
+    else:
+        scope_base, scope_bits = scope, ''
+    assert (not scope_base) or scope_base in ('chat', 'user')
+
     await send('\n'.join("- {} ({})".format(
             setting,
             '|'.join(['user'] * (setting in ACCEPTED_SETTINGS_USER) + ['chat'] * (setting in ACCEPTED_SETTINGS_CHAT)))
-        for setting in sorted(ACCEPTED_SETTINGS_USER + ACCEPTED_SETTINGS_CHAT)))
+        for setting in sorted(ACCEPTED_SETTINGS_USER | ACCEPTED_SETTINGS_CHAT)
+        if scope_base == 'user' and setting in ACCEPTED_SETTINGS_USER or scope_base == 'chat' and setting in ACCEPTED_SETTINGS_CHAT or not scope_base
+        if setting.startswith(scope_bits)
+    ))
 
 async def settings_command(update: Update, context: CallbackContext, *, command_name: str, settings_type:Literal['chat'] | Literal['user'], accepted_settings:list[str]):
     send = make_send(update, context)
+    send_html = partial(send, parse_mode='HTML')
+    import html
 
     async def print_usage():
-        await send(f"Usage:" + "\n"
-                   f"/{command_name} command.key" + "\n"
-                   f"/{command_name} command.key value" + "\n"
-                   f"/{command_name} delete command.key")
+        await send_html(
+            f"Usage:" + "\n"
+            f"/{command_name} command.key" + "\n"
+            f"/{command_name} command.key value" + "\n"
+            f"/{command_name} delete command.key" + "\n\n"
+            f"- Type /listallsettings for a list of all settings" '\n'
+            f"- Type <code>/listallsettings {settings_type}</code> for a list of {settings_type} settings")
 
     if len(context.args) == 0:
         return await print_usage()
@@ -5315,7 +5695,10 @@ async def settings_command(update: Update, context: CallbackContext, *, command_
     key, *rest = args
 
     if key not in accepted_settings:
-        return await send(f'Unknown settings: {key!r}\n\nType /listallsettings for complete list of settings (hidden command)')
+        return await send_html(
+            f'Unknown settings: "{html.escape(key)}"' "\n\n"
+            f"- Type /listallsettings for a list of all settings" "\n"
+            f"- Type <code>/listallsettings {settings_type}.{html.escape(key)}</code> to see all settings starting with your command" "\n")
 
     if rest and rest[0] == '=' and action in ("set", "getset"):
         rest = rest[1:]
@@ -5331,7 +5714,7 @@ async def settings_command(update: Update, context: CallbackContext, *, command_
         raise UserError(f"Usage: /{command_name} set command.key value")
 
     list_type_and_extend = False
-    if list_type := key in ('money.currencies', 'money.known_currencies', 'event.timezones', 'event.admins'):
+    if list_type := accepted_settings[key].type == 'list':
         if InfiniteEmptyList(rest)[0] == '+=':
             rest = rest[1:]
             list_type_and_extend = True
@@ -5692,13 +6075,21 @@ async def implicit_setting_command(update, context, type: Literal['disable', 'on
         return all(re.compile('^[A-Z]{3}[:].*$').match(line) for line in reply.text.splitlines())
 
     if type == 'disable':
-        if is_currency_list():
-            return await send_command('/chatsettings money.active off')
-        if reply.text == 'Click the file below to add the event to your calendar:':
-            return await send_command('/chatsettings event.addevent.help_file off')
-        if reply.document and reply.document.file_name == 'event.ics':
+        if reply.text:
+            if is_currency_list():
+                return await send_command('/chatsettings money.active off')
+            if reply.text == 'Click the file below to add the event to your calendar:':
+                return await send_command('/chatsettings event.addevent.help_file off')
+            if reply.text.startswith('Error: Time must be specified (policy of the group)'):
+                return await send_command('/chatsettings event.addevent.required_time off')
+            if reply.text /fullmatches/ 'Forwarded to \d+ chats':
+                return await send_command('/chatsettings event.addevent.display_forwarded_infos off')
+            if reply.text.startswith('Error: You must specify a reason'):
+                return await send_command('/chatsettings sharemoney.required_for off')
+        elif reply.document and reply.document.file_name == 'event.ics':
             return await send_command('/chatsettings event.addevent.display_file off')
-    elif type in ('only', 'known') and is_currency_list():
+            
+    elif type in ('only', 'known') and reply.text and is_currency_list():
         if type == 'only':
             read_chat_settings = make_read_chat_settings(update, context)
             currencies = read_chat_settings('money.currencies')
@@ -5730,9 +6121,6 @@ async def listdebts(update, context):
     debts_sum = {}
     
     for debt in (NamedChatDebt(**x) for x in lines):
-        if debt.currency:
-            return await send("I cannot deal with debt with currencies atm...")
-        
         if (debt.debitor_id, debt.creditor_id) in debts_sum or (debt.creditor_id, debt.debitor_id) in debts_sum:
             key = ((debt.debitor_id, debt.creditor_id) if (debt.debitor_id, debt.creditor_id) in debts_sum else
                    (debt.creditor_id, debt.debitor_id))
@@ -5744,11 +6132,23 @@ async def listdebts(update, context):
         else:
             debts_sum[debt.debitor_id, debt.creditor_id] = Decimal(debt.amount)
     
+    name_re = regex.compile(r"(\p{L}\w*)([.]([A-Za-z]+))?")
+
+    def my_sort(keys):
+        def key(x):
+            full_a, full_b = x
+            a_name, b_name = name_re.fullmatch(full_a).group(1), name_re.fullmatch(full_b).group(1)
+            a_cur,  b_cur  = name_re.fullmatch(full_a).group(3), name_re.fullmatch(full_b).group(3)
+            return (a_name, b_name, a_cur or '', b_cur or '')
+        return sorted(keys, key=key)
+    
+    debts_sum_sorted = [(k, debts_sum[k]) for k in my_sort(debts_sum)]
+
     return await send('\n'.join(
         "{} owes {} {}".format(debitor, creditor, amount) if amount > 0 else
         "{} owes {} {}".format(creditor, debitor, -amount) if amount < 0 else
         "{} and {} are even".format(debitor, creditor)
-        for (debitor, creditor), amount in debts_sum.items()) or 'No debts in this chat !')
+        for (debitor, creditor), amount in debts_sum_sorted) or 'No debts in this chat !')
 
 async def detaildebts(update, context):
     Args = GetOrEmpty(context.args)
@@ -5806,6 +6206,16 @@ async def detaildebts(update, context):
 
     debt: NamedChatDebt
     for debt in reversed([NamedChatDebt(**x) for x in lines]):
+        name_re = regex.compile(r"(\p{L}\w*)([.]([A-Za-z]+))?")
+        debitor_name = name_re.fullmatch(debt.debitor_id).group(1)
+        creditor_name = name_re.fullmatch(debt.creditor_id).group(1)
+        currency_1 = name_re.fullmatch(debt.creditor_id).group(3)
+        currency_2 = name_re.fullmatch(debt.creditor_id).group(3)
+        if currency_1 or currency_2:
+            assert currency_1.upper() == currency_2.upper()
+        currency = currency_1 or currency_2
+        currency = currency and currency.upper()
+    
         if account_filter and account_filter[0] == 'multi':
             
             if (debt.debitor_id, debt.creditor_id, ) == tuple(account_filter[1]):
@@ -5818,7 +6228,7 @@ async def detaildebts(update, context):
             to_print.append(' '.join(filter(None, (
                 '+' if directed_amount >= 0 else '-',
                 str(abs(directed_amount)),
-                str(debt.currency) if debt.currency else '',
+                str(currency) if currency else '',
                 f'# {debt.reason}' if debt.reason else '',
             ))))
 
@@ -5827,12 +6237,12 @@ async def detaildebts(update, context):
         else:
             to_print.append(' '.join(filter(None, (
                 'Debt',
-                f'"{debt.debitor_id}"',
+                f'"{debitor_name}"',
                 'owes',
-                f'"{debt.creditor_id}"',
+                f'"{creditor_name}"',
                 f'{debt.amount}',
-                f'{debt.currency}' if debt.currency else '',
-                f'for {debt.reason}' if debt.reason else ''
+                f'{currency}' if currency else '',
+                f'# {debt.reason}' if debt.reason else ''
             ))))
     
     if account_filter and account_filter[0] == 'multi':
@@ -5932,16 +6342,46 @@ class LanguagePractice:
 async def help(update, context):
     send = make_send(update, context)
 
+    Args = InfiniteEmptyList(context.args)
+    
+    module_filter = Args[0].lower() if Args[0].lower() in COMMAND_LIST_ALL_MODULES else None 
+    display_modules = Args[0].lower() in ('module', 'modules')
+
     bot_father = '--botfather' in context.args
+
+    if display_modules:
+        return await send('\n'.join(map("- {}".format, COMMAND_LIST_ALL_MODULES)))
 
     fmt = ('{} - {}' if bot_father else
            '/{} {}')
     
-    li = (ordered_set_remove(COMMAND_LIST, BOT_FATHER_HIDDEN_COMMANDS) if bot_father else
-          ordered_set_union(COMMAND_LIST, BOT_FATHER_HIDDEN_COMMANDS))
-    
-    return await send('\n'.join(fmt.format(command, COMMAND_DESC.get(command, command)) for command in li))
+    li = ([x.name for x in COMMAND_LIST_HELP if x.botfather] if bot_father else
+          [x.name for x in COMMAND_LIST_HELP])
 
+    from collections import defaultdict
+    by_modules = defaultdict(list)
+    for c in li:
+        by_modules[COMMAND_LIST_HELP_DICT[c].module].append(c)
+
+    if bot_father:
+        return await send('\n'.join(fmt.format(command, COMMAND_DESC.get(command, command)) for command in li))
+    else:
+        lines = []
+        first = True
+        for mod, L in by_modules.items():
+            if module_filter is not None and module_filter != mod:
+                continue
+            if first:
+                first = False
+            else:
+                lines.append('')
+
+            lines.append(f'[Module "{mod}"]')
+            for command in L:
+                lines.append('  ' + fmt.format(command, COMMAND_DESC.get(command, command)))
+
+        return await send('\n'.join(lines) or '?')
+    
 class UserError(ValueError):
     pass
 
@@ -6143,38 +6583,86 @@ def ordered_set_remove(A, B):
 def ordered_set_union(A, B):
     return (''.join if isinstance(A, str) else type(A))(x for x in itertools.chain(A, B))
 
-BOT_FATHER_HIDDEN_COMMANDS = (
-    # 'createlist',
-    # 'addtolist',
-    'removefromlist', 'delfromlist', 'deletefromlist',
-    # 'printlist',
+
+CommandModules = Literal['event', 'eventlocation', 'money', 'sharemoney', 'lang', 'dict', 'flashcard', 'list']
+@dataclass
+class CommandInfoSpecs:
+    name: str
+    module: CommandModules
+    botfather: bool = True
+
+all_modules = ('event', 'eventlocation', 'money', 'sharemoney', 'lang', 'dict', 'flashcard', 'list')
+all_modules_parent = {
+    'event': None,
+    'eventlocation': 'event',
+    'money': None,
+    'sharemoney': 'money',
+    'lang': None,
+    'dict': 'lang',
+    'flashcard': 'lang',
+    'list': None,
+}
+
+COMMAND_LIST_HELP = (
+    CommandInfoSpecs('addevent', 'event'),
+    CommandInfoSpecs('addschedule', 'event'),
+    CommandInfoSpecs('delevent', 'event'),
+    CommandInfoSpecs('iaddevent', 'event'),
+    CommandInfoSpecs('nextevent', 'event'),
+    CommandInfoSpecs('lastevent', 'event'),
+    CommandInfoSpecs('listevents', 'event'),
+    CommandInfoSpecs('listdays', 'event'),
+    CommandInfoSpecs('listtoday', 'event'),
+    CommandInfoSpecs('today', 'event'),
+    CommandInfoSpecs('tomorrow', 'event'),
+    CommandInfoSpecs('mytimezone', 'event'),
+    
+    CommandInfoSpecs('eventfollow', 'event'),
+    CommandInfoSpecs('eventacceptfollow', 'event'),
+    CommandInfoSpecs('deleventfollow', 'event'),
+    CommandInfoSpecs('deleventacceptfollow', 'event'),
+
+    CommandInfoSpecs('whereis', 'eventlocation'),
+    CommandInfoSpecs('whereto', 'eventlocation'),
+    CommandInfoSpecs('delwhereis', 'eventlocation'),
+    CommandInfoSpecs('delthereis', 'eventlocation'),
+
+    CommandInfoSpecs('convertmoney', 'money'),
+    CommandInfoSpecs('sharemoney', 'sharemoney'),
+
+    CommandInfoSpecs('ru', 'lang'),
+
+    CommandInfoSpecs('dict', 'dict'),
+    CommandInfoSpecs('wikt', 'dict'),
+    CommandInfoSpecs('larousse', 'dict'),
+    
+    CommandInfoSpecs('flashcard', 'flashcard'),
+    CommandInfoSpecs('myflashcard', 'flashcard'),
+    CommandInfoSpecs('exportflashcards', 'flashcard'),
+    CommandInfoSpecs('practiceflashcards', 'flashcard'),
+    CommandInfoSpecs('switchpageflashcard', 'flashcard'),
+    CommandInfoSpecs('listflashcard', 'flashcard'),
+    CommandInfoSpecs('listpageflashcard', 'flashcard'),
+
+    CommandInfoSpecs('mysettings', 'settings'),
+    CommandInfoSpecs('delmysettings', 'settings'),
+    CommandInfoSpecs('chatsettings', 'settings'),
+    CommandInfoSpecs('delchatsettings', 'settings'),
+
+    CommandInfoSpecs('createlist', 'list'),
+    CommandInfoSpecs('addtolist', 'list'),
+    CommandInfoSpecs('removefromlist', 'list'),
+    CommandInfoSpecs('delfromlist', 'list'),
+    CommandInfoSpecs('deletefromlist', 'list'),
+    CommandInfoSpecs('printlist', 'list'),
+    CommandInfoSpecs('dirlist', 'list'),
+    CommandInfoSpecs('dellist', 'list'),
+    CommandInfoSpecs('menu', 'list'),
 )
 
-COMMAND_LIST = (
-    'caps',
-    'addevent', 'addschedule', 'delevent', 'iaddevent',
-    'nextevent', 'lastevent', 'listevents', 'listdays', 'listtoday', 'today', 'tomorrow',
-    'eventfollow', 'eventacceptfollow', 'deleventfollow', 'deleventacceptfollow',
-    'whereis', 'thereis', 'whereto', "delwhereis", "delthereis",
-    'ru',
-    'dict', 'wikt', 'larousse',
-    'convertmoney', 'eur', 'brl', 'rub',
-    'mytimezone', 'mysettings', 'delmysettings', 'chatsettings', 'delchatsettings',
-    'flashcard', 'exportflashcards', 'practiceflashcards', 'switchpageflashcard', 'listflashcard', 'listpageflashcard',
-    'myflashcard',
-    'help',
-    'uniline', 'nuniline',
-    #'sleep',
-    'sharemoney', 'listdebts', 'detaildebts',
-    #
-    'createlist',
-    'addtolist',
-    'removefromlist', 'delfromlist', 'deletefromlist',
-    'printlist',
-    'dirlist',
-    'dellist', 'delist',
-    'menu',
-)
+COMMAND_LIST_HELP_DICT = {x.name: x for x in COMMAND_LIST_HELP}
+
+COMMAND_LIST_ALL_MODULES = list(remove_dup_keep_order(x.module for x in COMMAND_LIST_HELP))
 
 
 if __name__ == '__main__':
@@ -6241,12 +6729,7 @@ if __name__ == '__main__':
     ), group=3)
     application.add_handler(CommandHandler('events', events()))
     application.add_handler(CommandHandler('addschedule', addschedule))
-    application.add_handler(CommandHandler('eventfollow', eventfollow))
-    application.add_handler(CommandHandler('eventacceptfollow', eventacceptfollow))
-    application.add_handler(CommandHandler('deleventfollow', deleventfollow))
-    application.add_handler(CommandHandler('deleventacceptfollow', deleventacceptfollow))
-    application.add_handler(CommandHandler('renameeventfollow', renameeventfollow))
-    application.add_handler(CommandHandler('renameeventacceptfollow', renameeventacceptfollow))
+    application.add_handler(CommandHandler('eventfollow', macro_event_follow))
     application.add_handler(CommandHandler('nextevent', next_event))
     application.add_handler(CommandHandler('rnextevent', partial(next_event, relative=True)))
     application.add_handler(CommandHandler('listevents', list_events))
@@ -6276,6 +6759,8 @@ if __name__ == '__main__':
     application.add_handler(CommandHandler('delwhereis', delthereis))
     application.add_handler(CommandHandler('locationinfo', locationinfo))
     application.add_handler(CommandHandler('listlocationinfo', listlocationinfo))
+    application.add_handler(CommandHandler('distfrom', distfrom))
+    application.add_handler(CommandHandler('pathfrom', pathfrom))
     application.add_handler(ConversationHandler(
         entry_points=[CommandHandler("delevent", delevent)],
         states={
@@ -6283,6 +6768,14 @@ if __name__ == '__main__':
         },
         fallbacks=[],
     ), group=2)
+    application.add_handler(ConversationHandler(
+        entry_points=[CommandHandler("selectevent", selectevent)],
+        states={
+            0: [CallbackQueryHandler(do_selectevent)],
+        },
+        fallbacks=[],
+    ), group=4)
+    
     application.add_handler(CommandHandler('ru', ru))
     application.add_handler(CommandHandler('ipa', ipa))
     application.add_handler(CommandHandler('iparu', iparu))
