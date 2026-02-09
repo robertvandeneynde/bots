@@ -6666,6 +6666,7 @@ COMMAND_LIST_HELP = (
     CommandInfoSpecs('delmysettings', 'settings'),
     CommandInfoSpecs('chatsettings', 'settings'),
     CommandInfoSpecs('delchatsettings', 'settings'),
+    CommandInfoSpecs('listallsettings', 'settings'),
 
     CommandInfoSpecs('createlist', 'list'),
     CommandInfoSpecs('addtolist', 'list'),
