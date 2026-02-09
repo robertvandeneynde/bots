@@ -4776,7 +4776,7 @@ def clean_kwarg_args(args):
     D = {}
     for p in parts[1:]:
         D[kwarg_prop_re_match(None, p[0])] = p[1:]
-    return D, parts[0]
+    return parts[0], D
 
 async def list_days_or_today(
         update: Update,
@@ -4821,10 +4821,17 @@ async def list_days_or_today(
 
     language = get_chat_language(update)
 
-    args = context.args
-    
+    chat_id = update.effective_chat.id
 
-    if (i,x) for i,x in enumerate(args) if (v := kwarg_prop_re_match('to', x))
+    args, kwargs = clean_kwarg_args(context.args)
+
+    if kwargs.get('tz'):
+        if kwargs['tz'] == ['chat']:
+            tzs = read_chat_settings('event.timezones')
+        else:
+            tzs = list(map(partial(ZoneInfoOrAlias, chat_id=chat_id), kwargs['tz']))
+    else:
+        tzs = None
 
     real_args = (args if mode == 'list' else
                  ('today',) if mode == 'today' else
@@ -4940,6 +4947,7 @@ async def list_days_or_today(
             f"{day_of_week.capitalize()} {date:%d/%m}"
             + "\n"
             + "\n".join(
+                f"-{marker} %s: {event_name}" % ' | '.join(f"{d:%H:%M}" for d in (event_date.astimezone(tz) for tz in tzs)) if tzs else
                 f"-{marker} {event_date:%H:%M}: {event_name}" if not relative else
                 f"-{marker} {DatetimeText.format_td_T_minus(event_date - now_tz)}: {event_name}"
                 for event_date, event_name in days[day]
@@ -4955,7 +4963,7 @@ async def list_days_or_today(
     chat_timezones = read_chat_settings("event.timezones")
 
     if msg and chat_timezones and set(chat_timezones) != {tz}:
-        msg += '\n\n' + f'Timezone: {tz}'
+        msg += '\n\n' + (f'Timezone: {tz}' if not tzs else f"Timezones: {' '.join(map(str, tzs))}")
 
     await send(msg or (
         "No events for the next 7 days !" if when == 'week' else
