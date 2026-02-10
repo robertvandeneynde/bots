@@ -1,5 +1,6 @@
 from __future__ import annotations
 import logging
+from types import CoroutineType
 from telegram import Update, Message, Chat, InlineKeyboardMarkup, InlineKeyboardButton
 from telegram.ext import ApplicationBuilder, CallbackContext, CommandHandler, MessageHandler, ContextTypes, CallbackQueryHandler
 from telegram.ext import filters
@@ -7,7 +8,7 @@ from telegram_settings_local import TOKEN
 from telegram_settings_local import FRIENDS_USER
 from telegram_settings_local import SPECIAL_ENTITIES
 
-from typing import Callable, Awaitable, Tuple, Union, Iterable, Literal, TypedDict, NamedTuple, Optional
+from typing import Any, Callable, Awaitable, Tuple, Union, Iterable, Literal, TypedDict, NamedTuple, Optional
 
 import json
 from dataclasses import dataclass
@@ -1333,7 +1334,7 @@ def get_or_empty(L: list, i:int) -> str | object:
 
 def make_read_my_settings(update: Update, context: CallbackContext=None):
     from functools import partial
-    return partial(read_settings, id=update.effective_message.from_user.id, settings_type='user')
+    return partial(read_settings, id=update.effective_user.id, settings_type='user')
 
 def make_read_chat_settings(update: Update, context: CallbackContext=None):
     from functools import partial
@@ -2295,7 +2296,7 @@ def raise_error(error):
     raise error
 
 def induce_my_timezone_from_update(update):
-    return induce_my_timezone(user_id=update.effective_message.from_user.id, chat_id=update.effective_chat.id)
+    return induce_my_timezone(user_id=update.effective_user.id, chat_id=update.effective_chat.id)
 
 def induce_my_timezone(*, user_id, chat_id):
     if tz := get_my_timezone(user_id):
@@ -2664,7 +2665,7 @@ async def addschedule(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # Later commit: do_event_admin_check('add', setting=read_chat_settings('event.admins'), user_id=update.effective_user.id)
 
-    source_user_id = update.effective_message.from_user.id
+    source_user_id = update.effective_user.id
     chat_id = update.effective_chat.id
     tz = induce_my_timezone_from_update(update)
 
@@ -2902,7 +2903,7 @@ async def add_event(update: Update, context: CallbackContext):
     infos_event = {k.lower():v for k,v in infos_event.items()}
     CanonInfo = add_event_canon_infos(infos_event=infos_event)
 
-    source_user_id = update.effective_message.from_user.id
+    source_user_id = update.effective_user.id
     chat_id = update.effective_chat.id
 
     required_time = do_if_setting_on(read_chat_settings('event.addevent.required_time'))
@@ -5331,7 +5332,7 @@ async def mytimezone(update: Update, context: CallbackContext):
 
     if not context.args:
         # get timezone
-        tz = get_my_timezone_from_timezone_table(update.effective_message.from_user.id)
+        tz = get_my_timezone_from_timezone_table(update.effective_user.id)
         base_text = ("You don't have any timezone set.\n"
                      "Use /mytimezone Continent/City to set it.\n"
                      "Example: /mytimezone Europe/Brussels\n"
@@ -5362,7 +5363,7 @@ async def mytimezone(update: Update, context: CallbackContext):
                     raise e
         else:
             raise default_error
-        set_my_timezone(update.effective_message.from_user.id, tz)
+        set_my_timezone(update.effective_user.id, tz)
         return await send("Your timezone is now: {}".format(tz))
 
 async def timezonealias(update: Update, context: CallbackContext):
@@ -5507,8 +5508,6 @@ async def menu_button_handler(update, context):
         'mytimezone': mytimezone,
         'mysettings': mysettings,
         'delsettings_command': delsettings_command,
-        'listdays': list_days,
-        'listevents': list_events,
         'addevent': add_event,
         'addschedule': addschedule,
         'delevent': delevent,
@@ -5519,10 +5518,9 @@ async def menu_button_handler(update, context):
         'listevents': list_events,
         'listtoday': list_today,
         'today': list_today,
-        'tomorrow': list_days_or_today,
+        'tomorrow': partial(list_days_or_today, mode='tomorrow', relative=False),
         'timezonealias': timezonealias,
         'listallsettings': listallsettings,
-        'mysettings': mysettings,
         'chatsettings': chatsettings,
         # 'delchatsettings': del_chat_settings,
         'menu': menu
@@ -5878,7 +5876,7 @@ async def settings_command(update: Update, context: CallbackContext, *, command_
         value = rest[0] if rest else None
 
     if settings_type == 'user':
-        id = update.effective_message.from_user.id
+        id = update.effective_user.id
     elif settings_type == 'chat':
         id = update.effective_chat.id
     else:
@@ -5901,7 +5899,7 @@ async def delsettings_command(update:Update, context: CallbackContext, *, key: s
     send = make_send(update, context)
     
     if settings_type == 'user':
-        id = update.effective_message.from_user.id
+        id = update.effective_user.id
     elif settings_type == 'chat':
         id = update.effective_chat.id
     else:
