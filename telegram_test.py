@@ -208,8 +208,15 @@ async def hello_responder(msg:str, send: AsyncSend, *, update, context):
                 'Calopsitte',
                 'Perruche ondulée',
                 'Corbeau',
+                'Hirondelle',
+                'Hibou',
+                'Vautour',
+                'Pygargue à tête blanche',
+                'Chouette',
+                'Inséparable',
+                'Pigeon',
             )
-            todays_bird = birds[Datetime.now(UTC).weekday()]
+            todays_bird = birds[(Datetime.now(UTC) - Datetime(2026, 2, 2, tzinfo=UTC)).days % len(birds)]
 
             await send(f"Bonjour Maître des Oiseaux! Connais-tu l'oiseau du jour (UTC)? J'ai nommé... {todays_bird} 🐦")
     else:
@@ -565,17 +572,21 @@ class ListLang:
 
     IsTask = re.compile("^\\[\\s*(x|)\\s*\\]\\s*(.*)\\s*$")
 
+class ListLangRegexes:
+    NAME = r"[\p{L}-_][\p{L}-_\d]*"
+    ONE_LINE, OP_MULTI_LINE, MULTI_EQUALS_PLUS_TYPE = (
+        regex.compile(fr"({NAME})(\s*[.]\s*|\s+)({ListLang.OPS_1L}|[=])\s*(.*?)", regex.IGNORECASE),
+        regex.compile(fr"({NAME})\s*([+][=]|[=])\s*()\s*\n(.*)", regex.DOTALL),
+        regex.compile(fr"({NAME})\s*([=])\s*(.*?)\s*\n(.*)", regex.DOTALL))
+
 async def list_responder(msg: str, send: AsyncSend, *, update, context):
     import regex
 
     read_chat_settings = make_read_chat_settings(update, context)
+
+    RE = ListLangRegexes
     
-    RE_ONE_LINE, RE_OP_MULTI_LINE, RE_MULTI_EQUALS_PLUS_TYPE = (
-        regex.compile(r"(\p{L}+)(\s*[.]\s*|\s+)(" + ListLang.OPS_1L + "|[=])\s*(.*?)", regex.IGNORECASE),
-        regex.compile(r"(\p{L}+)\s*([+][=]|[=])\s*()\s*\n(.*)", regex.DOTALL),
-        regex.compile(r"(\p{L}+)\s*([=])\s*(.*?)\s*\n(.*)", regex.DOTALL))
-    
-    if (match := RE_ONE_LINE.fullmatch(msg)) or (match_multi := RE_OP_MULTI_LINE.fullmatch(msg)) or (match_multi_equals_plus_type := RE_MULTI_EQUALS_PLUS_TYPE.fullmatch(msg)):
+    if (match := RE.ONE_LINE.fullmatch(msg)) or (match_multi := RE.OP_MULTI_LINE.fullmatch(msg)) or (match_multi_equals_plus_type := RE.MULTI_EQUALS_PLUS_TYPE.fullmatch(msg)):
         if match: # one line operation
             list_name, _, operation_raw, parameters = match.groups()
 
@@ -781,6 +792,8 @@ async def list_responder(msg: str, send: AsyncSend, *, update, context):
                         if list_type_is_tree:
                             indent = int_or_none(read_chat_settings('list.indent'))
                             await send(listsmodule.enumeratetree.it(**P(), parameters=parameters, indent=indent, space_between_lines=space_between_lines))
+                        elif dynamic_list:
+                            await send(listsmodule.enumerate_dynamic.it(**P(), parameters=parameters, dynamic_list=dynamic_list))
                         elif list_type in ('list', 'tasklist'):
                             await send(listsmodule.enumeratelist.it(**P(), parameters=parameters, space_between_lines=space_between_lines))
                         else:
@@ -1659,6 +1672,14 @@ class flashcard:
             ''', (chat_id, page_id)))
 
         return '\n'.join(f"{sentence}\n→ {translation}" for sentence, translation in results) or '/'
+
+    def enumerate_current_flashcards(chat_id):
+        page_id = get_current_flashcard_page_id(chat_id=chat_id)
+        results = simple_sql((
+            ''' select flashcard.sentence, flashcard.translation from flashcard inner join flashcardpage on flashcard.page_id=flashcardpage.rowid
+                where flashcardpage.chat_id=? and flashcardpage.rowid=?
+            ''', (chat_id, page_id)))
+        return '\n'.join(f"{n}. {sentence}\n→ {translation}" for n, (sentence, translation) in enumerate(results, start=1)) or '/'
 
 async def listflashcards(update, context):
     send = make_send(update, context)
@@ -3621,7 +3642,17 @@ class listsmodule:
             return range(start, stop)
         else:
             return r
-            
+    
+    @staticmethod
+    def parse_interval_to_positive_range(value:str, *, N, based):
+        return listsmodule.to_positive_range(listsmodule.parse_interval(value, N), N, based=based)
+    
+    @staticmethod
+    def limit_offset_based1(r: range):
+        limit = r.stop - r.start
+        offset = listsmodule.one_based_to_zero_based(r.start)
+        return limit, offset   
+     
     class tasklistcheck:
         @staticmethod
         def do_it(*, conn, chat_id, name, value, direction:Literal['x', '', 'toggle']):
@@ -3862,12 +3893,9 @@ class listsmodule:
             else:
                 N = only_one(only_one(my_simple_sql(('''select count(*) from ListElement where listid=?''', (listid,)))))
                 
-                r: range = listsmodule.parse_interval(parameters, N)
-                r = listsmodule.to_positive_range(r, N, based=1)
-                
-                offset = listsmodule.one_based_to_zero_based(r.start)
-                limit = r.stop - r.start
-                result_list = [x[0] for x in my_simple_sql((''' select value from ListElement where listid=? LIMIT ? OFFSET ?''', (listid, limit, offset)))]
+                r = listsmodule.parse_interval_to_positive_range(parameters, N=N, based=1)
+                limit, offset = listsmodule.limit_offset_based1(r)
+                result_list = [x for x, in my_simple_sql((''' select value from ListElement where listid=? LIMIT ? OFFSET ?''', (listid, limit, offset)))]
 
             sep = lambda: '\n' if not space_between_lines else '\n\n'
 
@@ -3896,9 +3924,22 @@ class listsmodule:
     class print_dynamic(GeneralAction):
         @staticmethod
         def it(*, conn, chat_id, name, parameters, dynamic_list):
+            if parameters:
+                raise UserError("This dynamic list does not take parameters")
             match dynamic_list:
                 case 'flashcard.current':
                     return flashcard.print_current_flashcards(chat_id=chat_id)
+                case _:
+                    raise UserError(f'Unknown dynamic list type {dynamic_list}')
+    
+    class enumerate_dynamic(GeneralAction):
+        @staticmethod
+        def it(*, conn, chat_id, name, parameters, dynamic_list):
+            if parameters:
+                raise UserError("This dynamic list does not take parameters")
+            match dynamic_list:
+                case 'flashcard.current':
+                    return flashcard.enumerate_current_flashcards(chat_id=chat_id)
                 case _:
                     raise UserError(f'Unknown dynamic list type {dynamic_list}')
                 
@@ -3951,9 +3992,13 @@ class listsmodule:
                 start = 0
                 result_list = [x[0] for x in simple_sql((''' select value from ListElement where listid=?''', (listid, ) ))]
             else:
-                offset = int(parameters) - 1
+                N = only_one(only_one(my_simple_sql(('''select count(*) from ListElement where listid=?''', (listid,)))))
+                
+                r = listsmodule.parse_interval_to_positive_range(parameters, N=N, based=1)
+                
+                limit, offset = listsmodule.limit_offset_based1(r)
                 start = offset
-                result_list = [x[0] for x in simple_sql((''' select value from ListElement where listid=? LIMIT 1 OFFSET ?''', (listid, offset) ))]
+                result_list = [x[0] for x in my_simple_sql((''' select value from ListElement where listid=? LIMIT ? OFFSET ?''', (listid, limit, offset)))]
 
             sep = lambda: '\n' if not space_between_lines else '\n\n'
 
@@ -3965,18 +4010,24 @@ class listsmodule:
             my_simple_sql = partial(simple_sql, connection=conn)
             args = parameters.split()
 
+            (listid,), = my_simple_sql(('''select rowid from List where chat_id=? and lower(name)=lower(?)''', (chat_id, name,)))
+
             ota = OnTreeAction(conn=conn, chat_id=chat_id, name=name)
 
+            itree = None
+            the_range = None
             if len(args) == 0:
-                itree = ''
+                pass
             elif len(args) == 1:
-                itree = ota.itree(args[0])
-                node = ota.tree_getnode(itree)
+                if '.' in args[0]:
+                    itree = ota.itree(args[0])
+                    node = ota.tree_getnode(itree)
+                else:
+                    N = only_one(only_one(my_simple_sql((''' select count(*) from ListElement where listid=? and tree_parent IS NULL ''', (listid, )))))
+                    the_range = listsmodule.parse_interval_to_positive_range(args[0], N=N, based=1)
             else:
                 raise UserError("Too much parameters")
 
-            (listid,), = my_simple_sql(('''select rowid from List where chat_id=? and lower(name)=lower(?)''', (chat_id, name,)))
-            
             bits = []
 
             def run_on(rowid, level):
@@ -3993,9 +4044,16 @@ class listsmodule:
                 run_on(node, level=1)
 
             else:
+                if the_range:
+                    limit, offset = listsmodule.limit_offset_based1(the_range)
+                    query = (''' select rowid, value from ListElement where listid=? and tree_parent IS NULL LIMIT ? OFFSET ?''', (listid, limit, offset))
+                else:
+                    offset = 0
+                    query = (''' select rowid, value from ListElement where listid=? and tree_parent IS NULL ''', (listid, ))
+
                 trail = []
-                for i, (x, xv) in enumerate(my_simple_sql((''' select rowid, value from ListElement where listid=? and tree_parent IS NULL ''', (listid, )))):
-                    trail.append(str(i+1))
+                for i, (x, xv) in enumerate(my_simple_sql(query), start=1+offset):
+                    trail.append(str(i))
                     bits.append(('.'.join(trail), xv, 0))
                     run_on(x, 1)
                     trail.pop()
@@ -4695,6 +4753,31 @@ def get_all_chat_languages(update):
     final_list = remove_dup_keep_order([x] if x else [] + (L if L else []))
     return final_list if final_list else ['EN']
 
+def kwarg_prop_re_match(x: None|str, s):
+    import regex
+    X = regex.escape(x) if x is not None else r'\p{L}+'
+    if m := regex.compile(rf'[:]({X})|({X})[:]', re.I).fullmatch(s):
+        return m.group(1) or m.group(2)
+    else:
+        return None
+
+def clean_kwarg_args(args):
+    D = dict()
+    bits = [0]
+    for i, x in enumerate(args):
+        if m := kwarg_prop_re_match(None, x):
+            bits.append(i)
+    bits.append(len(args))
+
+    parts = []
+    for a,b in zip(bits[0:], bits[1:]):
+        parts.append(args[a:b])
+    
+    D = {}
+    for p in parts[1:]:
+        D[kwarg_prop_re_match(None, p[0])] = p[1:]
+    return parts[0], D
+
 async def list_days_or_today(
         update: Update,
         context: CallbackContext,
@@ -4737,8 +4820,20 @@ async def list_days_or_today(
     do_event_admin_check('list', setting=read_chat_settings('event.admins'), user_id=update.effective_user.id)
 
     language = get_chat_language(update)
-    
-    real_args = (context.args if mode == 'list' else
+
+    chat_id = update.effective_chat.id
+
+    args, kwargs = clean_kwarg_args(context.args)
+
+    if kwargs.get('tz'):
+        if kwargs['tz'] == ['chat']:
+            tzs = read_chat_settings('event.timezones')
+        else:
+            tzs = list(map(partial(ZoneInfoOrAlias, chat_id=chat_id), kwargs['tz']))
+    else:
+        tzs = None
+
+    real_args = (args if mode == 'list' else
                  ('today',) if mode == 'today' else
                  ('tomorrow',) if mode == 'tomorrow' else 
                  (DatetimeText.days_english[dayofweek-1], ) if mode == 'dayofweek' else raise_error(AssertionError('mode must be a correct value')))
@@ -4852,6 +4947,7 @@ async def list_days_or_today(
             f"{day_of_week.capitalize()} {date:%d/%m}"
             + "\n"
             + "\n".join(
+                f"-{marker} %s: {event_name}" % ' | '.join(f"{d:%H:%M}" for d in (event_date.astimezone(tz) for tz in tzs)) if tzs else
                 f"-{marker} {event_date:%H:%M}: {event_name}" if not relative else
                 f"-{marker} {DatetimeText.format_td_T_minus(event_date - now_tz)}: {event_name}"
                 for event_date, event_name in days[day]
@@ -4867,7 +4963,7 @@ async def list_days_or_today(
     chat_timezones = read_chat_settings("event.timezones")
 
     if msg and chat_timezones and set(chat_timezones) != {tz}:
-        msg += '\n\n' + f'Timezone: {tz}'
+        msg += '\n\n' + (f'Timezone: {tz}' if not tzs else f"Timezones: {' '.join(map(str, tzs))}")
 
     await send(msg or (
         "No events for the next 7 days !" if when == 'week' else
@@ -6340,6 +6436,13 @@ class EnglishPracticeData:
                 return("Она никогда не [читает] книги. Неделю назад она [прочитала] 3 поста в соц сетях. Поэма [будет прочтена] со стадиона.")
             raise ValueError
 
+def grouped_dict(it):
+    from collections import defaultdict
+    d = defaultdict(list)
+    for k, v in it:
+        d[k].append(v)
+    return dict(d)
+
 class LanguagePractice:
   async def practice_command(update, context):
     # only accessible when the practiceenglish.active is
@@ -6410,9 +6513,7 @@ async def help(update, context):
           [x.name for x in COMMAND_LIST_HELP])
 
     from collections import defaultdict
-    by_modules = defaultdict(list)
-    for c in li:
-        by_modules[COMMAND_LIST_HELP_DICT[c].module].append(c)
+    by_modules = grouped_dict((COMMAND_LIST_HELP_DICT[c].module, c) for c in li)
 
     if bot_father:
         return await send('\n'.join(fmt.format(command, COMMAND_DESC.get(command, command)) for command in li))
@@ -6699,6 +6800,7 @@ COMMAND_LIST_HELP = (
     CommandInfoSpecs('delmysettings', 'settings'),
     CommandInfoSpecs('chatsettings', 'settings'),
     CommandInfoSpecs('delchatsettings', 'settings'),
+    CommandInfoSpecs('listallsettings', 'settings'),
 
     CommandInfoSpecs('createlist', 'list'),
     CommandInfoSpecs('addtolist', 'list'),
