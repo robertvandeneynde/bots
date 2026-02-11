@@ -4558,7 +4558,7 @@ async def sleep_(update, context):
     from_dt, to_dt = sommeil(update.effective_message.text, command='sleep')
     await send(str(to_dt - from_dt))
 
-def parse_datetime_range(update, *, args, default="week"):
+def parse_datetime_range(update, *, args, default="week", tz=None):
     from datetime import date as Date, time as Time, datetime as Datetime
 
     when_2 = None
@@ -4572,7 +4572,7 @@ def parse_datetime_range(update, *, args, default="week"):
         raise UserError("<when> must be a day of the week, or a day of the month")
     
     time = Time(0, 0)
-    tz = induce_my_timezone_from_update(update)
+    tz = tz or induce_my_timezone_from_update(update)
 
     def make(when):
         beg_date, end_date = DatetimeText.to_date_range(when, tz=tz)
@@ -4828,6 +4828,10 @@ async def list_days_or_today(
     if kwargs.get('tz'):
         if kwargs['tz'] == ['chat']:
             tzs = read_chat_settings('event.timezones')
+        elif kwargs['tz'] == 'revchat':
+            tzs = read_chat_settings('event.timezones')
+            if tzs:
+                tzs = list(reversed(tzs))
         else:
             tzs = list(map(partial(ZoneInfoOrAlias, chat_id=chat_id), kwargs['tz']))
     else:
@@ -4838,8 +4842,9 @@ async def list_days_or_today(
                  ('tomorrow',) if mode == 'tomorrow' else 
                  (DatetimeText.days_english[dayofweek-1], ) if mode == 'dayofweek' else raise_error(AssertionError('mode must be a correct value')))
 
-    datetime_range = parse_datetime_range(update, args=real_args)
+    datetime_range = parse_datetime_range(update, args=real_args, tz=tzs[0] if tzs else None)
     beg, end, tz, when = (datetime_range[x] for x in ('beg_utc', 'end_utc', 'tz', 'when'))
+    tz = tzs[0] if tzs else tz
 
     strptime = DatetimeDbSerializer.strptime
     strftime = DatetimeDbSerializer.strftime
@@ -4963,7 +4968,7 @@ async def list_days_or_today(
     chat_timezones = read_chat_settings("event.timezones")
 
     if msg and chat_timezones and set(chat_timezones) != {tz}:
-        msg += '\n\n' + (f'Timezone: {tz}' if not tzs else f"Timezones: {' '.join(map(str, tzs))}")
+        msg += '\n\n' + (f'Timezone: {tz}' if not tzs or len(tzs) == 1 else f"Timezones: {' '.join(map(str, tzs))}")
 
     await send(msg or (
         "No events for the next 7 days !" if when == 'week' else
@@ -5617,7 +5622,7 @@ def CONVERSION_SETTINGS_BUILDER():
         
     int_serializer = {
         'from_db': int,
-        'to_db': lambda v: v,
+        'to_db': int,
     }
     list_of_event_admins = list_of({
         'from_db': EventAdmin.from_json,
