@@ -4756,8 +4756,8 @@ def get_all_chat_languages(update):
 def kwarg_prop_re_match(x: None|str, s):
     import regex
     X = regex.escape(x) if x is not None else r'\p{L}+'
-    if m := regex.compile(rf'[:]({X})|({X})[:]', re.I).fullmatch(s):
-        return m.group(1) or m.group(2)
+    if m := regex.compile(rf'[:]({X})|({X})[:]([^\s]*)', re.I).fullmatch(s):
+        return m.group(1) or m.group(2), m.group(3)
     else:
         return None
 
@@ -4765,7 +4765,7 @@ def clean_kwarg_args(args):
     D = dict()
     bits = [0]
     for i, x in enumerate(args):
-        if m := kwarg_prop_re_match(None, x):
+        if kwarg_prop_re_match(None, x):
             bits.append(i)
     bits.append(len(args))
 
@@ -4775,7 +4775,8 @@ def clean_kwarg_args(args):
     
     D = {}
     for p in parts[1:]:
-        D[kwarg_prop_re_match(None, p[0])] = p[1:]
+        mk, mv = kwarg_prop_re_match(None, p[0])
+        D[mk] = p[1:] if not mv else [mv] + p[1:]
     return parts[0], D
 
 async def list_days_or_today(
@@ -4835,7 +4836,10 @@ async def list_days_or_today(
         else:
             tzs = list(map(partial(ZoneInfoOrAlias, chat_id=chat_id), kwargs['tz']))
     else:
-        tzs = None
+        if do_if_setting_on(read_chat_settings('event.list.display_all_timezones')):
+            tzs = read_chat_settings('event.timezones')
+        else:
+            tzs = None
 
     real_args = (args if mode == 'list' else
                  ('today',) if mode == 'today' else
@@ -5482,6 +5486,7 @@ ACCEPTED_SETTINGS_CHAT = {
     'event.addevent.display_file': SettingsSpecs('bool'),
     'event.addevent.display_forwarded_infos': SettingsSpecs('bool'),
     'event.addevent.required_time': SettingsSpecs('bool'),
+    'event.list.display_all_timezones': SettingsSpecs('bool'),
     'event.listtoday.display_time_marker': SettingsSpecs('bool'),
     'event.delevent.display': SettingsSpecs('bool'),
     'event.location.autocomplete': SettingsSpecs('bool'),
