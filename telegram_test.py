@@ -4829,7 +4829,7 @@ async def list_days_or_today(
     if kwargs.get('tz'):
         if kwargs['tz'] == ['chat']:
             tzs = read_chat_settings('event.timezones')
-        elif kwargs['tz'] == 'revchat':
+        elif kwargs['tz'] == ['revchat']:
             tzs = read_chat_settings('event.timezones')
             if tzs:
                 tzs = list(reversed(tzs))
