@@ -640,11 +640,12 @@ async def list_responder(msg: str, send: AsyncSend, *, update, context):
                 re_letters = '\p{L}+'
                 re_bits = lambda *args: ''.join(args)
 
-                if dynamic_list_match := requested_type /fullmatches/ ('dynamic\s+((\p{L}|[.])+)'):
-                    dynamic_list = dynamic_list_match.group(1)
-                    if not(dynamic_list in ('event.today', 'flashcard.current')):
+                if dynamic_list_match := requested_type /fullmatchesI/ ('dynamic\s+((\p{L}|[.])+)(\s+(.*)\s*)?'):
+                    dynamic_list = dynamic_list_match.group(1).lower()
+                    dynamic_list_params: str = dynamic_list_match.group(4)
+                    if dynamic_list not in ('event.today', 'flashcard.current', 'flashcard.page'):
                         raise UserError(f"Dynamic list {dynamic_list} is not implemented")
-                    type_list = ('dynamic', dynamic_list)
+                    type_list = ('dynamic', dynamic_list) if not dynamic_list_params else ('dynamic', dynamic_list, dynamic_list_params)
                 
                 elif alias_list_match := requested_type /fullmatchesI/ re_bits('alias', re_spaces, re_group(re_letters)):
                     target_alias = alias_list_match.group(1)
@@ -1532,11 +1533,17 @@ def db_connect_or_use(connection, op):
         with sqlite3.connect("db.sqlite") as conn:
             return op(conn)
     else:
-        return op(conn)
+        return op(connection)
 
 def save_flashcard(sentence, translation, *, page_id, connection=None):
     query = ('insert into Flashcard(sentence, translation, page_id) values (?,?,?)', (sentence, translation, page_id))
     simple_sql(query, connection=connection)
+
+def get_connection(connection=None):
+    if connection is None:
+        return sqlite3.connect('db.sqlite')
+    else:
+        return connection
 
 def simple_sql(query, *, connection=None):
     conn = connection
@@ -1649,12 +1656,18 @@ def make_send_save_info(update: Update, context: CallbackContext) -> SendSaveInf
 
 async def switchpageflashcard(update, context):
     send = make_send(update, context)
+
+    chat_id = update.effective_chat.id
+
     try:
         page_name, = context.args
     except:
-        return await send("Usage: /switchpageflashcard page_name")
+        with get_connection() as conn:
+            my_simple_sql_args = partial(simple_sql_args, connection=conn)
+            page_id = get_current_flashcard_page_id(chat_id=chat_id, connection=conn)
+            page_name, = only_one(my_simple_sql_args('select name from flashcardpage where rowid=?', (page_id, )))
 
-    chat_id = update.effective_chat.id
+            return await send(f"Usage: /switchpageflashcard page_name\nCurrent page: {page_name}")
 
     with sqlite3.connect('db.sqlite') as conn:
         conn.execute("begin transaction")
@@ -3374,6 +3387,8 @@ class listsmodule:
                         raise UserError(f'List {copy_from_name!r} does not exist')  # transaction will rollback
                 case 'dynamic', dynamic_list:
                     actual_type = 'dynamic' + '.' + dynamic_list
+                case 'dynamic', dynamic_list, dynamic_list_params:
+                    actual_type = 'dynamic' + '.' + dynamic_list + ' ' + dynamic_list_params
                 case 'alias', alias_list:
                     actual_type = 'alias' + '.' + alias_list
                     if not listsmodule.list_exists(conn=conn, chat_id=chat_id, name=alias_list):
@@ -3391,6 +3406,9 @@ class listsmodule:
                     pass # nothing to do more
                     
                 case 'dynamic', _:
+                    pass
+
+                case 'dynamic', _, _:
                     pass
 
                 case 'alias', _:
