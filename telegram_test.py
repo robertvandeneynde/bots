@@ -585,7 +585,7 @@ async def list_responder(msg: str, send: AsyncSend, *, update, context):
     read_chat_settings = make_read_chat_settings(update, context)
 
     RE = ListLangRegexes
-    
+
     if (match := RE.ONE_LINE.fullmatch(msg)) or (match_multi := RE.OP_MULTI_LINE.fullmatch(msg)) or (match_multi_equals_plus_type := RE.MULTI_EQUALS_PLUS_TYPE.fullmatch(msg)):
         if match: # one line operation
             list_name, _, operation_raw, parameters = match.groups()
@@ -1618,23 +1618,52 @@ def simple_sql_dict_args(text, args, *, connection):
 async def practiceflashcards(update, context):
     send = make_send(update, context)
 
+    async def print_usage():
+        return await send("Usage:\n/practiceflashcards")
+
+    args, kwargs = clean_kwarg_args(context.args)
+    Args = InfiniteEmptyList(args)
+
     try:
-        n = None
-        if {'reversed', 'reverse'} & set(map(str.lower, context.args)):
+        if n := kwargs.get('n'):
+            n = int(only_one(n))
+        elif Args[0]:
+            n = int(Args[0])
+        else:
+            n = None
+        
+        if {'reversed', 'reverse'} & kwargs.keys():
             direction = 'reversed'
         else:
             direction = 'normal'
+
+        if page_name := kwargs.get('page'):
+            page_name = only_one(page_name)
+        else:
+            page_name = flashcard.Current
+
     except UsageError:
-        return await send("Usage:\n/practiceflashcards [n] [days]")
+        await print_usage()
+        return ConversationHandler.END
     
     chat_id = update.effective_chat.id
-    current_page_id = get_current_flashcard_page_id(chat_id=chat_id)
-    query = ('''select sentence, translation from flashcard inner join flashcardpage on flashcard.page_id = flashcardpage.rowid
-                where flashcardpage.rowid=?''', (current_page_id, ))
-    lines = simple_sql(query)
+
+    with get_connection() as conn:
+        DbChatInfo = dict(chat_id=chat_id, connection=conn)
+        my_simple_sql = partial(simple_sql_args, connection=conn)
+        my_simple_sql_dict = partial(simple_sql_dict_args, connection=conn)
+        
+        page_id = (get_current_flashcard_page_id(**DbChatInfo) if page_name is flashcard.Current else
+                   get_named_flashcard_page_id(page_name=page_name, **DbChatInfo))
+        
+        query = ('''select sentence, translation from flashcard inner join flashcardpage on flashcard.page_id = flashcardpage.rowid
+                    where flashcardpage.rowid=?''', (page_id, ))
+        lines = my_simple_sql(*query)
 
     if not lines:
-        return await send(f"No flashcards for current page")
+        page_info = only_one(my_simple_sql_dict('select rowid, name, current from flashcardpage where rowid=?', (page_id, )))
+        await send(f"No flashcards for page {page_info['name']}")
+        return ConversationHandler.END
     
     import random
     sample = random.sample(lines, n if n is not None else len(lines))
@@ -4863,7 +4892,7 @@ def kwarg_prop_re_match(x: None|str, s):
     else:
         return None
 
-def clean_kwarg_args(args):
+def clean_kwarg_args(args) -> tuple[list[str], dict[str, list[str]]]:
     D = dict()
     bits = [0]
     for i, x in enumerate(args):
