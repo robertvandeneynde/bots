@@ -1547,6 +1547,9 @@ def simple_sql(query, *, connection=None):
     with sqlite3.connect("db.sqlite") as conn:
         return conn.execute(*query).fetchall()
 
+def simple_sql_args(text, args, *, connection):
+    return simple_sql((text, args), connection=connection)
+
 SimpleSqlModifyReturn = TypedDict('SimpleSqlModifyReturn', {'rowcount': int})
 
 def simple_sql_modify(query, *, connection=None) -> SimpleSqlModifyReturn:
@@ -1562,6 +1565,9 @@ def simple_sql_modify(query, *, connection=None) -> SimpleSqlModifyReturn:
         cursor.execute(*query).fetchall()
         return SimpleSqlModifyReturn(rowcount=cursor.rowcount)
 
+def simple_sql_modify_args(text, args, *, connection):
+    return simple_sql_modify((text, args), connection=connection)
+
 def simple_sql_dict(query, *, connection=None):
     conn = connection
     assert isinstance(query, (tuple, list))
@@ -1575,6 +1581,9 @@ def simple_sql_dict(query, *, connection=None):
     with sqlite3.connect("db.sqlite") as conn:
         conn.row_factory = sqlite3.Row
         return conn.execute(*query).fetchall()
+
+def simple_sql_dict_args(text, args, *, connection):
+    return simple_sql_dict((text, args), connection=connection)
 
 async def practiceflashcards(update, context):
     send = make_send(update, context)
@@ -1688,10 +1697,10 @@ class flashcard:
         return '\n'.join(f"{n}. {sentence}\n→ {translation}" for n, (sentence, translation) in enumerate(results, start=1)) or '/'
     
     def clear_current_flashcards(chat_id, connection):
-        my_simple_sql = partial(simple_sql_modify, connection=connection)
+        my_simple_sql = partial(simple_sql_args, connection=connection)
 
         page_id = get_current_flashcard_page_id(chat_id=chat_id)
-        my_simple_sql(('delete from flashcard where chat_id=? and page_id=?', (chat_id,page_id, )))
+        my_simple_sql('''DELETE FROM flashcard where page_id=?''', (page_id, ))
 
 async def listflashcards(update, context):
     send = make_send(update, context)
