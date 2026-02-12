@@ -752,6 +752,8 @@ async def list_responder(msg: str, send: AsyncSend, *, update, context):
                     elif operation in ('clear', ):
                         if list_type in ('list', 'tree', 'tasklist', 'tasktree'):
                             listsmodule.clearlist.do_it(conn=conn, name=list_name, chat_id=chat_id)
+                        elif dynamic_list:
+                            listsmodule.clear_dynamic.do_it(**P(), dynamic_list=dynamic_list)
                         else:
                             raise DoNotAnswer
 
@@ -1664,22 +1666,32 @@ async def switchpageflashcard(update, context):
         await send(f"Your current flashcard page is now {page_name!r}")
 
 class flashcard:
-    def print_current_flashcards(chat_id):
+    def print_current_flashcards(chat_id, connection):
+        my_simple_sql = partial(simple_sql, connection=connection)
+
         page_id = get_current_flashcard_page_id(chat_id=chat_id)
-        results = simple_sql((
+        results = my_simple_sql((
             ''' select flashcard.sentence, flashcard.translation from flashcard inner join flashcardpage on flashcard.page_id=flashcardpage.rowid
                 where flashcardpage.chat_id=? and flashcardpage.rowid=?
             ''', (chat_id, page_id)))
 
         return '\n'.join(f"{sentence}\n→ {translation}" for sentence, translation in results) or '/'
 
-    def enumerate_current_flashcards(chat_id):
+    def enumerate_current_flashcards(chat_id, connection):
+        my_simple_sql = partial(simple_sql, connection=connection)
+
         page_id = get_current_flashcard_page_id(chat_id=chat_id)
-        results = simple_sql((
+        results = my_simple_sql((
             ''' select flashcard.sentence, flashcard.translation from flashcard inner join flashcardpage on flashcard.page_id=flashcardpage.rowid
                 where flashcardpage.chat_id=? and flashcardpage.rowid=?
             ''', (chat_id, page_id)))
         return '\n'.join(f"{n}. {sentence}\n→ {translation}" for n, (sentence, translation) in enumerate(results, start=1)) or '/'
+    
+    def clear_current_flashcards(chat_id, connection):
+        my_simple_sql = partial(simple_sql_modify, connection=connection)
+
+        page_id = get_current_flashcard_page_id(chat_id=chat_id)
+        my_simple_sql(('delete from flashcard where chat_id=? and page_id=?', (chat_id,page_id, )))
 
 async def listflashcards(update, context):
     send = make_send(update, context)
@@ -2459,6 +2471,8 @@ async def macro_event_follow(update, context):
         elif Args[1].lower() in ('sub', 'subscription'):
             context.args = tuple(Args[2:])
             return await renameeventfollow(update, context)
+
+        return await send('/eventfollow delete (follower|subscription')
     
     elif Args[0].lower() in ('list', ):
         if Args[1].lower() in ('followers', 'follower'):
@@ -3921,6 +3935,15 @@ class listsmodule:
                 await self.send(listsmodule.printlist.it(conn=conn, chat_id=self.get_chat_id(), name=name, space_between_lines=space_between_lines))
                 conn.execute('end transaction')
     
+    class clear_dynamic:
+        @staticmethod
+        def do_it(*, conn, chat_id, name, dynamic_list):
+            match dynamic_list:
+                case 'flashcard.current':
+                    return flashcard.clear_current_flashcards(chat_id=chat_id, connection=conn)
+                case _:
+                    raise UserError(f'Unknown dynamic list type {dynamic_list}')
+    
     class print_dynamic(GeneralAction):
         @staticmethod
         def it(*, conn, chat_id, name, parameters, dynamic_list):
@@ -3928,7 +3951,7 @@ class listsmodule:
                 raise UserError("This dynamic list does not take parameters")
             match dynamic_list:
                 case 'flashcard.current':
-                    return flashcard.print_current_flashcards(chat_id=chat_id)
+                    return flashcard.print_current_flashcards(chat_id=chat_id, connection=conn)
                 case _:
                     raise UserError(f'Unknown dynamic list type {dynamic_list}')
     
@@ -3939,7 +3962,7 @@ class listsmodule:
                 raise UserError("This dynamic list does not take parameters")
             match dynamic_list:
                 case 'flashcard.current':
-                    return flashcard.enumerate_current_flashcards(chat_id=chat_id)
+                    return flashcard.enumerate_current_flashcards(chat_id=chat_id, connection=conn)
                 case _:
                     raise UserError(f'Unknown dynamic list type {dynamic_list}')
                 
