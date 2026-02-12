@@ -557,7 +557,7 @@ class ListLang:
     DYNAMIC_TYPES = [
         'flashcard.current',
         # 'event.today',
-        # 'flashcard.page something',
+        'flashcard.page',
     ]
 
     POSSIBLE_TYPES = [
@@ -636,24 +636,13 @@ async def list_responder(msg: str, send: AsyncSend, *, update, context):
                     force_creation = False
 
                 re_spaces = '\s+'
+                re_spaces0 = '\s*'
                 re_group = lambda x: '(' + x + ')'
-                re_letters = '\p{L}+'
+                re_list_name = r'\p{L}(?:\p{L}|[-_\d])*' # examples: abc, a_b_c, a-b-c, abc34
                 re_bits = lambda *args: ''.join(args)
+                re_type_id = r'\p{L}(?:\p{L}|[.])*'  # examples: abc, abc.def
 
-                if dynamic_list_match := requested_type /fullmatchesI/ ('dynamic\s+((\p{L}|[.])+)(\s+(.*)\s*)?'):
-                    dynamic_list = dynamic_list_match.group(1).lower()
-                    dynamic_list_params: str = dynamic_list_match.group(4) or ''
-                    
-                    if dynamic_list not in ('event.today', 'flashcard.current', 'flashcard.page'):
-                        raise UserError(f"Dynamic list {dynamic_list} is not implemented")
-                    
-                    if dynamic_list == 'flashcard.page':
-                        if ' ' in dynamic_list_params:
-                            raise UserError("Not a page format")
-                    
-                    type_list = ('dynamic', dynamic_list) if not dynamic_list_params else ('dynamic', dynamic_list, dynamic_list_params)
-                
-                elif alias_list_match := requested_type /fullmatchesI/ re_bits('alias', re_spaces, re_group(re_letters)):
+                if alias_list_match := requested_type /fullmatchesI/ re_bits('alias', re_spaces, re_group(re_list_name)):
                     target_alias = alias_list_match.group(1)
                     type_list = ('alias', target_alias)
 
@@ -663,24 +652,36 @@ async def list_responder(msg: str, send: AsyncSend, *, update, context):
                     # name = [ ]
                     type_list = 'list'
 
-                elif param_match := regex.compile('copy\s*((of|from)\s*)?(\p{L}+)').fullmatch(requested_type):
+                elif param_match := regex.compile(f'copy\s+((of|from)\s*)?({re_list_name})').fullmatch(requested_type):
                     # name = copy of other
                     # name = copy from other
                     _, _, copy_from_name = param_match.groups()
                     type_list = ('copy', copy_from_name)
 
-                elif param_match := regex.compile('(tasktree)\s*((of|from)\s*)?(\p{L}+)').fullmatch(requested_type):
+                elif param_match := regex.compile('(tasktree)\s+((of|from)\s*)?({re_list_name})').fullmatch(requested_type):
                     copy_from_type, _, _, copy_from_name = param_match.groups()
                     type_list = (copy_from_type, copy_from_name)
 
                 elif requested_type in set(ListLang.POSSIBLE_TYPES):
                     type_list = requested_type
 
-                else:
-                    if requested_type /fullmatches_with_flags(re.I)/ "\{L}+":  
-                        raise UserError(f"List creation of type {requested_type!r} not implemented, use = list, for example")
-                    else:
+                elif general_match := requested_type /fullmatchesI/ f'({re_type_id})(.*)':
+                    general_type, general_args = general_match.group(1), general_match.group(2)
+                    general_type = general_type.lower()
+                    general_args = general_args.strip()
+
+                    if general_type in ListLang.DYNAMIC_TYPES:
+                        if general_type == 'flashcard.page':
+                            if ' ' in general_args:
+                                raise UserError("Not a page format")
+                    
+                        type_list = ('dynamic', general_type) if not general_args else ('dynamic', general_type, general_args)
+                    elif general_args:
                         raise DoNotAnswer
+                    else:
+                        raise UserError(f"List creation of type {requested_type!r} not implemented, use = list, for example")
+                else:
+                    raise DoNotAnswer
 
                 type_list: str | tuple[str, ...]
                 force_creation: bool
