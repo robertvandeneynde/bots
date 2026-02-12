@@ -642,9 +642,15 @@ async def list_responder(msg: str, send: AsyncSend, *, update, context):
 
                 if dynamic_list_match := requested_type /fullmatchesI/ ('dynamic\s+((\p{L}|[.])+)(\s+(.*)\s*)?'):
                     dynamic_list = dynamic_list_match.group(1).lower()
-                    dynamic_list_params: str = dynamic_list_match.group(4)
+                    dynamic_list_params: str = dynamic_list_match.group(4) or ''
+                    
                     if dynamic_list not in ('event.today', 'flashcard.current', 'flashcard.page'):
                         raise UserError(f"Dynamic list {dynamic_list} is not implemented")
+                    
+                    if dynamic_list == 'flashcard.page':
+                        if ' ' in dynamic_list_params:
+                            raise UserError("Not a page format")
+                    
                     type_list = ('dynamic', dynamic_list) if not dynamic_list_params else ('dynamic', dynamic_list, dynamic_list_params)
                 
                 elif alias_list_match := requested_type /fullmatchesI/ re_bits('alias', re_spaces, re_group(re_letters)):
@@ -712,7 +718,7 @@ async def list_responder(msg: str, send: AsyncSend, *, update, context):
 
                     list_type = listsmodule.get_list_type(**P())
                     list_type_is_tree = list_type in ('tree', 'tasktree')
-                    dynamic_match = list_type /fullmatches/ ('dynamic' + re.escape('.') + '(.*)')
+                    dynamic_match = list_type /fullmatchesI/ ('dynamic' + re.escape('.') + '(.*)')
                     dynamic_list = dynamic_match.group(1) if dynamic_match else None
                     alias_match = list_type /fullmatches/ ('alias' + re.escape('.') + '(.*)')
                     alias_list = alias_match.group(1) if alias_match else None
@@ -1513,11 +1519,30 @@ def get_current_flashcard_page_id(*, chat_id, connection=None) -> dict:
     def op(conn):
         results = conn.execute("select rowid from flashcardpage where chat_id=? and current=1", (chat_id,)).fetchall()
         if not results:
-            return create_default_flashcard_page(chat_id=chat_id, connection=connection)
+            return create_default_flashcard_page(chat_id=chat_id, connection=conn)
         else:
             page_id, = only_one(results)
             return page_id 
 
+    return db_connect_or_use(connection, op)
+
+def get_named_flashcard_page_id(*, page_name, chat_id, connection=None):
+    def op(conn):
+        results = conn.execute('select rowid from flashcardpage where chat_id=? and name=?', (chat_id, page_name)).fetchall()
+        if not results:
+            return create_named_flashcard_page(page_name=page_name, chat_id=chat_id, connection=conn)
+        else:
+            page_id, = only_one(results)
+            return page_id
+        
+    return db_connect_or_use(connection, op)
+
+def create_named_flashcard_page(*, page_name, chat_id, connection=None):
+    def op(conn):
+        cursor = conn.cursor()
+        cursor.execute("insert into flashcardpage(chat_id, name, current) values (?,?,?)", (chat_id, page_name, 0))
+        return cursor.lastrowid
+    
     return db_connect_or_use(connection, op)
 
 def create_default_flashcard_page(*, chat_id, connection=None):
@@ -1689,16 +1714,23 @@ async def switchpageflashcard(update, context):
 
 class flashcard:
     def print_current_flashcards(chat_id, connection):
+        page_id = get_current_flashcard_page_id(chat_id=chat_id)
+        return flashcard.print_page_flashcards_from_id(chat_id=chat_id, page_id=page_id, connection=connection)
+    
+    def print_page_flashcards(chat_id, page_name, connection):
+        page_id = get_named_flashcard_page_id(page_name=page_name, chat_id=chat_id, connection=connection)
+        return flashcard.print_page_flashcards_from_id(chat_id=chat_id, page_id=page_id, connection=connection)
+
+    def print_page_flashcards_from_id(chat_id, page_id, connection):
         my_simple_sql = partial(simple_sql, connection=connection)
 
-        page_id = get_current_flashcard_page_id(chat_id=chat_id)
         results = my_simple_sql((
             ''' select flashcard.sentence, flashcard.translation from flashcard inner join flashcardpage on flashcard.page_id=flashcardpage.rowid
                 where flashcardpage.chat_id=? and flashcardpage.rowid=?
             ''', (chat_id, page_id)))
 
         return '\n'.join(f"{sentence}\n→ {translation}" for sentence, translation in results) or '/'
-
+    
     def enumerate_current_flashcards(chat_id, connection):
         my_simple_sql = partial(simple_sql, connection=connection)
 
@@ -3819,6 +3851,9 @@ class listsmodule:
                     
                 case 'event.today':
                     pass
+
+                case _:
+                    raise UserError("Unknown dynamic type")
     class addtolist(GeneralAction):
         @staticmethod
         def do_it(*, conn, chat_id, name, value):
@@ -3976,11 +4011,14 @@ class listsmodule:
         def it(*, conn, chat_id, name, parameters, dynamic_list):
             if parameters:
                 raise UserError("This dynamic list does not take parameters")
-            match dynamic_list:
-                case 'flashcard.current':
-                    return flashcard.print_current_flashcards(chat_id=chat_id, connection=conn)
-                case _:
-                    raise UserError(f'Unknown dynamic list type {dynamic_list}')
+            
+            dynamic_name, *dynamic_params = dynamic_list.split(maxsplit=1)
+            if dynamic_name == 'flashcard.current':
+                return flashcard.print_current_flashcards(chat_id=chat_id, connection=conn)
+            elif dynamic_name == 'flashcard.page':
+                return flashcard.print_page_flashcards(chat_id=chat_id, page_name=' '.join(dynamic_params), connection=conn)
+            else:
+                raise UserError(f'Unknown dynamic list type {dynamic_list}')
     
     class enumerate_dynamic(GeneralAction):
         @staticmethod
