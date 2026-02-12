@@ -665,7 +665,7 @@ async def list_responder(msg: str, send: AsyncSend, *, update, context):
                 elif requested_type in set(ListLang.POSSIBLE_TYPES):
                     type_list = requested_type
 
-                elif general_match := requested_type /fullmatchesI/ f'({re_type_id})(.*)':
+                elif general_match := requested_type /fullmatchesI/ f'({re_type_id}){re_spaces}(.*)':
                     general_type, general_args = general_match.group(1), general_match.group(2)
                     general_type = general_type.lower()
                     general_args = general_args.strip()
