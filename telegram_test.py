@@ -1581,7 +1581,7 @@ async def practiceflashcards(update, context):
 
     try:
         n = None
-        if 'reversed' in context.args:
+        if {'reversed', 'reverse'} & set(map(str.lower, context.args)):
             direction = 'reversed'
         else:
             direction = 'normal'
@@ -6532,9 +6532,9 @@ async def log_error(error, send):
         return await send("An unknown error occured in your command, ask @robertvend to fix it !")
 
 async def general_error_callback(update:Update, context:CallbackContext):
-    send = make_send(update, context)
     async def send_on_error(m):
         if update and update.effective_chat:
+            send = make_send(update, context)
             await send(m)
     
     return await log_error(context.error, send_on_error)
@@ -6896,7 +6896,7 @@ if __name__ == '__main__':
     application.add_handler(ConversationHandler(
         entry_points=[CommandHandler('practiceflashcards', practiceflashcards)],
         states={
-            0: [MessageHandler(filters.TEXT, guessing_word)],
+            0: [MessageHandler(filters.TEXT & ~filters.COMMAND, guessing_word)],
         },
         fallbacks=[]
     ), group=1)
