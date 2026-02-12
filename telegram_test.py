@@ -731,17 +731,15 @@ async def list_responder(msg: str, send: AsyncSend, *, update, context):
 
                     did_edit = True
                     if operation in ('add', 'append'):
-                        match list_type:
-                            case 'tasklist' | 'tasktree':
-                                modified_value = listsmodule.make_task(parameters)
-                                listsmodule.addtolist.do_it(**P(), value=modified_value)
-                            case 'list' | 'tree':
-                                listsmodule.addtolist.do_it(**P(), value=parameters)
-                            case _:
-                                if dynamic_list:
-                                    listsmodule.dynamic_add.do_it(**P(), value=parameters, dynamic_list=dynamic_list)
-                                else:
-                                    raise DoNotAnswer
+                        if list_type in ('tasklist', 'tasktree'):
+                            modified_value = listsmodule.make_task(parameters)
+                            listsmodule.addtolist.do_it(**P(), value=modified_value)
+                        elif list_type in ('list', 'tree'):
+                            listsmodule.addtolist.do_it(**P(), value=parameters)
+                        elif dynamic_list:
+                            listsmodule.dynamic_add.do_it(**P(), value=parameters, dynamic_list=dynamic_list)
+                        else:
+                            raise DoNotAnswer
                                 
                     elif operation in ('print', 'list', ):
                         space_between_lines = do_if_setting_on(read_chat_settings('list.space_between_lines'))
@@ -1713,6 +1711,25 @@ async def switchpageflashcard(update, context):
         await send(f"Your current flashcard page is now {page_name!r}")
 
 class flashcard:
+    Current = object()
+
+    def parse_and_add(value, *, chat_id, page_name:str | Current, connection):
+        conn = connection  
+
+        if len(parsed := value.split()) == 2:
+            sentence, translation = map(str.strip, parsed)
+        elif len(parsed := value.split('=', maxsplit=1)) == 2:
+            sentence, translation = map(str.strip, parsed)
+        elif len(parsed := value.split('/', maxsplit=1)) == 2:
+            sentence, translation = map(str.strip, parsed)
+        else:
+            raise UserError('Invalid flashcard')
+                
+        page_id = (get_current_flashcard_page_id(chat_id=chat_id) if page_name is flashcard.Current else
+                   get_named_flashcard_page_id(page_name=page_name, chat_id=chat_id, connection=conn))
+        
+        save_flashcard(sentence, translation, page_id=page_id, connection=conn)
+
     def print_current_flashcards(chat_id, connection):
         page_id = get_current_flashcard_page_id(chat_id=chat_id)
         return flashcard.print_page_flashcards_from_id(chat_id=chat_id, page_id=page_id, connection=connection)
@@ -1731,14 +1748,17 @@ class flashcard:
 
         return '\n'.join(f"{sentence}\n→ {translation}" for sentence, translation in results) or '/'
     
-    def enumerate_current_flashcards(chat_id, connection):
+    def enumerate_flashcards(*, page_name:str | Current, chat_id, connection):
         my_simple_sql = partial(simple_sql, connection=connection)
 
-        page_id = get_current_flashcard_page_id(chat_id=chat_id)
+        page_id = (get_current_flashcard_page_id(chat_id=chat_id) if page_name is flashcard.Current else
+                   get_named_flashcard_page_id(chat_id=chat_id, page_name=page_name))
+        
         results = my_simple_sql((
             ''' select flashcard.sentence, flashcard.translation from flashcard inner join flashcardpage on flashcard.page_id=flashcardpage.rowid
                 where flashcardpage.chat_id=? and flashcardpage.rowid=?
             ''', (chat_id, page_id)))
+        
         return '\n'.join(f"{n}. {sentence}\n→ {translation}" for n, (sentence, translation) in enumerate(results, start=1)) or '/'
     
     def clear_current_flashcards(chat_id, connection):
@@ -3827,33 +3847,25 @@ class listsmodule:
             for node_rowid in itrees_rowid:
                 delete(node_rowid)
 
+    def dynamic_list_analyze(dynamic_list):
+        dyn_type, *dyn_params = dynamic_list.split(maxsplit=1)
+        return dyn_type if not dyn_params else (dyn_type, ' '.join(dyn_params))
     class dynamic_add(GeneralAction):
         @staticmethod
         def do_it(*, conn, chat_id, name, value, dynamic_list):
-            match dynamic_list:
+            match listsmodule.dynamic_list_analyze(dynamic_list):
                 case 'flashcard.current':
-                    parsed = value.split()
-                    if len(parsed) == 2:
-                        sentence, translation = map(str.strip, parsed)
-                    else:
-                        parsed = value.split('=', maxsplit=1)
-                        if len(parsed) == 2:
-                            sentence, translation = map(str.strip, parsed)
-                        else:
-                            parsed = value.split('/', maxsplit=1)
-                            if len(parsed) == 2:
-                                sentence, translation = map(str.strip, parsed)
-                            else:
-                                raise UserError('Invalid flashcard')
-                            
-                    page_id = get_current_flashcard_page_id(chat_id=chat_id)
-                    save_flashcard(sentence, translation, page_id=page_id, connection=conn)
-                    
+                    flashcard.parse_and_add(value, page_name=None, chat_id=chat_id, connection=conn)
+                
+                case 'flashcard.page', page_name:
+                    return flashcard.parse_and_add(value, page_name=page_name, chat_id=chat_id, connection=conn)
+
                 case 'event.today':
-                    pass
+                    raise UserError("Not implemented")
 
                 case _:
                     raise UserError("Unknown dynamic type")
+                
     class addtolist(GeneralAction):
         @staticmethod
         def do_it(*, conn, chat_id, name, value):
@@ -4012,13 +4024,13 @@ class listsmodule:
             if parameters:
                 raise UserError("This dynamic list does not take parameters")
             
-            dynamic_name, *dynamic_params = dynamic_list.split(maxsplit=1)
-            if dynamic_name == 'flashcard.current':
-                return flashcard.print_current_flashcards(chat_id=chat_id, connection=conn)
-            elif dynamic_name == 'flashcard.page':
-                return flashcard.print_page_flashcards(chat_id=chat_id, page_name=' '.join(dynamic_params), connection=conn)
-            else:
-                raise UserError(f'Unknown dynamic list type {dynamic_list}')
+            match listsmodule.dynamic_list_analyze(dynamic_list):
+                case 'flashcard.current':
+                    return flashcard.print_current_flashcards(chat_id=chat_id, connection=conn)
+                case 'flashcard.page', page_name:
+                    return flashcard.print_page_flashcards(chat_id=chat_id, page_name=page_name, connection=conn)
+                case _:
+                    raise UserError(f'Unknown dynamic list type {dynamic_list}')
     
     class enumerate_dynamic(GeneralAction):
         @staticmethod
@@ -4027,7 +4039,9 @@ class listsmodule:
                 raise UserError("This dynamic list does not take parameters")
             match dynamic_list:
                 case 'flashcard.current':
-                    return flashcard.enumerate_current_flashcards(chat_id=chat_id, connection=conn)
+                    return flashcard.enumerate_flashcards(page_name=page_name, chat_id=chat_id, connection=conn)
+                case 'flashcard.page', page_name:
+                    return flashcard.enumerate_flashcards(page_name=page_name, chat_id=chat_id, connection=conn)
                 case _:
                     raise UserError(f'Unknown dynamic list type {dynamic_list}')
                 
