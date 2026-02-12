@@ -6549,8 +6549,13 @@ async def help(update, context):
 
     Args = InfiniteEmptyList(context.args)
     
-    module_filter = Args[0].lower() if Args[0].lower() in COMMAND_LIST_ALL_MODULES else None 
+    module_filter = Args[0].lower() if Args[0].lower() in COMMAND_LIST_ALL_MODULES else ''
     display_modules = Args[0].lower() in ('module', 'modules')
+    display_commands = Args[0].lower() in ('command', 'commands')
+
+    one_command_display = Args[0].lower()
+    if one_command_display.startswith('/'):
+        one_command_display = one_command_display[1:]
 
     bot_father = '--botfather' in context.args
 
@@ -6563,16 +6568,20 @@ async def help(update, context):
     li = ([x.name for x in COMMAND_LIST_HELP if x.botfather] if bot_father else
           [x.name for x in COMMAND_LIST_HELP])
 
+    if bot_father:
+        return await send('\n'.join(fmt.format(command, COMMAND_DESC.get(command, command)) for command in li))
+    
     from collections import defaultdict
     by_modules = grouped_dict((COMMAND_LIST_HELP_DICT[c].module, c) for c in li)
 
-    if bot_father:
-        return await send('\n'.join(fmt.format(command, COMMAND_DESC.get(command, command)) for command in li))
+    if one_command_display in commandspecs.MAN:
+        import textwrap
+        return await send(textwrap.dedent(commandspecs.MAN[Args[0]]).strip())
     else:
         lines = []
         first = True
         for mod, L in by_modules.items():
-            if module_filter is not None and module_filter != mod:
+            if module_filter and module_filter != mod:
                 continue
             if first:
                 first = False
@@ -6792,6 +6801,66 @@ class CommandInfoSpecs:
     name: str
     module: CommandModules
     botfather: bool = True
+
+class commandspecs:
+    MAN = {
+        'flashcard': '''
+            /flashcard adds a flashcard to a page.
+            A flashcard is a card witch two faces, the face-up and face-down
+
+            There are multiple ways to do that:
+                /flashcard a b
+                Just two words, face-up will be a, face-down will be b
+
+                /flashcard a = b
+                Here a or b can be multiple words, we use the "=" symbol
+
+                /flashcard a / b
+                Same thing but with the "/" separator
+
+                Replying to a message
+                The replied message will be face-up, and the arguments will be face-down
+
+            EXAMPLES
+
+                /flashcard Bonjour Hello
+                It adds the card face-up = Bonjour, and face-down = Hello to the current page
+
+                /flashcard Comment ça va = How are you ?
+                We use the "=" separator between face-up and face-down.
+
+                Message 1: J'ai mangé une pomme
+                Reply to Message 1: /flashcard I ate an apple
+                This is useful when the card must have a sentence said by someone else,
+                here we only write the face-down and reuse the text written by someone else
+                It Adds the flashcard "J'ai mangé une pomme" / "I ate an apple"
+        ''',
+        'practiceflashcards': '''
+            /practiceflashcards allows to practice flashcards by shuffling a flashcard page them
+            The command shuffle all cards and display the face-up.
+            Then waits for a message (the user should answer the cards).
+            And finally the cards are revealed and the conversation is over
+
+                n: the number of random flashcards drawn
+                reverse: ask for the face down and gives the face up as an answer
+                page: use another page
+                user: use deck from user (beware, you might reveal private info in the group)
+
+            EXAMPLES
+            
+                /practiceflashcards
+                Practice the current flashcard page
+
+                /practiceflashcards n:10 page:french
+                Practice the "french" page with 10 random flashcards
+
+            SEE ALSO
+
+            - help `switchpageflashcard` to change current flashcard 
+            - help `flashcard` to add a flashcard to current page
+            - help `list.dynamic.flashcard.current` to control the current page
+        '''
+    }
 
 all_modules = ('event', 'eventlocation', 'money', 'sharemoney', 'lang', 'dict', 'flashcard', 'list')
 all_modules_parent = {
