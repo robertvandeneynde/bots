@@ -271,7 +271,7 @@ async def locationdistance_responder(msg:str, send: AsyncSend, *, update, contex
         loc = match.group(1)
         dists = location_distance_apply(loc, chat_id=update.effective_chat.id).dists
         if len(dists) > 1:
-            return await send('\n'.join(f"• {dist} from {name}" for name, dist in dists.items()))
+            return await send('\n'.join(f"• {dist} to {name}" for name, dist in dists.items()))
 
 def split_based_on_indices(L, indices):
     if len(indices) == 0:
@@ -6273,7 +6273,7 @@ async def implicit_setting_command(update, context, type: Literal['disable', 'on
         return all(re.compile('^[A-Z]{3}[:].*$').match(line) for line in reply.text.splitlines())
 
     def is_locationdistance_list():
-        return all(x /fullmatchesI/ '• (\d+) from (.*)' for x in reply.text.splitlines())
+        return all(x /fullmatchesI/ '• (\d+) to (.*)' for x in reply.text.splitlines())
 
     if type == 'disable':
         if reply.text:
