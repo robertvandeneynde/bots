@@ -5166,6 +5166,13 @@ async def list_events(update: Update, context: CallbackContext, relative=False):
             f"No events for {when} !" + (" 😱" if "today" == when else "")
         ))
 
+async def delevent_from_answer(*, reply, update, context):
+    event = addevent_analyse_from_bot(update, context, text=reply.text)
+    event_db = retrieve_event_from_db(update=update, context=context, what=event['what'], when=event['when'])
+    tz = induce_my_timezone(user_id=update.effective_user.id, chat_id=update.effective_chat.id)
+    send = make_send(update, context)
+    await db_delete_event(update, context, send=send, chat_id=update.effective_chat.id, event_id=event_db['rowid'], tz=tz)
+
 async def delevent(update, context):
     send = make_send(update, context)
     read_chat_settings = make_read_chat_settings(update, context)
@@ -5173,7 +5180,7 @@ async def delevent(update, context):
     do_event_admin_check('del', setting=read_chat_settings('event.admins'), user_id=update.effective_user.id)
 
     if reply := update_get_reply(update):
-        await send("Not implemented yet but will allow to deleent an event by responding to it.")
+        await delevent_from_answer(reply=reply, update=update, context=context)
         return ConversationHandler.END
 
     strptime = DatetimeDbSerializer.strptime
