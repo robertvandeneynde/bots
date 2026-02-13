@@ -6286,7 +6286,7 @@ async def implicit_setting_command(update, context, type: Literal['disable', 'on
         return all(re.compile('^[A-Z]{3}[:].*$').match(line) for line in reply.text.splitlines())
 
     def is_locationdistance_list():
-        return all(x /fullmatchesI/ '• (\d+) | (.*)' for x in reply.text.splitlines())
+        return all(x /fullmatchesI/ '• (\d+) [|] (.*)' for x in reply.text.splitlines())
 
     if type == 'disable':
         if reply.text:
