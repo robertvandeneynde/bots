@@ -3105,6 +3105,7 @@ def update_name_using_locations(what, *, chat_id):
             long_location = None
 
         if long_location:
+            long_location = simplify_multi_line_location(long_location)
             return event.get('what') + ' @ ' + where + ' ' + '(' + long_location + ')'
         
     return what
@@ -4836,6 +4837,13 @@ def do_if_setting_on(setting):
 def do_unless_setting_off(setting):
     return setting_on_off(setting, default=True)
 
+def simplify_multi_line_location(location):
+    if '\n' in location:
+        without_link = [v for v in location.splitlines() if not v /fullmatches/ "https?://[^\s]+"]
+        return ' / '.join(without_link)
+    else:
+        return location
+
 def enrich_location_with_db(events, *, chat_id):
     new_events = []
     for event in events:
@@ -4866,6 +4874,8 @@ def enrich_location_with_db(events, *, chat_id):
                 
                 if mapped_loc:
                     value, = only_one(mapped_loc)
+                    value = simplify_multi_line_location(value)
+                    
                     event_obj['where'] += f' ({value})'
                     Canon = add_event_canon_infos(infos_event=event_obj)
 
@@ -5114,12 +5124,8 @@ async def day_of_week_command(update, context, n):
     assert n in irange(1, 7)
     return await list_days_or_today(update, context, mode='dayofweek', mode_args={'dayofweek': n})
 
-# todo: use partial
-async def list_today(update: Update, context: CallbackContext, *, relative=False):
-    return await list_days_or_today(update, context, mode='today', relative=relative)
-
-async def list_days(update: Update, context: CallbackContext, relative=False, formatting='normal'):
-    return await list_days_or_today(update, context, mode='list', relative=relative, formatting=formatting)
+list_today = partial(list_days_or_today, mode='today')
+list_days = partial(list_days_or_today, mode='list')
 
 async def list_events(update: Update, context: CallbackContext, relative=False):
     send = make_send(update, context)
