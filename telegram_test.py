@@ -1464,7 +1464,7 @@ async def dict_command(update: Update, context: CallbackContext, *, engine:Liter
     import html
     if display_html:
         send_html = partial(send, parse_mode='HTML', disable_web_page_preview=len(words) > 2)
-        return await send_html(' | '.join(f'<a href="{html.escape(url(x))}">{x}</a>' for x in words))
+        return await send_html(' | '.join(f'<a href="{html.escape(url(x))}">{html.escape(x)}</a>' for x in words))
     else:
         return await send('\n\n'.join(url(x) for x in words))
     
