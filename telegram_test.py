@@ -3027,6 +3027,7 @@ async def add_event(update: Update, context: CallbackContext):
         parse_datetime_point(update, context, has_inline_kargs=has_inline_kwargs,
                              when_infos=CanonInfo.when_infos, what_infos=CanonInfo.what_infos, required_time=required_time)
     
+    initial_name = name
     if do_unless_setting_off(read_chat_settings('event.location.autocomplete')):
         name = update_name_using_locations(name, chat_id=chat_id)
 
@@ -3040,7 +3041,7 @@ async def add_event(update: Update, context: CallbackContext):
         simple_sql((''' insert into EventLinkAttr(event_id, link) VALUES (?,?)''', (new_event_id, infos_event['link'])))
 
     if do_unless_setting_off(read_chat_settings('event.location.autocomplete')):
-        implicit_thereis(what=name, chat_id=chat_id)
+        implicit_thereis(what=initial_name, chat_id=chat_id)
 
     await post_event(update, context, name=name, datetime=datetime, time=time, date_str=date_str, chat_timezones=chat_timezones, tz=tz, tz_explicit=tz_explicit, chat_id=chat_id, datetime_utc=datetime_utc, link=infos_event and infos_event.get('link'))
 
