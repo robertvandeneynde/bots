@@ -13,6 +13,7 @@ import json
 from dataclasses import dataclass
 
 import enum
+import html
 class FriendsUser(enum.StrEnum):
     FLOCON = 'flocon'
     KOROLEVA_LION = 'koroleva-lion'
@@ -5066,10 +5067,10 @@ async def list_days_or_today(
             days_as_lines.append(
             f"{day_of_week.capitalize()} {date:%d/%m}\n"
             + "\n".join(
-                 f"""- <a href="{event_link}">{event_name}</a>""" if event_link and event_date.time() == Time(0, 0) else 
-                 f"""- <a href="{event_link}">{event_date:%H:%M}: {event_name}</a>""" if event_link and event_date.time() != Time(0, 0) else 
-                 f"""- {event_name}""" if event_date.time() == Time(0, 0) else 
-                 f"""- {event_date:%H:%M}: {event_name}"""
+                 f"""- <a href="{html.escape(event_link)}">{html.escape(event_name)}</a>""" if event_link and event_date.time() == Time(0, 0) else 
+                 f"""- <a href="{html.escape(event_link)}">{event_date:%H:%M}: {html.escape(event_name)}</a>""" if event_link and event_date.time() != Time(0, 0) else 
+                 f"""- {html.escape(event_name)}""" if event_date.time() == Time(0, 0) else 
+                 f"""- {event_date:%H:%M}: {html.escape(event_name)}"""
                 for n, (event_date, event_name, event_link) in enumerate(days[day], start=1)
             ))
         elif formatting in ('short', ):
@@ -5087,7 +5088,7 @@ async def list_days_or_today(
             days_as_lines.append(
                 f"{day_of_week.capitalize()} {date:%d/%m}\n"
                 + "\n".join(
-                    f"""- <a href="{event_link}">{event_pure_name}</a>"""
+                    f"""- <a href="{html.escape(event_link)}">{html.escape(event_pure_name)}</a>"""
                     for event_date, event_name, event_link in days[day]
                     for (event_pure_name, event_location) in [split_event_name_into_what_where(event_name)]
                 )
