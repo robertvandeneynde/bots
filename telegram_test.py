@@ -6556,7 +6556,6 @@ async def help(update, context):
     
     module_filter = Args[0].lower() if Args[0].lower() in COMMAND_LIST_ALL_MODULES else ''
     display_modules = Args[0].lower() in ('module', 'modules')
-    display_commands = Args[0].lower() in ('command', 'commands')
 
     one_command_display = Args[0].lower()
     if one_command_display.startswith('/'):
@@ -6575,9 +6574,14 @@ async def help(update, context):
 
     if bot_father:
         return await send('\n'.join(fmt.format(command, COMMAND_DESC.get(command, command)) for command in li))
-    
-    from collections import defaultdict
-    by_modules = grouped_dict((COMMAND_LIST_HELP_DICT[c].module, c) for c in li)
+
+    def top_most_module(module):
+        if all_modules_parent.get(module):
+            return top_most_module(all_modules_parent[module])
+        else:
+            return module
+        
+    by_modules = grouped_dict((top_most_module(COMMAND_LIST_HELP_DICT[c].module), c) for c in li)
 
     if one_command_display in commandspecs.MAN:
         import textwrap
