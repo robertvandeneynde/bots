@@ -375,7 +375,6 @@ def location_distance_apply(loc, *, chat_id, targets=None):
     dists = {}
     prevs = {}
     while open_list:
-        print(open_list, dists)
         current_name, current_dist = min(open_list.items(), key=lambda t:t[1])
         del open_list[current_name]
 
@@ -6273,6 +6272,9 @@ async def implicit_setting_command(update, context, type: Literal['disable', 'on
     def is_currency_list():
         return all(re.compile('^[A-Z]{3}[:].*$').match(line) for line in reply.text.splitlines())
 
+    def is_locationdistance_list():
+        return all(x /fullmatchesI/ '• (\d+) from (.*)' for x in reply.text.splitlines())
+
     if type == 'disable':
         if reply.text:
             if is_currency_list():
@@ -6285,6 +6287,8 @@ async def implicit_setting_command(update, context, type: Literal['disable', 'on
                 return await send_command('/chatsettings event.addevent.display_forwarded_infos off')
             if reply.text.startswith('Error: You must specify a reason'):
                 return await send_command('/chatsettings sharemoney.required_for off')
+            if is_locationdistance_list():
+                return await send_command('/chatsettings locationdistance.active off')
         elif reply.document and reply.document.file_name == 'event.ics':
             return await send_command('/chatsettings event.addevent.display_file off')
             
