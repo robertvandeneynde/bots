@@ -2305,6 +2305,8 @@ class ParseEvents:
         out: list[ParsedEventMiddleNoName] = []
         it = args
         while it:
+            before = list(it)
+
             each_activated = False
             It = InfiniteEmptyList(it)
             if It[0].lower() in ('each', 'every', 'chaque', 'le'):
@@ -2316,17 +2318,13 @@ class ParseEvents:
                 each_activated_by = ' '.join(It[0:2])
                 it = it[2:]
                 
-            bit = it[0]
-
             event, it = cls.parse_event_timed(it)
             tz = event.timezone or default_tz
 
             try:
                 DatetimeText.to_date_range(event.date, tz=tz)
             except UnknownDateError:
-                it = [bit] + it
-                if each_activated:
-                    it = each_activated_by.split() + it
+                it = before
                 break
 
             if each_activated:
