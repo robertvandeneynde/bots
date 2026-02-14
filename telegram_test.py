@@ -365,7 +365,11 @@ class DijkstraResult:
 def location_distance_apply(loc, *, chat_id, targets=None):
     targets = set(map(str.lower, targets)) if targets is not None else None
     loc = loc.lower()      
-    edges = simple_sql(('select source, dest, distance from LocationDistanceEdge where chat_id = ?', (chat_id, )))
+
+    edges = []
+    with get_connection() as conn:
+        for graph_id, in simple_sql(('select rowid from LocationDistanceGraph where chat_id = ?', (chat_id, ))):
+            edges += simple_sql(('select source, dest, distance from LocationDistanceEdge where chat_id = ? AND graph_id = ?', (chat_id, graph_id)))
 
     from collections import defaultdict
     Graph = defaultdict(list)
@@ -528,7 +532,7 @@ class locationdistance:
             edges = cursor.fetchall()
             conn.execute('end transaction')
 
-        return await send(f'[Graph: "{graph_name}"]\n' + (' //\n'.join(f"{source} / {dest} / {distance}" for source, dest, distance in edges) or '/'))
+        return await send(f'[Graph "{graph_name}"]\n' + (' //\n'.join(f"{source} / {dest} / {distance}" for source, dest, distance in edges) or '/'))
 
     def save_location_distance(chat_id, source, dest, distance, conn, graph_id):
         if distance == 'delete':
@@ -6491,11 +6495,11 @@ def migration23():
         c.execute('begin transaction')
         c.execute('create table LocationDistanceGraph(name, visibility, chat_id)')
         c.execute('create table LocationDistanceEdgeGraphRelation(name, visibility, chat_id)')
-        c.execute('create table LocationDistanceCurrentGraphChat(chat_id, graph_id REFERENCES LocationDistanceGraph(rowid))')
+        c.execute('create table LocationDistanceCurrentGraphChat(chat_id, graph_id)')
 
-        c.execute('alter table LocationDistanceEdge add column graph_id NULLABLE REFERENCES LocationDistanceGraph(rowid)')
+        c.execute('alter table LocationDistanceEdge add column graph_id')
         for chat_id, in c.execute('select distinct chat_id from LocationDistanceEdge').fetchall():
-            c.execute('insert into LocationDistanceGraph(name, visibility, chat_id) VALUES (?,?,?)', ('chat', 'visibility', chat_id))
+            c.execute('insert into LocationDistanceGraph(name, visibility, chat_id) VALUES (?,?,?)', ('chat', 'chat', chat_id))
             c.execute('insert into LocationDistanceCurrentGraphChat(chat_id, graph_id) VALUES(?,?)', (chat_id, graph_id := c.lastrowid))
             c.execute('update LocationDistanceEdge set graph_id=? where chat_id=?', (graph_id, chat_id))
         c.execute('end transaction')
