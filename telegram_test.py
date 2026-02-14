@@ -396,111 +396,203 @@ def location_distance_apply(loc, *, chat_id, targets=None):
                     prevs[neigh_name] = current_name
     
     return DijkstraResult(dists=dists, prevs=prevs)
+
+class locationdistance:
+    async def locationinfo(update, context):
+        send = make_send(update, context)
+
+        async def print_usage():
+            return await send(
+                "Usage:\n"
+                "/locationinfo addedge|listedge|switchgraph|currentgraph"
+            )
         
-async def locationinfo(update, context):
-    send = make_send(update, context)
-
-    def parse_edge(edge):
-        if len(bits := edge.split()) == 3:
-            source, dest, dist = bits
-        elif len(bits := edge.split(' / ')) == 2:
-            source, dest = bits
-            B = InfiniteEmptyList(dest.split())
-            if B[-1] /fullmatches/ '\d+' or B[-1] == 'delete':
-                dist = B[-1]
-                dest = ' '.join(B[:-1])
-            else:
-                raise ValueError
-        else:
-            source, dest, dist = bits
-        source, dest, dist = map(str.strip, (source, dest, dist))
-        if dist.lower() == 'delete':
-            dist = 'delete'
-        else:
-            dist = int(dist)
-        return source, dest, dist
+        Args = InfiniteEmptyList(context.args)
+        
+        if Args[0] /fullmatchesI/ r'addedges?':
+            return await locationdistance.addedges(Args[1:], update, context)
+        if Args[0] /fullmatchesI/ r'switchgraph':
+            return await locationdistance.switchgraph(Args[1:], update, context)
+        if Args[0] /fullmatchesI/ r'currentgraph':
+            return await send(f'Current graph: {locationdistance.get_current_graph(update.effective_chat.id)}')
+        if Args[0] /fullmatchesI/ r'list|listedge|listedges':
+            return await locationdistance.listlocationinfo(Args[1:], update, context)
+        return await print_usage()
     
-    def parse_semi_edge(edge):
-        if not (bits := InfiniteEmptyList(edge.split())) and (bits[-1] /fullmatches/ '\d+'):
-            raise ValueError
-        *destL, dist = bits
-        return ' '.join(destL), int(dist)
+    async def addedges(args, update, context):
+        send = make_send(update, context)
 
-    edges = []
-    try:
-        for edge in ' '.join(context.args).split('//'):
-            if m := edge /fullmatchesI/ '(path|star)\s*:\s*(.*)':
-                pattern, data = m.group(1), m.group(2)
-                data_list = InfiniteEmptyList(data.split('/'))
-                prev = data_list[0]
-                if not prev:
+        def parse_edge(edge):
+            if len(bits := edge.split()) == 3:
+                source, dest, dist = bits
+            elif len(bits := edge.split(' / ')) == 2:
+                source, dest = bits
+                B = InfiniteEmptyList(dest.split())
+                if B[-1] /fullmatches/ '\d+' or B[-1] == 'delete':
+                    dist = B[-1]
+                    dest = ' '.join(B[:-1])
+                else:
                     raise ValueError
-
-                if pattern.lower() == 'star':
-                    first = prev
-                    for target in data_list[1:]:
-                        dest, dist = parse_semi_edge(target)
-                        edges.append((first, dest, dist))
-
-                elif pattern.lower() == 'path':
-                    if len(data_list) == 1:
-                        # /locationinfo path: Hello 5 World in house 10 Tada
-                        S = prev.split()
-                        breaks = []
-                        for i, b in enumerate(S):
-                            if b /fullmatches/ '\d+':
-                                breaks.append(i)
-                        if not breaks:
-                            raise ValueError
-                        c = breaks[0]
-                        prev = ' '.join(S[0:c])
-                        for i in breaks[1:] + [len(S)]:
-                            dist, *destL = S[c:i]
-                            dest = ' '.join(destL)
-                            assert_true(prev.strip() and dest.strip(), ValueError)
-                            edges.append((prev.strip(), dest.strip(), dist))
-                            prev = dest
-                            c = i
-                    else:
-                        # /locationinfo path: Hello / World 5 / Tada 5
-                        for target in data_list[1:]:
-                            dest, dist = parse_semi_edge(target.strip())
-                            edges.append((prev, dest, dist))
-                            prev = dest
             else:
-                edges.append(parse_edge(edge.strip()))
-        edges = [(a, b, int(c) if c != 'delete' else c) for a,b,c in edges]
-    except ValueError as e:
-        return await send('Usage:\n/locationinfo from / to / distance // from / to / distance\n/locationinfo path: A dist B dist C')
+                source, dest, dist = bits
+            source, dest, dist = map(str.strip, (source, dest, dist))
+            if dist.lower() == 'delete':
+                dist = 'delete'
+            else:
+                dist = int(dist)
+            return source, dest, dist
+        
+        def parse_semi_edge(edge):
+            if not (bits := InfiniteEmptyList(edge.split())) and (bits[-1] /fullmatches/ '\d+'):
+                raise ValueError
+            *destL, dist = bits
+            return ' '.join(destL), int(dist)
 
-    chat_id = update.effective_chat.id
-    with sqlite3.connect('db.sqlite') as conn:
-        for source, dest, distance in edges:
-            save_location_distance(chat_id, source, dest, distance, conn)
+        edges = []
+        try:
+            for edge in ' '.join(args).split('//'):
+                if m := edge /fullmatchesI/ '(path|star)\s*:\s*(.*)':
+                    pattern, data = m.group(1), m.group(2)
+                    data_list = InfiniteEmptyList(data.split('/'))
+                    
+                    prev = data_list[0]
+                    if not prev:
+                        raise ValueError
 
-    return await send(f'Edges modified: {len(edges)}')
+                    if pattern.lower() == 'star':
+                        first = prev
+                        for target in data_list[1:]:
+                            dest, dist = parse_semi_edge(target)
+                            edges.append((first, dest, dist))
 
-async def listlocationinfo(update, context):
-    send = make_send(update, context)
+                    elif pattern.lower() == 'path':
+                        if len(data_list) == 1:
+                            # /locationinfo path: Hello 5 World in house 10 Tada
+                            S = prev.split()
+                            breaks = []
+                            for i, b in enumerate(S):
+                                if b /fullmatches/ '\d+':
+                                    breaks.append(i)
+                            if not breaks:
+                                raise ValueError
+                            c = breaks[0]
+                            prev = ' '.join(S[0:c])
+                            for i in breaks[1:] + [len(S)]:
+                                dist, *destL = S[c:i]
+                                dest = ' '.join(destL)
+                                assert_true(prev.strip() and dest.strip(), ValueError)
+                                edges.append((prev.strip(), dest.strip(), dist))
+                                prev = dest
+                                c = i
+                        else:
+                            # /locationinfo path: Hello / World 5 / Tada 5
+                            for target in data_list[1:]:
+                                dest, dist = parse_semi_edge(target.strip())
+                                edges.append((prev, dest, dist))
+                                prev = dest
+                else:
+                    edges.append(parse_edge(edge.strip()))
+            edges = [(a, b, int(c) if c != 'delete' else c) for a,b,c in edges]
+        except ValueError as e:
+            return await send(
+                'Usage:\n'
+                '/locationinfo from to distance\n'
+                '/locationinfo from / to / distance\n'
+                '/locationinfo from / to / distance // from / to / distance\n'
+                '/locationinfo path: A dist B dist C\n'
+                '/locationinfo star: A / B dist / C dist\n')
 
-    with sqlite3.connect('db.sqlite') as conn:
+        chat_id = update.effective_chat.id
+        with sqlite3.connect('db.sqlite') as conn:
+            for source, dest, distance in edges:
+                locationdistance.save_location_distance(chat_id, source, dest, distance, conn)
+
+        return await send(f'Edges modified: {len(edges)}')
+
+    async def listlocationinfo(update, context):
+        send = make_send(update, context)
+
+        with sqlite3.connect('db.sqlite') as conn:
+            conn.execute('begin transaction')
+            cursor = conn.cursor()
+            cursor.execute('select source, dest, distance from LocationDistanceEdge where chat_id = ?', (update.effective_chat.id,))
+            edges = cursor.fetchall()
+            conn.execute('end transaction')
+
+        return await send(' //\n'.join(f"{source} / {dest} / {distance}" for source, dest, distance in edges) or '/')
+
+    def save_location_distance(chat_id, source, dest, distance, conn):
         conn.execute('begin transaction')
-        cursor = conn.cursor()
-        cursor.execute('select source, dest, distance from LocationDistanceEdge where chat_id = ?', (update.effective_chat.id,))
-        edges = cursor.fetchall()
+        if distance == 'delete':
+            conn.execute('delete from LocationDistanceEdge where chat_id = ? and (LOWER(source) = LOWER(?) and LOWER(dest) = LOWER(?) or LOWER(dest) = LOWER(?) and LOWER(source) = LOWER(?))', (chat_id, source, dest, source, dest))
+        elif conn.execute('select count(*) from LocationDistanceEdge where chat_id = ? and (LOWER(source) = LOWER(?) and LOWER(dest) = LOWER(?) or LOWER(dest) = LOWER(?) and LOWER(source) = LOWER(?))', (chat_id, source, dest, source, dest)).fetchone()[0] == 0:
+            conn.execute('insert into LocationDistanceEdge(chat_id, source, dest, distance) values (?, ?, ?, ?)', (chat_id, source, dest, distance))
+        else:
+            conn.execute('update LocationDistanceEdge set distance = ? where chat_id = ? and (LOWER(source) = LOWER(?) and LOWER(dest) = LOWER(?) or LOWER(dest) = LOWER(?) and LOWER(source) = LOWER(?))', (distance, chat_id, source, dest, source, dest))
         conn.execute('end transaction')
+    
+    def get_current_graph(chat_id, connection=None):
+        my_simple_sql = partial(simple_sql_args, connection=connection)
+        alls = my_simple_sql(''' select g.name, g.visibility from LocationDistanceCurrentGraphChat c inner join LocationDistanceGraph g on c.graph_id=g.rowid where c.chat_id=? ''', (chat_id, ))
+        g_infos = only_one(alls) if alls else (':chat', 'chat')
+        return ('public.' if g_infos[1] == 'public' else '') + g_infos[0]
 
-    return await send(' //\n'.join(f"{source} / {dest} / {distance}" for source, dest, distance in edges) or '/')
+    async def switchgraph(args, update, context):
+        send = make_send(update, context)
 
-def save_location_distance(chat_id, source, dest, distance, conn):
-    conn.execute('begin transaction')
-    if distance == 'delete':
-        conn.execute('delete from LocationDistanceEdge where chat_id = ? and (LOWER(source) = LOWER(?) and LOWER(dest) = LOWER(?) or LOWER(dest) = LOWER(?) and LOWER(source) = LOWER(?))', (chat_id, source, dest, source, dest))
-    elif conn.execute('select count(*) from LocationDistanceEdge where chat_id = ? and (LOWER(source) = LOWER(?) and LOWER(dest) = LOWER(?) or LOWER(dest) = LOWER(?) and LOWER(source) = LOWER(?))', (chat_id, source, dest, source, dest)).fetchone()[0] == 0:
-        conn.execute('insert into LocationDistanceEdge(chat_id, source, dest, distance) values (?, ?, ?, ?)', (chat_id, source, dest, distance))
-    else:
-        conn.execute('update LocationDistanceEdge set distance = ? where chat_id = ? and (LOWER(source) = LOWER(?) and LOWER(dest) = LOWER(?) or LOWER(dest) = LOWER(?) and LOWER(source) = LOWER(?))', (distance, chat_id, source, dest, source, dest))
-    conn.execute('end transaction')
+        async def print_usage(current_graph=False):
+            return await send(
+                "Usage:\n"
+                "/locationinfo switchgraph public.NAME\n"
+                "/locationinfo switchgraph NAME\n" + (
+                    f"\nCurrent graph: {locationdistance.get_current_graph(update.effective_chat.id)}"
+                    if current_graph else ''   
+                ))
+        
+        if not args:
+            return await print_usage(current_graph=True)
+        
+        module_name, = args
+
+        DOTTED = rf'({ListLangRegexes.NAME})[.]({ListLangRegexes.NAME})'
+        SIMPLE = ListLangRegexes.NAME
+
+        if m := module_name /fullmatchesI/ DOTTED:
+            if m.group(1).lower() == 'public':
+                actual_module = m.group(2).lower()
+                visibility = 'public'
+            else:
+                return await print_usage()
+            
+        elif m := module_name /fullmatchesI/ SIMPLE:
+            actual_module = m.group(0).lower()
+            visibility = 'chat'
+        
+        else:
+            raise UserError("Wrong format for a graph name")
+        
+        chat_id = update.effective_chat.id
+        with get_connection() as conn:
+            my_simple_sql_create = partial(simple_sql_create_args, connection=conn)
+            my_simple_sql_dict = partial(simple_sql_dict_args, connection=conn)
+
+            all_graphs = my_simple_sql_dict(''' select rowid, visibility from LocationDistanceGraph where chat_id=? AND name=? AND visibility=?''', (chat_id, actual_module, visibility))
+            
+            if len(all_graphs) == 0:
+                r = my_simple_sql_create('''insert into LocationDistanceGraph(chat_id, name, visibility) VALUES (?,?,?)''', (chat_id, actual_module, visibility))
+                graph = {'rowid': r['lastrowid'], 'visibility': visibility}
+            elif len(all_graphs) == 1:
+                graph = all_graphs[0]
+            else:
+                raise AssertionError
+            
+            if my_simple_sql_dict(''' select rowid from LocationDistanceCurrentGraphChat where chat_id=? ''', (chat_id, )):
+                my_simple_sql_dict(''' update LocationDistanceCurrentGraphChat set graph_id=? where chat_id=? ''', (graph['rowid'], chat_id, ))
+            else:
+                my_simple_sql_create(''' insert into LocationDistanceCurrentGraphChat(graph_id, chat_id) VALUES(?,?)''', (graph['rowid'], chat_id, ))
+            
+        return await send(f"Current graph: {locationdistance.get_current_graph(chat_id)}")
+
 
 async def whereisanswer_responder(msg:str, send: AsyncSend, *, update, context):
     reply = update_get_reply(update)
@@ -1591,6 +1683,7 @@ def simple_sql_args(text, args, *, connection):
     return simple_sql((text, args), connection=connection)
 
 SimpleSqlModifyReturn = TypedDict('SimpleSqlModifyReturn', {'rowcount': int})
+SimpleSqlCreateReturn = TypedDict('SimpleSqlModifyReturn', {'lastrowid': int})
 
 def simple_sql_modify(query, *, connection=None) -> SimpleSqlModifyReturn:
     conn = connection
@@ -1605,8 +1698,24 @@ def simple_sql_modify(query, *, connection=None) -> SimpleSqlModifyReturn:
         cursor.execute(*query).fetchall()
         return SimpleSqlModifyReturn(rowcount=cursor.rowcount)
 
+def simple_sql_create(query, *, connection=None) -> SimpleSqlCreateReturn:
+    conn = connection
+    assert isinstance(query, (tuple, list))
+    assert isinstance(query[1], (tuple, list))
+    if conn:
+        cursor = conn.cursor()
+        cursor.execute(*query)
+        return SimpleSqlCreateReturn(lastrowid=cursor.lastrowid)
+    with sqlite3.connect("db.sqlite") as conn:
+        cursor = conn.cursor()
+        cursor.execute(*query)
+        return SimpleSqlCreateReturn(lastrowid=cursor.lastrowid)
+
 def simple_sql_modify_args(text, args, *, connection):
     return simple_sql_modify((text, args), connection=connection)
+
+def simple_sql_create_args(text, args, *, connection):
+    return simple_sql_create((text, args), connection=connection)
 
 def simple_sql_dict(query, *, connection=None):
     conn = connection
@@ -6346,6 +6455,14 @@ def migration22():
         conn.execute('create table LocationDistanceEdge(chat_id, source, dest, distance)')
         conn.execute('end transaction')
 
+def migration23():
+    with sqlite3.connect('db.sqlite') as conn:
+        conn.execute('begin transaction')
+        conn.execute('create table LocationDistanceGraph(name, visibility, chat_id)')
+        conn.execute('create table LocationDistanceEdgeGraphRelation(name, visibility, chat_id)')
+        conn.execute('create table LocationDistanceCurrentGraphChat(chat_id, graph_id REFERENCES LocationDistanceGraph(rowid))')
+        conn.execute('end transaction')
+
 def get_latest_euro_rates_from_api() -> json:
     import requests
     from telegram_settings_local import FIXER_TOKEN
@@ -7281,8 +7398,7 @@ if __name__ == '__main__':
     application.add_handler(CommandHandler('thereis', thereis))
     application.add_handler(CommandHandler('delthereis', delthereis))
     application.add_handler(CommandHandler('delwhereis', delthereis))
-    application.add_handler(CommandHandler('locationinfo', locationinfo))
-    application.add_handler(CommandHandler('listlocationinfo', listlocationinfo))
+    application.add_handler(CommandHandler('locationinfo', locationdistance.locationinfo))
     application.add_handler(CommandHandler('distfrom', distfrom))
     application.add_handler(CommandHandler('pathfrom', pathfrom))
     application.add_handler(ConversationHandler(
