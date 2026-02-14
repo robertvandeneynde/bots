@@ -504,8 +504,10 @@ class locationdistance:
 
         chat_id = update.effective_chat.id
         with sqlite3.connect('db.sqlite') as conn:
+            conn.execute('begin transaction')
             for source, dest, distance in edges:
                 locationdistance.save_location_distance(chat_id, source, dest, distance, conn)
+            conn.execute('end transaction')
 
         return await send(f'Edges modified: {len(edges)}')
 
@@ -522,14 +524,12 @@ class locationdistance:
         return await send(' //\n'.join(f"{source} / {dest} / {distance}" for source, dest, distance in edges) or '/')
 
     def save_location_distance(chat_id, source, dest, distance, conn):
-        conn.execute('begin transaction')
         if distance == 'delete':
             conn.execute('delete from LocationDistanceEdge where chat_id = ? and (LOWER(source) = LOWER(?) and LOWER(dest) = LOWER(?) or LOWER(dest) = LOWER(?) and LOWER(source) = LOWER(?))', (chat_id, source, dest, source, dest))
         elif conn.execute('select count(*) from LocationDistanceEdge where chat_id = ? and (LOWER(source) = LOWER(?) and LOWER(dest) = LOWER(?) or LOWER(dest) = LOWER(?) and LOWER(source) = LOWER(?))', (chat_id, source, dest, source, dest)).fetchone()[0] == 0:
             conn.execute('insert into LocationDistanceEdge(chat_id, source, dest, distance) values (?, ?, ?, ?)', (chat_id, source, dest, distance))
         else:
             conn.execute('update LocationDistanceEdge set distance = ? where chat_id = ? and (LOWER(source) = LOWER(?) and LOWER(dest) = LOWER(?) or LOWER(dest) = LOWER(?) and LOWER(source) = LOWER(?))', (distance, chat_id, source, dest, source, dest))
-        conn.execute('end transaction')
     
     def get_current_graph(chat_id, connection=None):
         my_simple_sql = partial(simple_sql_args, connection=connection)
