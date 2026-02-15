@@ -1,5 +1,6 @@
 from __future__ import annotations
 import logging
+from types import CoroutineType
 from telegram import Update, Message, Chat, InlineKeyboardMarkup, InlineKeyboardButton
 from telegram.ext import ApplicationBuilder, CallbackContext, CommandHandler, MessageHandler, ContextTypes, CallbackQueryHandler
 from telegram.ext import filters
@@ -7,7 +8,7 @@ from telegram_settings_local import TOKEN
 from telegram_settings_local import FRIENDS_USER
 from telegram_settings_local import SPECIAL_ENTITIES
 
-from typing import Callable, Awaitable, Tuple, Union, Iterable, Literal, TypedDict, NamedTuple, Optional
+from typing import Any, Callable, Awaitable, Tuple, Union, Iterable, Literal, TypedDict, NamedTuple, Optional
 
 import json
 from dataclasses import dataclass
@@ -1341,7 +1342,7 @@ def get_or_empty(L: list, i:int) -> str | object:
 
 def make_read_my_settings(update: Update, context: CallbackContext=None):
     from functools import partial
-    return partial(read_settings, id=update.effective_message.from_user.id, settings_type='user')
+    return partial(read_settings, id=update.effective_user.id, settings_type='user')
 
 def make_read_chat_settings(update: Update, context: CallbackContext=None):
     from functools import partial
@@ -2409,7 +2410,7 @@ def raise_error(error):
     raise error
 
 def induce_my_timezone_from_update(update):
-    return induce_my_timezone(user_id=update.effective_message.from_user.id, chat_id=update.effective_chat.id)
+    return induce_my_timezone(user_id=update.effective_user.id, chat_id=update.effective_chat.id)
 
 def induce_my_timezone(*, user_id, chat_id):
     if tz := get_my_timezone(user_id):
@@ -2780,7 +2781,7 @@ async def addschedule(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # Later commit: do_event_admin_check('add', setting=read_chat_settings('event.admins'), user_id=update.effective_user.id)
 
-    source_user_id = update.effective_message.from_user.id
+    source_user_id = update.effective_user.id
     chat_id = update.effective_chat.id
     tz = induce_my_timezone_from_update(update)
 
@@ -3018,7 +3019,7 @@ async def add_event(update: Update, context: CallbackContext):
     infos_event = {k.lower():v for k,v in infos_event.items()}
     CanonInfo = add_event_canon_infos(infos_event=infos_event)
 
-    source_user_id = update.effective_message.from_user.id
+    source_user_id = update.effective_user.id
     chat_id = update.effective_chat.id
 
     required_time = do_if_setting_on(read_chat_settings('event.addevent.required_time'))
@@ -5484,7 +5485,7 @@ async def mytimezone(update: Update, context: CallbackContext):
 
     if not context.args:
         # get timezone
-        tz = get_my_timezone_from_timezone_table(update.effective_message.from_user.id)
+        tz = get_my_timezone_from_timezone_table(update.effective_user.id)
         base_text = ("You don't have any timezone set.\n"
                      "Use /mytimezone Continent/City to set it.\n"
                      "Example: /mytimezone Europe/Brussels\n"
@@ -5515,7 +5516,7 @@ async def mytimezone(update: Update, context: CallbackContext):
                     raise e
         else:
             raise default_error
-        set_my_timezone(update.effective_message.from_user.id, tz)
+        set_my_timezone(update.effective_user.id, tz)
         return await send("Your timezone is now: {}".format(tz))
 
 async def timezonealias(update: Update, context: CallbackContext):
@@ -5601,6 +5602,128 @@ def remove_dup_keep_order(it):
         if x not in S:
             S.add(x)
             yield x
+
+async def menu(update, context):
+    send = make_send(update, context)
+    keyboard = [
+        [
+            InlineKeyboardButton("Help", callback_data="cmd:help")
+        ],
+        [
+            InlineKeyboardButton("My timezone", callback_data="cmd:mytimezone"),
+            InlineKeyboardButton("Chat timezone", callback_data="cmd:chattimezone"),
+        ],
+        [
+            InlineKeyboardButton("User Settings", callback_data="cmd:mysettings"),
+            InlineKeyboardButton("Delete user settings", callback_data="cmd:delsettings_command")
+        ],
+        [
+            InlineKeyboardButton("Chat settings", callback_data="cmd:chatsettings"),
+            InlineKeyboardButton("Delete chat settings", callback_data="cmd:delchatsettings")
+        ],
+        [
+            InlineKeyboardButton("List events", callback_data="cmd:listdays"),
+            InlineKeyboardButton("Next event", callback_data="cmd:nextevent"),
+            InlineKeyboardButton("Last event", callback_data="cmd:lastevent")
+        ],
+        [
+            InlineKeyboardButton("Today's events", callback_data="cmd:today"),
+            InlineKeyboardButton("Tomorrow's events", callback_data="cmd:tomorrow")
+        ],
+        [
+            InlineKeyboardButton("Add event", callback_data="cmd:addevent"),
+            InlineKeyboardButton("Interactive Add event", callback_data="cmd:iaddevent"),
+        ],
+        [
+            InlineKeyboardButton("Select event", callback_data="cmd:selectevent"),
+            InlineKeyboardButton("Delete event", callback_data="cmd:delevent"),
+        ],
+        [
+            InlineKeyboardButton("Event: Follow another chat", callback_data="cmd:eventfollow"),
+            InlineKeyboardButton("Event: Accept a follower", callback_data="cmd:eventacceptfollow")
+        ],
+        [
+            InlineKeyboardButton("Event: Delete a chat you follow", callback_data="cmd:deleventfollow"),
+            InlineKeyboardButton("Event: Delete a follower", callback_data="cmd:deleventacceptfollow"),
+        ],
+        [
+            InlineKeyboardButton("Close menu", callback_data="cmd:closemenu"),
+        ],
+    ]
+    await send("The main menu\nChoose a command", reply_markup=InlineKeyboardMarkup(keyboard))
+
+async def menu_button_handler(update, context):
+    query = update.callback_query
+    await query.answer()
+    if not query.data.startswith("cmd:"):
+        return
+    cmd = query.data.split(":", 1)[1]
+
+    @dataclass
+    class HandlerInfo:
+        function: Any
+        params: list
+
+    handlers = {
+        'help': help,
+        'mytimezone': mytimezone,
+        'mysettings': mysettings,
+        'delsettings_command': HandlerInfo(
+            partial(settings_command, accepted_settings=ACCEPTED_SETTINGS_USER, settings_type='user', command_name='mysettings delete'),
+            ['delete'],
+        ),
+        'delchatsettings': HandlerInfo(
+            partial(settings_command, accepted_settings=ACCEPTED_SETTINGS_CHAT, settings_type='chat', command_name='chatsettings delete'),
+            ['delete'],
+        ),
+        'addevent': add_event,
+        'addschedule': addschedule,
+        'delevent': NotImplemented,  # delevent,
+        'iaddevent': NotImplemented, # InteractiveAddEvent.ask_when,
+        'selectevent': NotImplemented,
+        'nextevent': next_event,
+        'lastevent': last_event,
+        'listdays': list_days,
+        'listevents': list_events,
+        'listtoday': list_today,
+        'today': list_today,
+        'tomorrow': partial(list_days_or_today, mode='tomorrow', relative=False),
+        'timezonealias': timezonealias,
+        'listallsettings': listallsettings,
+        'chatsettings': chatsettings,
+        # 'delchatsettings': del_chat_settings,
+        'chattimezone': HandlerInfo(
+            chatsettings,
+            ['event.timezones'],
+        ),
+        'closemenu': None,
+        'menu': menu
+    }
+
+    if cmd == 'closemenu':
+        await query.delete_message()
+        return
+
+    handler_info = handlers.get(cmd)
+    if not handler_info:
+        return await make_send(update, context)(f"/{cmd} is not supported")
+    
+    if handler_info is NotImplemented:
+        send = make_send(update, context)
+        return await send("Not Implemented yet")
+
+    if isinstance(handler_info, HandlerInfo):
+        fn, new_args = handler_info.function, handler_info.params or []
+    else:
+        fn, new_args = handler_info, []
+
+    old_args = getattr(context, 'args', None)
+    context.args = new_args 
+    try:
+        await fn(update,context)
+    finally:
+        context.args = old_args
+
 
 @dataclass
 class SettingsSpecs:
@@ -5903,7 +6026,12 @@ async def settings_command(update: Update, context: CallbackContext, *, command_
             args = Args[:]
             action = "getset"
 
-    key, *rest = args
+    try:
+        key, *rest = args
+    except ValueError:
+        return await send_html(
+            'You must provide some settings:\n\n'
+            f'- Type <code>/listallsettings {settings_type}</code> for a list of all settings\n')
 
     if key not in accepted_settings:
         return await send_html(
@@ -5942,7 +6070,7 @@ async def settings_command(update: Update, context: CallbackContext, *, command_
         value = rest[0] if rest else None
 
     if settings_type == 'user':
-        id = update.effective_message.from_user.id
+        id = update.effective_user.id
     elif settings_type == 'chat':
         id = update.effective_chat.id
     else:
@@ -5965,7 +6093,7 @@ async def delsettings_command(update:Update, context: CallbackContext, *, key: s
     send = make_send(update, context)
     
     if settings_type == 'user':
-        id = update.effective_message.from_user.id
+        id = update.effective_user.id
     elif settings_type == 'chat':
         id = update.effective_chat.id
     else:
@@ -6806,6 +6934,7 @@ COMMAND_DESC = {
     'printlist': 'Print a list using dashes',
     'dirlist': 'List all lists',
     'dellist': 'Delete a list from all lists',
+    'menu': 'Menu with buttons'
 }
 
 import itertools
@@ -6951,6 +7080,7 @@ COMMAND_LIST_HELP = (
     CommandInfoSpecs('printlist', 'list'),
     CommandInfoSpecs('dirlist', 'list'),
     CommandInfoSpecs('dellist', 'list'),
+    CommandInfoSpecs('menu', 'menu'),
 )
 
 COMMAND_LIST_HELP_DICT = {x.name: x for x in COMMAND_LIST_HELP}
@@ -7122,6 +7252,9 @@ if __name__ == '__main__':
     application.add_handler(CommandHandler('disable', partial(implicit_setting_command, type='disable')))
     application.add_handler(CommandHandler('only', partial(implicit_setting_command, type='only')))
     application.add_handler(CommandHandler('known', partial(implicit_setting_command, type='known')))
+
+    application.add_handler(CommandHandler('menu', menu))
+    application.add_handler(CallbackQueryHandler(menu_button_handler, pattern="^cmd:"))
 
     for i in irange(1, 7):
         application.add_handler(CommandHandler(DatetimeText.days_english[i-1], partial(day_of_week_command, n=i), filters=DayOfWeekFilter()))
