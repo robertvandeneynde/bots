@@ -14,6 +14,7 @@ import json
 from dataclasses import dataclass
 
 import enum
+import html
 class FriendsUser(enum.StrEnum):
     FLOCON = 'flocon'
     KOROLEVA_LION = 'koroleva-lion'
@@ -272,7 +273,7 @@ async def locationdistance_responder(msg:str, send: AsyncSend, *, update, contex
         loc = match.group(1)
         dists = location_distance_apply(loc, chat_id=update.effective_chat.id).dists
         if len(dists) > 1:
-            return await send('\n'.join(f"• {dist} from {name}" for name, dist in dists.items()))
+            return await send('\n'.join(f"• {dist} | {name}" for name, dist in dists.items()))
 
 def split_based_on_indices(L, indices):
     if len(indices) == 0:
@@ -319,7 +320,7 @@ async def distfrom(update, context):
     else:
         display = list(map(str.lower, targets))
 
-    return await send('\n'.join(f"• {dists[name]} from {name}" for name in display))
+    return await send('\n'.join(f"• {dists[name]} | {name}" for name in display))
 
 
 async def pathfrom(update, context):
@@ -345,7 +346,7 @@ async def pathfrom(update, context):
     dists, prevs = dijkstra.dists, dijkstra.prevs
 
     if targets is None:
-        return await send('\n'.join(f"• {dists[name]} to {name} (by {prevs.get(name)})" for name in dists))
+        return await send('\n'.join(f"• {dists[name]} | {name} (by {prevs.get(name)})" for name in dists))
 
     c = targets[0].lower()
     path = L = [c]
@@ -376,7 +377,6 @@ def location_distance_apply(loc, *, chat_id, targets=None):
     dists = {}
     prevs = {}
     while open_list:
-        print(open_list, dists)
         current_name, current_dist = min(open_list.items(), key=lambda t:t[1])
         del open_list[current_name]
 
@@ -558,7 +558,7 @@ class ListLang:
     DYNAMIC_TYPES = [
         'flashcard.current',
         # 'event.today',
-        # 'flashcard.page something',
+        'flashcard.page',
     ]
 
     POSSIBLE_TYPES = [
@@ -586,7 +586,7 @@ async def list_responder(msg: str, send: AsyncSend, *, update, context):
     read_chat_settings = make_read_chat_settings(update, context)
 
     RE = ListLangRegexes
-    
+
     if (match := RE.ONE_LINE.fullmatch(msg)) or (match_multi := RE.OP_MULTI_LINE.fullmatch(msg)) or (match_multi_equals_plus_type := RE.MULTI_EQUALS_PLUS_TYPE.fullmatch(msg)):
         if match: # one line operation
             list_name, _, operation_raw, parameters = match.groups()
@@ -637,17 +637,13 @@ async def list_responder(msg: str, send: AsyncSend, *, update, context):
                     force_creation = False
 
                 re_spaces = '\s+'
+                re_spaces0 = '\s*'
                 re_group = lambda x: '(' + x + ')'
-                re_letters = '\p{L}+'
+                re_list_name = r'\p{L}(?:\p{L}|[-_\d])*' # examples: abc, a_b_c, a-b-c, abc34
                 re_bits = lambda *args: ''.join(args)
+                re_type_id = r'\p{L}(?:\p{L}|[.])*'  # examples: abc, abc.def
 
-                if dynamic_list_match := requested_type /fullmatches/ ('dynamic\s+((\p{L}|[.])+)'):
-                    dynamic_list = dynamic_list_match.group(1)
-                    if not(dynamic_list in ('event.today', 'flashcard.current')):
-                        raise UserError(f"Dynamic list {dynamic_list} is not implemented")
-                    type_list = ('dynamic', dynamic_list)
-                
-                elif alias_list_match := requested_type /fullmatchesI/ re_bits('alias', re_spaces, re_group(re_letters)):
+                if alias_list_match := requested_type /fullmatchesI/ re_bits('alias', re_spaces, re_group(re_list_name)):
                     target_alias = alias_list_match.group(1)
                     type_list = ('alias', target_alias)
 
@@ -657,24 +653,36 @@ async def list_responder(msg: str, send: AsyncSend, *, update, context):
                     # name = [ ]
                     type_list = 'list'
 
-                elif param_match := regex.compile('copy\s*((of|from)\s*)?(\p{L}+)').fullmatch(requested_type):
+                elif param_match := regex.compile(f'copy\s+((of|from)\s*)?({re_list_name})').fullmatch(requested_type):
                     # name = copy of other
                     # name = copy from other
                     _, _, copy_from_name = param_match.groups()
                     type_list = ('copy', copy_from_name)
 
-                elif param_match := regex.compile('(tasktree)\s*((of|from)\s*)?(\p{L}+)').fullmatch(requested_type):
+                elif param_match := regex.compile('(tasktree)\s+((of|from)\s*)?({re_list_name})').fullmatch(requested_type):
                     copy_from_type, _, _, copy_from_name = param_match.groups()
                     type_list = (copy_from_type, copy_from_name)
 
                 elif requested_type in set(ListLang.POSSIBLE_TYPES):
                     type_list = requested_type
 
-                else:
-                    if requested_type /fullmatches_with_flags(re.I)/ "\{L}+":  
-                        raise UserError(f"List creation of type {requested_type!r} not implemented, use = list, for example")
-                    else:
+                elif general_match := requested_type /fullmatchesI/ f'({re_type_id})(?:{re_spaces}(.*))?':
+                    general_type, general_args = general_match.group(1) or '', general_match.group(2) or ''
+                    general_type = general_type.lower()
+                    general_args = general_args.strip()
+
+                    if general_type in ListLang.DYNAMIC_TYPES:
+                        if general_type == 'flashcard.page':
+                            if ' ' in general_args:
+                                raise UserError("Not a page format")
+                    
+                        type_list = ('dynamic', general_type) if not general_args else ('dynamic', general_type, general_args)
+                    elif general_args:
                         raise DoNotAnswer
+                    else:
+                        raise UserError(f"List creation of type {requested_type!r} not implemented, use = list, for example")
+                else:
+                    raise DoNotAnswer
 
                 type_list: str | tuple[str, ...]
                 force_creation: bool
@@ -712,7 +720,7 @@ async def list_responder(msg: str, send: AsyncSend, *, update, context):
 
                     list_type = listsmodule.get_list_type(**P())
                     list_type_is_tree = list_type in ('tree', 'tasktree')
-                    dynamic_match = list_type /fullmatches/ ('dynamic' + re.escape('.') + '(.*)')
+                    dynamic_match = list_type /fullmatchesI/ ('dynamic' + re.escape('.') + '(.*)')
                     dynamic_list = dynamic_match.group(1) if dynamic_match else None
                     alias_match = list_type /fullmatches/ ('alias' + re.escape('.') + '(.*)')
                     alias_list = alias_match.group(1) if alias_match else None
@@ -725,17 +733,15 @@ async def list_responder(msg: str, send: AsyncSend, *, update, context):
 
                     did_edit = True
                     if operation in ('add', 'append'):
-                        match list_type:
-                            case 'tasklist' | 'tasktree':
-                                modified_value = listsmodule.make_task(parameters)
-                                listsmodule.addtolist.do_it(**P(), value=modified_value)
-                            case 'list' | 'tree':
-                                listsmodule.addtolist.do_it(**P(), value=parameters)
-                            case _:
-                                if dynamic_list:
-                                    listsmodule.dynamic_add.do_it(**P(), value=parameters, dynamic_list=dynamic_list)
-                                else:
-                                    raise DoNotAnswer
+                        if list_type in ('tasklist', 'tasktree'):
+                            modified_value = listsmodule.make_task(parameters)
+                            listsmodule.addtolist.do_it(**P(), value=modified_value)
+                        elif list_type in ('list', 'tree'):
+                            listsmodule.addtolist.do_it(**P(), value=parameters)
+                        elif dynamic_list:
+                            listsmodule.dynamic_add.do_it(**P(), value=parameters, dynamic_list=dynamic_list)
+                        else:
+                            raise DoNotAnswer
                                 
                     elif operation in ('print', 'list', ):
                         space_between_lines = do_if_setting_on(read_chat_settings('list.space_between_lines'))
@@ -753,6 +759,8 @@ async def list_responder(msg: str, send: AsyncSend, *, update, context):
                     elif operation in ('clear', ):
                         if list_type in ('list', 'tree', 'tasklist', 'tasktree'):
                             listsmodule.clearlist.do_it(conn=conn, name=list_name, chat_id=chat_id)
+                        elif dynamic_list:
+                            listsmodule.clear_dynamic.do_it(**P(), dynamic_list=dynamic_list)
                         else:
                             raise DoNotAnswer
 
@@ -1457,7 +1465,7 @@ async def dict_command(update: Update, context: CallbackContext, *, engine:Liter
     import html
     if display_html:
         send_html = partial(send, parse_mode='HTML', disable_web_page_preview=len(words) > 2)
-        return await send_html(' | '.join(f'<a href="{html.escape(url(x))}">{x}</a>' for x in words))
+        return await send_html(' | '.join(f'<a href="{html.escape(url(x))}">{html.escape(x)}</a>' for x in words))
     else:
         return await send('\n\n'.join(url(x) for x in words))
     
@@ -1511,11 +1519,30 @@ def get_current_flashcard_page_id(*, chat_id, connection=None) -> dict:
     def op(conn):
         results = conn.execute("select rowid from flashcardpage where chat_id=? and current=1", (chat_id,)).fetchall()
         if not results:
-            return create_default_flashcard_page(chat_id=chat_id, connection=connection)
+            return create_default_flashcard_page(chat_id=chat_id, connection=conn)
         else:
             page_id, = only_one(results)
             return page_id 
 
+    return db_connect_or_use(connection, op)
+
+def get_named_flashcard_page_id(*, page_name, chat_id, connection=None):
+    def op(conn):
+        results = conn.execute('select rowid from flashcardpage where chat_id=? and name=?', (chat_id, page_name)).fetchall()
+        if not results:
+            return create_named_flashcard_page(page_name=page_name, chat_id=chat_id, connection=conn)
+        else:
+            page_id, = only_one(results)
+            return page_id
+        
+    return db_connect_or_use(connection, op)
+
+def create_named_flashcard_page(*, page_name, chat_id, connection=None):
+    def op(conn):
+        cursor = conn.cursor()
+        cursor.execute("insert into flashcardpage(chat_id, name, current) values (?,?,?)", (chat_id, page_name, 0))
+        return cursor.lastrowid
+    
     return db_connect_or_use(connection, op)
 
 def create_default_flashcard_page(*, chat_id, connection=None):
@@ -1531,11 +1558,17 @@ def db_connect_or_use(connection, op):
         with sqlite3.connect("db.sqlite") as conn:
             return op(conn)
     else:
-        return op(conn)
+        return op(connection)
 
 def save_flashcard(sentence, translation, *, page_id, connection=None):
     query = ('insert into Flashcard(sentence, translation, page_id) values (?,?,?)', (sentence, translation, page_id))
     simple_sql(query, connection=connection)
+
+def get_connection(connection=None):
+    if connection is None:
+        return sqlite3.connect('db.sqlite')
+    else:
+        return connection
 
 def simple_sql(query, *, connection=None):
     conn = connection
@@ -1545,6 +1578,9 @@ def simple_sql(query, *, connection=None):
         return conn.execute(*query).fetchall()
     with sqlite3.connect("db.sqlite") as conn:
         return conn.execute(*query).fetchall()
+
+def simple_sql_args(text, args, *, connection):
+    return simple_sql((text, args), connection=connection)
 
 SimpleSqlModifyReturn = TypedDict('SimpleSqlModifyReturn', {'rowcount': int})
 
@@ -1561,6 +1597,9 @@ def simple_sql_modify(query, *, connection=None) -> SimpleSqlModifyReturn:
         cursor.execute(*query).fetchall()
         return SimpleSqlModifyReturn(rowcount=cursor.rowcount)
 
+def simple_sql_modify_args(text, args, *, connection):
+    return simple_sql_modify((text, args), connection=connection)
+
 def simple_sql_dict(query, *, connection=None):
     conn = connection
     assert isinstance(query, (tuple, list))
@@ -1575,26 +1614,58 @@ def simple_sql_dict(query, *, connection=None):
         conn.row_factory = sqlite3.Row
         return conn.execute(*query).fetchall()
 
+def simple_sql_dict_args(text, args, *, connection):
+    return simple_sql_dict((text, args), connection=connection)
+
 async def practiceflashcards(update, context):
     send = make_send(update, context)
 
+    async def print_usage():
+        return await send("Usage:\n/practiceflashcards")
+
+    args, kwargs = clean_kwarg_args(context.args)
+    Args = InfiniteEmptyList(args)
+
     try:
-        n = None
-        if 'reversed' in context.args:
+        if n := kwargs.get('n'):
+            n = int(only_one(n))
+        elif Args[0]:
+            n = int(Args[0])
+        else:
+            n = None
+        
+        if {'reversed', 'reverse'} & kwargs.keys():
             direction = 'reversed'
         else:
             direction = 'normal'
+
+        if page_name := kwargs.get('page'):
+            page_name = only_one(page_name)
+        else:
+            page_name = flashcard.Current
+
     except UsageError:
-        return await send("Usage:\n/practiceflashcards [n] [days]")
+        await print_usage()
+        return ConversationHandler.END
     
     chat_id = update.effective_chat.id
-    current_page_id = get_current_flashcard_page_id(chat_id=chat_id)
-    query = ('''select sentence, translation from flashcard inner join flashcardpage on flashcard.page_id = flashcardpage.rowid
-                where flashcardpage.rowid=?''', (current_page_id, ))
-    lines = simple_sql(query)
+
+    with get_connection() as conn:
+        DbChatInfo = dict(chat_id=chat_id, connection=conn)
+        my_simple_sql = partial(simple_sql_args, connection=conn)
+        my_simple_sql_dict = partial(simple_sql_dict_args, connection=conn)
+        
+        page_id = (get_current_flashcard_page_id(**DbChatInfo) if page_name is flashcard.Current else
+                   get_named_flashcard_page_id(page_name=page_name, **DbChatInfo))
+        
+        query = ('''select sentence, translation from flashcard inner join flashcardpage on flashcard.page_id = flashcardpage.rowid
+                    where flashcardpage.rowid=?''', (page_id, ))
+        lines = my_simple_sql(*query)
 
     if not lines:
-        return await send(f"No flashcards for current page")
+        page_info = only_one(my_simple_sql_dict('select rowid, name, current from flashcardpage where rowid=?', (page_id, )))
+        await send(f"No flashcards for page {page_info['name']}")
+        return ConversationHandler.END
     
     import random
     sample = random.sample(lines, n if n is not None else len(lines))
@@ -1639,12 +1710,18 @@ def make_send_save_info(update: Update, context: CallbackContext) -> SendSaveInf
 
 async def switchpageflashcard(update, context):
     send = make_send(update, context)
+
+    chat_id = update.effective_chat.id
+
     try:
         page_name, = context.args
     except:
-        return await send("Usage: /switchpageflashcard page_name")
+        with get_connection() as conn:
+            my_simple_sql_args = partial(simple_sql_args, connection=conn)
+            page_id = get_current_flashcard_page_id(chat_id=chat_id, connection=conn)
+            page_name, = only_one(my_simple_sql_args('select name from flashcardpage where rowid=?', (page_id, )))
 
-    chat_id = update.effective_chat.id
+            return await send(f"Usage: /switchpageflashcard page_name\nCurrent page: {page_name}")
 
     with sqlite3.connect('db.sqlite') as conn:
         conn.execute("begin transaction")
@@ -1665,22 +1742,61 @@ async def switchpageflashcard(update, context):
         await send(f"Your current flashcard page is now {page_name!r}")
 
 class flashcard:
-    def print_current_flashcards(chat_id):
+    Current = object()
+
+    def parse_and_add(value, *, chat_id, page_name:str | Current, connection):
+        conn = connection  
+
+        if len(parsed := value.split()) == 2:
+            sentence, translation = map(str.strip, parsed)
+        elif len(parsed := value.split('=', maxsplit=1)) == 2:
+            sentence, translation = map(str.strip, parsed)
+        elif len(parsed := value.split('/', maxsplit=1)) == 2:
+            sentence, translation = map(str.strip, parsed)
+        else:
+            raise UserError('Invalid flashcard')
+                
+        page_id = (get_current_flashcard_page_id(chat_id=chat_id) if page_name is flashcard.Current else
+                   get_named_flashcard_page_id(page_name=page_name, chat_id=chat_id, connection=conn))
+        
+        save_flashcard(sentence, translation, page_id=page_id, connection=conn)
+
+    def print_current_flashcards(chat_id, connection):
         page_id = get_current_flashcard_page_id(chat_id=chat_id)
-        results = simple_sql((
+        return flashcard.print_page_flashcards_from_id(chat_id=chat_id, page_id=page_id, connection=connection)
+    
+    def print_page_flashcards(chat_id, page_name, connection):
+        page_id = get_named_flashcard_page_id(page_name=page_name, chat_id=chat_id, connection=connection)
+        return flashcard.print_page_flashcards_from_id(chat_id=chat_id, page_id=page_id, connection=connection)
+
+    def print_page_flashcards_from_id(chat_id, page_id, connection):
+        my_simple_sql = partial(simple_sql, connection=connection)
+
+        results = my_simple_sql((
             ''' select flashcard.sentence, flashcard.translation from flashcard inner join flashcardpage on flashcard.page_id=flashcardpage.rowid
                 where flashcardpage.chat_id=? and flashcardpage.rowid=?
             ''', (chat_id, page_id)))
 
         return '\n'.join(f"{sentence}\n→ {translation}" for sentence, translation in results) or '/'
+    
+    def enumerate_flashcards(*, page_name:str | Current, chat_id, connection):
+        my_simple_sql = partial(simple_sql, connection=connection)
 
-    def enumerate_current_flashcards(chat_id):
-        page_id = get_current_flashcard_page_id(chat_id=chat_id)
-        results = simple_sql((
+        page_id = (get_current_flashcard_page_id(chat_id=chat_id) if page_name is flashcard.Current else
+                   get_named_flashcard_page_id(chat_id=chat_id, page_name=page_name))
+        
+        results = my_simple_sql((
             ''' select flashcard.sentence, flashcard.translation from flashcard inner join flashcardpage on flashcard.page_id=flashcardpage.rowid
                 where flashcardpage.chat_id=? and flashcardpage.rowid=?
             ''', (chat_id, page_id)))
+        
         return '\n'.join(f"{n}. {sentence}\n→ {translation}" for n, (sentence, translation) in enumerate(results, start=1)) or '/'
+    
+    def clear_current_flashcards(chat_id, connection):
+        my_simple_sql = partial(simple_sql_args, connection=connection)
+
+        page_id = get_current_flashcard_page_id(chat_id=chat_id)
+        my_simple_sql('''DELETE FROM flashcard where page_id=?''', (page_id, ))
 
 async def listflashcards(update, context):
     send = make_send(update, context)
@@ -2190,6 +2306,8 @@ class ParseEvents:
         out: list[ParsedEventMiddleNoName] = []
         it = args
         while it:
+            before = list(it)
+
             each_activated = False
             It = InfiniteEmptyList(it)
             if It[0].lower() in ('each', 'every', 'chaque', 'le'):
@@ -2201,17 +2319,13 @@ class ParseEvents:
                 each_activated_by = ' '.join(It[0:2])
                 it = it[2:]
                 
-            bit = it[0]
-
             event, it = cls.parse_event_timed(it)
             tz = event.timezone or default_tz
 
             try:
                 DatetimeText.to_date_range(event.date, tz=tz)
             except UnknownDateError:
-                it = [bit] + it
-                if each_activated:
-                    it = each_activated_by.split() + it
+                it = before
                 break
 
             if each_activated:
@@ -2460,6 +2574,8 @@ async def macro_event_follow(update, context):
         elif Args[1].lower() in ('sub', 'subscription'):
             context.args = tuple(Args[2:])
             return await renameeventfollow(update, context)
+
+        return await send('/eventfollow delete (follower|subscription')
     
     elif Args[0].lower() in ('list', ):
         if Args[1].lower() in ('followers', 'follower'):
@@ -2911,6 +3027,7 @@ async def add_event(update: Update, context: CallbackContext):
         parse_datetime_point(update, context, has_inline_kargs=has_inline_kwargs,
                              when_infos=CanonInfo.when_infos, what_infos=CanonInfo.what_infos, required_time=required_time)
     
+    initial_name = name
     if do_unless_setting_off(read_chat_settings('event.location.autocomplete')):
         name = update_name_using_locations(name, chat_id=chat_id)
 
@@ -2924,7 +3041,7 @@ async def add_event(update: Update, context: CallbackContext):
         simple_sql((''' insert into EventLinkAttr(event_id, link) VALUES (?,?)''', (new_event_id, infos_event['link'])))
 
     if do_unless_setting_off(read_chat_settings('event.location.autocomplete')):
-        implicit_thereis(what=name, chat_id=chat_id)
+        implicit_thereis(what=initial_name, chat_id=chat_id)
 
     await post_event(update, context, name=name, datetime=datetime, time=time, date_str=date_str, chat_timezones=chat_timezones, tz=tz, tz_explicit=tz_explicit, chat_id=chat_id, datetime_utc=datetime_utc, link=infos_event and infos_event.get('link'))
 
@@ -2989,6 +3106,7 @@ def update_name_using_locations(what, *, chat_id):
             long_location = None
 
         if long_location:
+            long_location = simplify_multi_line_location(long_location)
             return event.get('what') + ' @ ' + where + ' ' + '(' + long_location + ')'
         
     return what
@@ -3352,6 +3470,8 @@ class listsmodule:
                         raise UserError(f'List {copy_from_name!r} does not exist')  # transaction will rollback
                 case 'dynamic', dynamic_list:
                     actual_type = 'dynamic' + '.' + dynamic_list
+                case 'dynamic', dynamic_list, dynamic_list_params:
+                    actual_type = 'dynamic' + '.' + dynamic_list + ' ' + dynamic_list_params
                 case 'alias', alias_list:
                     actual_type = 'alias' + '.' + alias_list
                     if not listsmodule.list_exists(conn=conn, chat_id=chat_id, name=alias_list):
@@ -3369,6 +3489,9 @@ class listsmodule:
                     pass # nothing to do more
                     
                 case 'dynamic', _:
+                    pass
+
+                case 'dynamic', _, _:
                     pass
 
                 case 'alias', _:
@@ -3755,30 +3878,25 @@ class listsmodule:
             for node_rowid in itrees_rowid:
                 delete(node_rowid)
 
+    def dynamic_list_analyze(dynamic_list):
+        dyn_type, *dyn_params = dynamic_list.split(maxsplit=1)
+        return dyn_type if not dyn_params else (dyn_type, ' '.join(dyn_params))
     class dynamic_add(GeneralAction):
         @staticmethod
         def do_it(*, conn, chat_id, name, value, dynamic_list):
-            match dynamic_list:
+            match listsmodule.dynamic_list_analyze(dynamic_list):
                 case 'flashcard.current':
-                    parsed = value.split()
-                    if len(parsed) == 2:
-                        sentence, translation = map(str.strip, parsed)
-                    else:
-                        parsed = value.split('=', maxsplit=1)
-                        if len(parsed) == 2:
-                            sentence, translation = map(str.strip, parsed)
-                        else:
-                            parsed = value.split('/', maxsplit=1)
-                            if len(parsed) == 2:
-                                sentence, translation = map(str.strip, parsed)
-                            else:
-                                raise UserError('Invalid flashcard')
-                            
-                    page_id = get_current_flashcard_page_id(chat_id=chat_id)
-                    save_flashcard(sentence, translation, page_id=page_id, connection=conn)
-                    
+                    flashcard.parse_and_add(value, page_name=None, chat_id=chat_id, connection=conn)
+                
+                case 'flashcard.page', page_name:
+                    return flashcard.parse_and_add(value, page_name=page_name, chat_id=chat_id, connection=conn)
+
                 case 'event.today':
-                    pass
+                    raise UserError("Not implemented")
+
+                case _:
+                    raise UserError("Unknown dynamic type")
+                
     class addtolist(GeneralAction):
         @staticmethod
         def do_it(*, conn, chat_id, name, value):
@@ -3922,14 +4040,26 @@ class listsmodule:
                 await self.send(listsmodule.printlist.it(conn=conn, chat_id=self.get_chat_id(), name=name, space_between_lines=space_between_lines))
                 conn.execute('end transaction')
     
+    class clear_dynamic:
+        @staticmethod
+        def do_it(*, conn, chat_id, name, dynamic_list):
+            match dynamic_list:
+                case 'flashcard.current':
+                    return flashcard.clear_current_flashcards(chat_id=chat_id, connection=conn)
+                case _:
+                    raise UserError(f'Unknown dynamic list type {dynamic_list}')
+    
     class print_dynamic(GeneralAction):
         @staticmethod
         def it(*, conn, chat_id, name, parameters, dynamic_list):
             if parameters:
                 raise UserError("This dynamic list does not take parameters")
-            match dynamic_list:
+            
+            match listsmodule.dynamic_list_analyze(dynamic_list):
                 case 'flashcard.current':
-                    return flashcard.print_current_flashcards(chat_id=chat_id)
+                    return flashcard.print_current_flashcards(chat_id=chat_id, connection=conn)
+                case 'flashcard.page', page_name:
+                    return flashcard.print_page_flashcards(chat_id=chat_id, page_name=page_name, connection=conn)
                 case _:
                     raise UserError(f'Unknown dynamic list type {dynamic_list}')
     
@@ -3940,7 +4070,9 @@ class listsmodule:
                 raise UserError("This dynamic list does not take parameters")
             match dynamic_list:
                 case 'flashcard.current':
-                    return flashcard.enumerate_current_flashcards(chat_id=chat_id)
+                    return flashcard.enumerate_flashcards(page_name=page_name, chat_id=chat_id, connection=conn)
+                case 'flashcard.page', page_name:
+                    return flashcard.enumerate_flashcards(page_name=page_name, chat_id=chat_id, connection=conn)
                 case _:
                     raise UserError(f'Unknown dynamic list type {dynamic_list}')
                 
@@ -4559,7 +4691,7 @@ async def sleep_(update, context):
     from_dt, to_dt = sommeil(update.effective_message.text, command='sleep')
     await send(str(to_dt - from_dt))
 
-def parse_datetime_range(update, *, args, default="week"):
+def parse_datetime_range(update, *, args, default="week", tz=None):
     from datetime import date as Date, time as Time, datetime as Datetime
 
     when_2 = None
@@ -4573,7 +4705,7 @@ def parse_datetime_range(update, *, args, default="week"):
         raise UserError("<when> must be a day of the week, or a day of the month")
     
     time = Time(0, 0)
-    tz = induce_my_timezone_from_update(update)
+    tz = tz or induce_my_timezone_from_update(update)
 
     def make(when):
         beg_date, end_date = DatetimeText.to_date_range(when, tz=tz)
@@ -4706,6 +4838,13 @@ def do_if_setting_on(setting):
 def do_unless_setting_off(setting):
     return setting_on_off(setting, default=True)
 
+def simplify_multi_line_location(location):
+    if '\n' in location:
+        without_link = [v for v in location.splitlines() if not v /fullmatches/ "https?://[^\s]+"]
+        return ' / '.join(without_link)
+    else:
+        return location
+
 def enrich_location_with_db(events, *, chat_id):
     new_events = []
     for event in events:
@@ -4736,6 +4875,8 @@ def enrich_location_with_db(events, *, chat_id):
                 
                 if mapped_loc:
                     value, = only_one(mapped_loc)
+                    value = simplify_multi_line_location(value)
+                    
                     event_obj['where'] += f' ({value})'
                     Canon = add_event_canon_infos(infos_event=event_obj)
 
@@ -4757,16 +4898,16 @@ def get_all_chat_languages(update):
 def kwarg_prop_re_match(x: None|str, s):
     import regex
     X = regex.escape(x) if x is not None else r'\p{L}+'
-    if m := regex.compile(rf'[:]({X})|({X})[:]', re.I).fullmatch(s):
-        return m.group(1) or m.group(2)
+    if m := regex.compile(rf'[:]({X})|({X})[:]([^\s]*)', re.I).fullmatch(s):
+        return m.group(1) or m.group(2), m.group(3)
     else:
         return None
 
-def clean_kwarg_args(args):
+def clean_kwarg_args(args) -> tuple[list[str], dict[str, list[str]]]:
     D = dict()
     bits = [0]
     for i, x in enumerate(args):
-        if m := kwarg_prop_re_match(None, x):
+        if kwarg_prop_re_match(None, x):
             bits.append(i)
     bits.append(len(args))
 
@@ -4776,7 +4917,8 @@ def clean_kwarg_args(args):
     
     D = {}
     for p in parts[1:]:
-        D[kwarg_prop_re_match(None, p[0])] = p[1:]
+        mk, mv = kwarg_prop_re_match(None, p[0])
+        D[mk] = p[1:] if not mv else [mv] + p[1:]
     return parts[0], D
 
 async def list_days_or_today(
@@ -4829,18 +4971,26 @@ async def list_days_or_today(
     if kwargs.get('tz'):
         if kwargs['tz'] == ['chat']:
             tzs = read_chat_settings('event.timezones')
+        elif kwargs['tz'] == ['revchat']:
+            tzs = read_chat_settings('event.timezones')
+            if tzs:
+                tzs = list(reversed(tzs))
         else:
             tzs = list(map(partial(ZoneInfoOrAlias, chat_id=chat_id), kwargs['tz']))
     else:
-        tzs = None
+        if do_if_setting_on(read_chat_settings('event.list.display_all_timezones')):
+            tzs = read_chat_settings('event.timezones')
+        else:
+            tzs = None
 
     real_args = (args if mode == 'list' else
                  ('today',) if mode == 'today' else
                  ('tomorrow',) if mode == 'tomorrow' else 
                  (DatetimeText.days_english[dayofweek-1], ) if mode == 'dayofweek' else raise_error(AssertionError('mode must be a correct value')))
 
-    datetime_range = parse_datetime_range(update, args=real_args)
+    datetime_range = parse_datetime_range(update, args=real_args, tz=tzs[0] if tzs else None)
     beg, end, tz, when = (datetime_range[x] for x in ('beg_utc', 'end_utc', 'tz', 'when'))
+    tz = tzs[0] if tzs else tz
 
     strptime = DatetimeDbSerializer.strptime
     strftime = DatetimeDbSerializer.strftime
@@ -4916,10 +5066,10 @@ async def list_days_or_today(
             days_as_lines.append(
             f"{day_of_week.capitalize()} {date:%d/%m}\n"
             + "\n".join(
-                 f"""- <a href="{event_link}">{event_name}</a>""" if event_link and event_date.time() == Time(0, 0) else 
-                 f"""- <a href="{event_link}">{event_date:%H:%M}: {event_name}</a>""" if event_link and event_date.time() != Time(0, 0) else 
-                 f"""- {event_name}""" if event_date.time() == Time(0, 0) else 
-                 f"""- {event_date:%H:%M}: {event_name}"""
+                 f"""- <a href="{html.escape(event_link)}">{html.escape(event_name)}</a>""" if event_link and event_date.time() == Time(0, 0) else 
+                 f"""- <a href="{html.escape(event_link)}">{event_date:%H:%M}: {html.escape(event_name)}</a>""" if event_link and event_date.time() != Time(0, 0) else 
+                 f"""- {html.escape(event_name)}""" if event_date.time() == Time(0, 0) else 
+                 f"""- {event_date:%H:%M}: {html.escape(event_name)}"""
                 for n, (event_date, event_name, event_link) in enumerate(days[day], start=1)
             ))
         elif formatting in ('short', ):
@@ -4937,7 +5087,7 @@ async def list_days_or_today(
             days_as_lines.append(
                 f"{day_of_week.capitalize()} {date:%d/%m}\n"
                 + "\n".join(
-                    f"""- <a href="{event_link}">{event_pure_name}</a>"""
+                    f"""- <a href="{html.escape(event_link)}">{html.escape(event_pure_name)}</a>"""
                     for event_date, event_name, event_link in days[day]
                     for (event_pure_name, event_location) in [split_event_name_into_what_where(event_name)]
                 )
@@ -4964,7 +5114,7 @@ async def list_days_or_today(
     chat_timezones = read_chat_settings("event.timezones")
 
     if msg and chat_timezones and set(chat_timezones) != {tz}:
-        msg += '\n\n' + (f'Timezone: {tz}' if not tzs else f"Timezones: {' '.join(map(str, tzs))}")
+        msg += '\n\n' + (f'Timezone: {tz}' if not tzs or len(tzs) == 1 else f"Timezones: {' '.join(map(str, tzs))}")
 
     await send(msg or (
         "No events for the next 7 days !" if when == 'week' else
@@ -4975,12 +5125,8 @@ async def day_of_week_command(update, context, n):
     assert n in irange(1, 7)
     return await list_days_or_today(update, context, mode='dayofweek', mode_args={'dayofweek': n})
 
-# todo: use partial
-async def list_today(update: Update, context: CallbackContext, *, relative=False):
-    return await list_days_or_today(update, context, mode='today', relative=relative)
-
-async def list_days(update: Update, context: CallbackContext, relative=False, formatting='normal'):
-    return await list_days_or_today(update, context, mode='list', relative=relative, formatting=formatting)
+list_today = partial(list_days_or_today, mode='today')
+list_days = partial(list_days_or_today, mode='list')
 
 async def list_events(update: Update, context: CallbackContext, relative=False):
     send = make_send(update, context)
@@ -5020,6 +5166,13 @@ async def list_events(update: Update, context: CallbackContext, relative=False):
             f"No events for {when} !" + (" 😱" if "today" == when else "")
         ))
 
+async def delevent_from_answer(*, reply, update, context):
+    event = addevent_analyse_from_bot(update, context, text=reply.text)
+    event_db = retrieve_event_from_db(update=update, context=context, what=event['what'], when=event['when'])
+    tz = induce_my_timezone(user_id=update.effective_user.id, chat_id=update.effective_chat.id)
+    send = make_send(update, context)
+    await db_delete_event(update, context, send=send, chat_id=update.effective_chat.id, event_id=event_db['rowid'], tz=tz)
+
 async def delevent(update, context):
     send = make_send(update, context)
     read_chat_settings = make_read_chat_settings(update, context)
@@ -5027,7 +5180,7 @@ async def delevent(update, context):
     do_event_admin_check('del', setting=read_chat_settings('event.admins'), user_id=update.effective_user.id)
 
     if reply := update_get_reply(update):
-        await send("Not implemented yet but will allow to deleent an event by responding to it.")
+        await delevent_from_answer(reply=reply, update=update, context=context)
         return ConversationHandler.END
 
     strptime = DatetimeDbSerializer.strptime
@@ -5565,6 +5718,7 @@ ACCEPTED_SETTINGS_CHAT = {
     'event.addevent.display_file': SettingsSpecs('bool'),
     'event.addevent.display_forwarded_infos': SettingsSpecs('bool'),
     'event.addevent.required_time': SettingsSpecs('bool'),
+    'event.list.display_all_timezones': SettingsSpecs('bool'),
     'event.listtoday.display_time_marker': SettingsSpecs('bool'),
     'event.delevent.display': SettingsSpecs('bool'),
     'event.location.autocomplete': SettingsSpecs('bool'),
@@ -5705,7 +5859,7 @@ def CONVERSION_SETTINGS_BUILDER():
         
     int_serializer = {
         'from_db': int,
-        'to_db': lambda v: v,
+        'to_db': int,
     }
     list_of_event_admins = list_of({
         'from_db': EventAdmin.from_json,
@@ -6219,6 +6373,9 @@ async def implicit_setting_command(update, context, type: Literal['disable', 'on
     def is_currency_list():
         return all(re.compile('^[A-Z]{3}[:].*$').match(line) for line in reply.text.splitlines())
 
+    def is_locationdistance_list():
+        return all(x /fullmatchesI/ '• (\d+) [|] (.*)' for x in reply.text.splitlines())
+
     if type == 'disable':
         if reply.text:
             if is_currency_list():
@@ -6231,6 +6388,8 @@ async def implicit_setting_command(update, context, type: Literal['disable', 'on
                 return await send_command('/chatsettings event.addevent.display_forwarded_infos off')
             if reply.text.startswith('Error: You must specify a reason'):
                 return await send_command('/chatsettings sharemoney.required_for off')
+            if is_locationdistance_list():
+                return await send_command('/chatsettings locationdistance.active off')
         elif reply.document and reply.document.file_name == 'event.ics':
             return await send_command('/chatsettings event.addevent.display_file off')
             
@@ -6496,8 +6655,12 @@ async def help(update, context):
 
     Args = InfiniteEmptyList(context.args)
     
-    module_filter = Args[0].lower() if Args[0].lower() in COMMAND_LIST_ALL_MODULES else None 
+    module_filter = Args[0].lower() if Args[0].lower() in COMMAND_LIST_ALL_MODULES else ''
     display_modules = Args[0].lower() in ('module', 'modules')
+
+    one_command_display = Args[0].lower()
+    if one_command_display.startswith('/'):
+        one_command_display = one_command_display[1:]
 
     bot_father = '--botfather' in context.args
 
@@ -6510,16 +6673,25 @@ async def help(update, context):
     li = ([x.name for x in COMMAND_LIST_HELP if x.botfather] if bot_father else
           [x.name for x in COMMAND_LIST_HELP])
 
-    from collections import defaultdict
-    by_modules = grouped_dict((COMMAND_LIST_HELP_DICT[c].module, c) for c in li)
-
     if bot_father:
         return await send('\n'.join(fmt.format(command, COMMAND_DESC.get(command, command)) for command in li))
+
+    def top_most_module(module):
+        if all_modules_parent.get(module):
+            return top_most_module(all_modules_parent[module])
+        else:
+            return module
+        
+    by_modules = grouped_dict((top_most_module(COMMAND_LIST_HELP_DICT[c].module), c) for c in li)
+
+    if one_command_display in commandspecs.MAN:
+        import textwrap
+        return await send(textwrap.dedent(commandspecs.MAN[Args[0]]).strip())
     else:
         lines = []
         first = True
         for mod, L in by_modules.items():
-            if module_filter is not None and module_filter != mod:
+            if module_filter and module_filter != mod:
                 continue
             if first:
                 first = False
@@ -6587,9 +6759,9 @@ async def log_error(error, send):
         return await send("An unknown error occured in your command, ask @robertvend to fix it !")
 
 async def general_error_callback(update:Update, context:CallbackContext):
-    send = make_send(update, context)
     async def send_on_error(m):
         if update and update.effective_chat:
+            send = make_send(update, context)
             await send(m)
     
     return await log_error(context.error, send_on_error)
@@ -6740,6 +6912,66 @@ class CommandInfoSpecs:
     name: str
     module: CommandModules
     botfather: bool = True
+
+class commandspecs:
+    MAN = {
+        'flashcard': '''
+            /flashcard adds a flashcard to a page.
+            A flashcard is a card witch two faces, the face-up and face-down
+
+            There are multiple ways to do that:
+                /flashcard a b
+                Just two words, face-up will be a, face-down will be b
+
+                /flashcard a = b
+                Here a or b can be multiple words, we use the "=" symbol
+
+                /flashcard a / b
+                Same thing but with the "/" separator
+
+                Replying to a message
+                The replied message will be face-up, and the arguments will be face-down
+
+            EXAMPLES
+
+                /flashcard Bonjour Hello
+                It adds the card face-up = Bonjour, and face-down = Hello to the current page
+
+                /flashcard Comment ça va = How are you ?
+                We use the "=" separator between face-up and face-down.
+
+                Message 1: J'ai mangé une pomme
+                Reply to Message 1: /flashcard I ate an apple
+                This is useful when the card must have a sentence said by someone else,
+                here we only write the face-down and reuse the text written by someone else
+                It Adds the flashcard "J'ai mangé une pomme" / "I ate an apple"
+        ''',
+        'practiceflashcards': '''
+            /practiceflashcards allows to practice flashcards by shuffling a flashcard page them
+            The command shuffle all cards and display the face-up.
+            Then waits for a message (the user should answer the cards).
+            And finally the cards are revealed and the conversation is over
+
+                n: the number of random flashcards drawn
+                reverse: ask for the face down and gives the face up as an answer
+                page: use another page
+                user: use deck from user (beware, you might reveal private info in the group)
+
+            EXAMPLES
+            
+                /practiceflashcards
+                Practice the current flashcard page
+
+                /practiceflashcards n:10 page:french
+                Practice the "french" page with 10 random flashcards
+
+            SEE ALSO
+
+            - help `switchpageflashcard` to change current flashcard 
+            - help `flashcard` to add a flashcard to current page
+            - help `list.dynamic.flashcard.current` to control the current page
+        '''
+    }
 
 all_modules = ('event', 'eventlocation', 'money', 'sharemoney', 'lang', 'dict', 'flashcard', 'list')
 all_modules_parent = {
@@ -6953,7 +7185,7 @@ if __name__ == '__main__':
     application.add_handler(ConversationHandler(
         entry_points=[CommandHandler('practiceflashcards', practiceflashcards)],
         states={
-            0: [MessageHandler(filters.TEXT, guessing_word)],
+            0: [MessageHandler(filters.TEXT & ~filters.COMMAND, guessing_word)],
         },
         fallbacks=[]
     ), group=1)
