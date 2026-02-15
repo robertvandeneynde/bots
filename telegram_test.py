@@ -5610,42 +5610,45 @@ async def menu(update, context):
             InlineKeyboardButton("Help", callback_data="cmd:help")
         ],
         [
-            InlineKeyboardButton("My timezone", callback_data="cmd:mytimezone")
+            InlineKeyboardButton("My timezone", callback_data="cmd:mytimezone"),
+            InlineKeyboardButton("Chat timezone", callback_data="cmd:chattimezone"),
         ],
         [
-            InlineKeyboardButton("Settings", callback_data="cmd:mysettings"),
-            InlineKeyboardButton("Delete settings", callback_data="cmd:delsettings_command")
+            InlineKeyboardButton("User Settings", callback_data="cmd:mysettings"),
+            InlineKeyboardButton("Delete user settings", callback_data="cmd:delsettings_command")
         ],
         [
             InlineKeyboardButton("Chat settings", callback_data="cmd:chatsettings"),
             InlineKeyboardButton("Delete chat settings", callback_data="cmd:delchatsettings")
         ],
         [
-            InlineKeyboardButton("List events", callback_data="cmd:listevents"),
+            InlineKeyboardButton("List events", callback_data="cmd:listdays"),
             InlineKeyboardButton("Next event", callback_data="cmd:nextevent"),
             InlineKeyboardButton("Last event", callback_data="cmd:lastevent")
         ],
         [
-            InlineKeyboardButton("Event follow", callback_data="cmd:eventfollow"),
-            InlineKeyboardButton("Event accept follow", callback_data="cmd:eventacceptfollow")
-        ],
-        [
-            InlineKeyboardButton("Event delete follow", callback_data="cmd:deleventfollow"),
-            InlineKeyboardButton("Event delete accept follow", callback_data="cmd:deleventacceptfollow")
-        ],
-        [
-            InlineKeyboardButton("List days", callback_data="cmd:listdays"),
-            InlineKeyboardButton("List today", callback_data="cmd:listtoday")
-        ],
-        [
-            InlineKeyboardButton("Today", callback_data="cmd:today"),
-            InlineKeyboardButton("Tomorrow", callback_data="cmd:tomorrow")
+            InlineKeyboardButton("Today's events", callback_data="cmd:today"),
+            InlineKeyboardButton("Tomorrow's events", callback_data="cmd:tomorrow")
         ],
         [
             InlineKeyboardButton("Add event", callback_data="cmd:addevent"),
-            InlineKeyboardButton("IAdd event", callback_data="cmd:iaddevent"),
-            InlineKeyboardButton("Delete event", callback_data="cmd:delevent")
-        ]
+            InlineKeyboardButton("Interactive Add event", callback_data="cmd:iaddevent"),
+        ],
+        [
+            InlineKeyboardButton("Select event", callback_data="cmd:selectevent"),
+            InlineKeyboardButton("Delete event", callback_data="cmd:delevent"),
+        ],
+        [
+            InlineKeyboardButton("Event: Follow another chat", callback_data="cmd:eventfollow"),
+            InlineKeyboardButton("Event: Accept a follower", callback_data="cmd:eventacceptfollow")
+        ],
+        [
+            InlineKeyboardButton("Event: Delete a chat you follow", callback_data="cmd:deleventfollow"),
+            InlineKeyboardButton("Event: Delete a follower", callback_data="cmd:deleventacceptfollow"),
+        ],
+        [
+            InlineKeyboardButton("Close menu", callback_data="cmd:closemenu"),
+        ],
     ]
     await send("The main menu\nChoose a command", reply_markup=InlineKeyboardMarkup(keyboard))
 
@@ -5656,15 +5659,28 @@ async def menu_button_handler(update, context):
         return
     cmd = query.data.split(":", 1)[1]
 
+    @dataclass
+    class HandlerInfo:
+        function: Any
+        params: list
+
     handlers = {
         'help': help,
         'mytimezone': mytimezone,
         'mysettings': mysettings,
-        'delsettings_command': delsettings_command,
+        'delsettings_command': HandlerInfo(
+            partial(settings_command, accepted_settings=ACCEPTED_SETTINGS_USER, settings_type='user', command_name='mysettings delete'),
+            ['delete'],
+        ),
+        'delchatsettings': HandlerInfo(
+            partial(settings_command, accepted_settings=ACCEPTED_SETTINGS_CHAT, settings_type='chat', command_name='chatsettings delete'),
+            ['delete'],
+        ),
         'addevent': add_event,
         'addschedule': addschedule,
-        'delevent': delevent,
-        'iaddevent': InteractiveAddEvent.ask_when,
+        'delevent': NotImplemented,  # delevent,
+        'iaddevent': NotImplemented, # InteractiveAddEvent.ask_when,
+        'selectevent': NotImplemented,
         'nextevent': next_event,
         'lastevent': last_event,
         'listdays': list_days,
@@ -5676,14 +5692,33 @@ async def menu_button_handler(update, context):
         'listallsettings': listallsettings,
         'chatsettings': chatsettings,
         # 'delchatsettings': del_chat_settings,
+        'chattimezone': HandlerInfo(
+            chatsettings,
+            ['event.timezones'],
+        ),
+        'closemenu': None,
         'menu': menu
     }
-    fn = handlers.get(cmd)
-    if not fn:
+
+    if cmd == 'closemenu':
+        await query.delete_message()
+        return
+
+    handler_info = handlers.get(cmd)
+    if not handler_info:
         return await make_send(update, context)(f"/{cmd} is not supported")
+    
+    if handler_info is NotImplemented:
+        send = make_send(update, context)
+        return await send("Not Implemented yet")
+
+    if isinstance(handler_info, HandlerInfo):
+        fn, new_args = handler_info.function, handler_info.params or []
+    else:
+        fn, new_args = handler_info, []
 
     old_args = getattr(context, 'args', None)
-    context.args = []  # getting the command without arguments
+    context.args = new_args 
     try:
         await fn(update,context)
     finally:
@@ -5991,7 +6026,12 @@ async def settings_command(update: Update, context: CallbackContext, *, command_
             args = Args[:]
             action = "getset"
 
-    key, *rest = args
+    try:
+        key, *rest = args
+    except ValueError:
+        return await send_html(
+            'You must provide some settings:\n\n'
+            f'- Type <code>/listallsettings {settings_type}</code> for a list of all settings\n')
 
     if key not in accepted_settings:
         return await send_html(
