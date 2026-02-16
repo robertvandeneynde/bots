@@ -1669,12 +1669,17 @@ async def practiceflashcards(update, context):
     
     import random
     sample = random.sample(lines, n if n is not None else len(lines))
-    sentences = [x[0] if direction == 'normal' else x[1] for x in sample]
+    sentences = [x[0] if direction == 'normal' else x[1] for x in sample[0:1]]
     
-    await send('\n'.join(map("- {}".format, sentences)))
+    await send(f"Welcome to the practice of {len(sample)} flashcards\n"
+               "Type the answer to each question\n"
+               "To stop the practice earlier, type /stop")
+    
+    await send('\n'.join(map("{} ?".format, sentences)))
 
     context.user_data['sample'] = sample
     context.user_data['direction'] = direction
+    context.user_data['index'] = 0
 
     return 0
 
@@ -1682,10 +1687,28 @@ from telegram.ext import ConversationHandler
 async def guessing_word(update, context):
     sample = context.user_data['sample']
     direction = context.user_data['direction']
+    index = context.user_data['index']
+    
     send = make_send(update, context)
-    answers = [x[1] if direction == 'normal' else x[0] for x in sample]
-    await send('\n'.join(map("- {}".format, answers)))
+    
+    given_answer = update.effective_message.text
+    if given_answer.lower() in ('/cancel', '/stop', '/finish'):
+        context.user_data.clear()
+        await send('< Practice Finished >')
+        return ConversationHandler.END
+    
+    answers = [x[1] if direction == 'normal' else x[0] for x in sample[index:index+1]]
+    await send('\n'.join(map("→ {}".format, answers)))
+
+    if index + 1 < len(sample):
+        context.user_data['index'] += 1
+        index = context.user_data['index']
+        sentences = [x[0] if direction == 'normal' else x[1] for x in sample[index:index+1]]
+        await send('\n'.join(map("{} ?".format, sentences)))
+        return
+    
     context.user_data.clear()
+    await send('< Practice Finished >')
     return ConversationHandler.END
 
 SendSaveInfo = namedtuple('SendSaveInfo', 'chat_id thread_id')
@@ -7226,7 +7249,12 @@ if __name__ == '__main__':
     application.add_handler(ConversationHandler(
         entry_points=[CommandHandler('practiceflashcards', practiceflashcards)],
         states={
-            0: [MessageHandler(filters.TEXT & ~filters.COMMAND, guessing_word)],
+            0: [
+                MessageHandler(filters.TEXT & ~filters.COMMAND, guessing_word),
+                CommandHandler('cancel', guessing_word),
+                CommandHandler('stop', guessing_word),
+                CommandHandler('finish', guessing_word),
+            ]
         },
         fallbacks=[]
     ), group=1)
