@@ -365,7 +365,20 @@ class DijkstraResult:
 def location_distance_apply(loc, *, chat_id, targets=None):
     targets = set(map(str.lower, targets)) if targets is not None else None
     loc = loc.lower()      
-    edges = simple_sql(('select source, dest, distance from LocationDistanceEdge where chat_id = ?', (chat_id, )))
+
+    edges = []
+    with get_connection() as conn:
+        my_simple_sql = partial(simple_sql_args, connection=conn)
+        S = set()
+        for graph_id, in my_simple_sql('select rowid from LocationDistanceGraph where chat_id = ?', (chat_id, )):
+            if graph_id not in S:
+                edges += my_simple_sql('select source, dest, distance from LocationDistanceEdge where graph_id = ?', (graph_id, ))
+                S.add(graph_id)
+
+        for graph_id, in my_simple_sql('select graph_id from LocationDistanceImportedGraph where chat_id = ?', (chat_id, )):
+            if graph_id not in S:
+                edges += my_simple_sql('select source, dest, distance from LocationDistanceEdge where graph_id = ?', (graph_id, ))
+                S.add(graph_id)
 
     from collections import defaultdict
     Graph = defaultdict(list)
@@ -396,111 +409,392 @@ def location_distance_apply(loc, *, chat_id, targets=None):
                     prevs[neigh_name] = current_name
     
     return DijkstraResult(dists=dists, prevs=prevs)
+
+class locationdistance:
+    async def locationinfo(update, context):
+        send = make_send(update, context)
+
+        async def print_usage():
+            return await send(
+                "Usage:\n"
+                "/graph addedge|listedges|listgraphs|switch|current|import|unimport|namespace"
+            )
         
-async def locationinfo(update, context):
-    send = make_send(update, context)
-
-    def parse_edge(edge):
-        if len(bits := edge.split()) == 3:
-            source, dest, dist = bits
-        elif len(bits := edge.split(' / ')) == 2:
-            source, dest = bits
-            B = InfiniteEmptyList(dest.split())
-            if B[-1] /fullmatches/ '\d+' or B[-1] == 'delete':
-                dist = B[-1]
-                dest = ' '.join(B[:-1])
-            else:
-                raise ValueError
-        else:
-            source, dest, dist = bits
-        source, dest, dist = map(str.strip, (source, dest, dist))
-        if dist.lower() == 'delete':
-            dist = 'delete'
-        else:
-            dist = int(dist)
-        return source, dest, dist
+        Args = InfiniteEmptyList(context.args)
+        
+        if Args[0] /fullmatchesI/ r'addedges?':
+            return await locationdistance.addedges(Args[1:], update, context)
+        if Args[0] /fullmatchesI/ r'switch':
+            return await locationdistance.switchgraph(Args[1:], update, context)
+        if Args[0] /fullmatchesI/ r'current':
+            return await send(f'Current graph: {locationdistance.get_current_graph(update.effective_chat.id)}')
+        if Args[0] /fullmatchesI/ r'list|listedge|listedges':
+            return await locationdistance.listlocationinfo(Args[1:], update, context)
+        if Args[0] /fullmatchesI/ r'listgraph|listgraphs':
+            return await locationdistance.listgraphs(Args[1:], update, context)
+        if Args[0] /fullmatchesI/ r'import':
+            return await locationdistance.importgraph(Args[1:], update, context)
+        if Args[0] /fullmatchesI/ r'unimport':
+            return await locationdistance.unimportgraph(Args[1:], update, context)
+        if Args[0] /fullmatchesI/ r'namespace':
+            return await locationdistance.graphnamespace(Args[1:], update, context)
+        return await print_usage()
     
-    def parse_semi_edge(edge):
-        if not (bits := InfiniteEmptyList(edge.split())) and (bits[-1] /fullmatches/ '\d+'):
-            raise ValueError
-        *destL, dist = bits
-        return ' '.join(destL), int(dist)
+    async def addedges(args, update, context):
+        send = make_send(update, context)
 
-    edges = []
-    try:
-        for edge in ' '.join(context.args).split('//'):
-            if m := edge /fullmatchesI/ '(path|star)\s*:\s*(.*)':
-                pattern, data = m.group(1), m.group(2)
-                data_list = InfiniteEmptyList(data.split('/'))
-                prev = data_list[0]
-                if not prev:
+        def parse_edge(edge):
+            if len(bits := edge.split()) == 3:
+                source, dest, dist = bits
+            elif len(bits := edge.split(' / ')) == 2:
+                source, dest = bits
+                B = InfiniteEmptyList(dest.split())
+                if B[-1] /fullmatches/ '\d+' or B[-1] == 'delete':
+                    dist = B[-1]
+                    dest = ' '.join(B[:-1])
+                else:
                     raise ValueError
-
-                if pattern.lower() == 'star':
-                    first = prev
-                    for target in data_list[1:]:
-                        dest, dist = parse_semi_edge(target)
-                        edges.append((first, dest, dist))
-
-                elif pattern.lower() == 'path':
-                    if len(data_list) == 1:
-                        # /locationinfo path: Hello 5 World in house 10 Tada
-                        S = prev.split()
-                        breaks = []
-                        for i, b in enumerate(S):
-                            if b /fullmatches/ '\d+':
-                                breaks.append(i)
-                        if not breaks:
-                            raise ValueError
-                        c = breaks[0]
-                        prev = ' '.join(S[0:c])
-                        for i in breaks[1:] + [len(S)]:
-                            dist, *destL = S[c:i]
-                            dest = ' '.join(destL)
-                            assert_true(prev.strip() and dest.strip(), ValueError)
-                            edges.append((prev.strip(), dest.strip(), dist))
-                            prev = dest
-                            c = i
-                    else:
-                        # /locationinfo path: Hello / World 5 / Tada 5
-                        for target in data_list[1:]:
-                            dest, dist = parse_semi_edge(target.strip())
-                            edges.append((prev, dest, dist))
-                            prev = dest
             else:
-                edges.append(parse_edge(edge.strip()))
-        edges = [(a, b, int(c) if c != 'delete' else c) for a,b,c in edges]
-    except ValueError as e:
-        return await send('Usage:\n/locationinfo from / to / distance // from / to / distance\n/locationinfo path: A dist B dist C')
+                source, dest, dist = bits
+            source, dest, dist = map(str.strip, (source, dest, dist))
+            if dist.lower() == 'delete':
+                dist = 'delete'
+            else:
+                dist = int(dist)
+            return source, dest, dist
+        
+        def parse_semi_edge(edge):
+            if not (bits := InfiniteEmptyList(edge.split())) and (bits[-1] /fullmatches/ '\d+'):
+                raise ValueError
+            *destL, dist = bits
+            return ' '.join(destL), int(dist)
 
-    chat_id = update.effective_chat.id
-    with sqlite3.connect('db.sqlite') as conn:
-        for source, dest, distance in edges:
-            save_location_distance(chat_id, source, dest, distance, conn)
+        edges = []
+        try:
+            for edge in ' '.join(args).split('//'):
+                if m := edge /fullmatchesI/ '(path|star)\s*:\s*(.*)':
+                    pattern, data = m.group(1), m.group(2)
+                    data_list = InfiniteEmptyList(data.split('/'))
+                    
+                    prev = data_list[0]
+                    if not prev:
+                        raise ValueError
 
-    return await send(f'Edges modified: {len(edges)}')
+                    if pattern.lower() == 'star':
+                        first = prev
+                        for target in data_list[1:]:
+                            dest, dist = parse_semi_edge(target)
+                            edges.append((first, dest, dist))
 
-async def listlocationinfo(update, context):
-    send = make_send(update, context)
+                    elif pattern.lower() == 'path':
+                        if len(data_list) == 1:
+                            # /locationinfo path: Hello 5 World in house 10 Tada
+                            S = prev.split()
+                            breaks = []
+                            for i, b in enumerate(S):
+                                if b /fullmatches/ '\d+':
+                                    breaks.append(i)
+                            if not breaks:
+                                raise ValueError
+                            c = breaks[0]
+                            prev = ' '.join(S[0:c])
+                            for i in breaks[1:] + [len(S)]:
+                                dist, *destL = S[c:i]
+                                dest = ' '.join(destL)
+                                assert_true(prev.strip() and dest.strip(), ValueError)
+                                edges.append((prev.strip(), dest.strip(), dist))
+                                prev = dest
+                                c = i
+                        else:
+                            # /locationinfo path: Hello / World 5 / Tada 5
+                            for target in data_list[1:]:
+                                dest, dist = parse_semi_edge(target.strip())
+                                edges.append((prev, dest, dist))
+                                prev = dest
+                else:
+                    edges.append(parse_edge(edge.strip()))
+            edges = [(a, b, int(c) if c != 'delete' else c) for a,b,c in edges]
+        except ValueError as e:
+            return await send(
+                'Usage:\n'
+                '/graph addedges from to distance\n'
+                '/graph addedges from / to / distance\n'
+                '/graph addedges from / to / distance // from / to / distance\n'
+                '/graph addedges path: A dist B dist C\n'
+                '/graph addedges star: A / B dist / C dist\n')
 
-    with sqlite3.connect('db.sqlite') as conn:
-        conn.execute('begin transaction')
-        cursor = conn.cursor()
-        cursor.execute('select source, dest, distance from LocationDistanceEdge where chat_id = ?', (update.effective_chat.id,))
-        edges = cursor.fetchall()
-        conn.execute('end transaction')
+        chat_id = update.effective_chat.id
+        with sqlite3.connect('db.sqlite') as conn:
+            conn.execute('begin transaction')
+            graph_id = locationdistance.get_current_graph_id(chat_id, conn)
+            graph_chat_id, = only_one(conn.execute(''' select chat_id from LocationDistanceGraph where rowid = ? ''', (graph_id, )))
+            graph_name = locationdistance.get_current_graph(chat_id, conn)
+            
+            if graph_chat_id != chat_id:
+                return await send(f'You are not allowed to modify graph "{graph_name}" as it belongs to another chat')
+            
+            for source, dest, distance in edges:
+                locationdistance.save_location_distance(chat_id, source, dest, distance, conn, graph_id)
+            conn.execute('end transaction')
 
-    return await send(' //\n'.join(f"{source} / {dest} / {distance}" for source, dest, distance in edges) or '/')
+        return await send(f'[Graph "{graph_name}"] Edges modified: {len(edges)}')
 
-def save_location_distance(chat_id, source, dest, distance, conn):
-    conn.execute('begin transaction')
-    if distance == 'delete':
-        conn.execute('delete from LocationDistanceEdge where chat_id = ? and (LOWER(source) = LOWER(?) and LOWER(dest) = LOWER(?) or LOWER(dest) = LOWER(?) and LOWER(source) = LOWER(?))', (chat_id, source, dest, source, dest))
-    elif conn.execute('select count(*) from LocationDistanceEdge where chat_id = ? and (LOWER(source) = LOWER(?) and LOWER(dest) = LOWER(?) or LOWER(dest) = LOWER(?) and LOWER(source) = LOWER(?))', (chat_id, source, dest, source, dest)).fetchone()[0] == 0:
-        conn.execute('insert into LocationDistanceEdge(chat_id, source, dest, distance) values (?, ?, ?, ?)', (chat_id, source, dest, distance))
-    else:
-        conn.execute('update LocationDistanceEdge set distance = ? where chat_id = ? and (LOWER(source) = LOWER(?) and LOWER(dest) = LOWER(?) or LOWER(dest) = LOWER(?) and LOWER(source) = LOWER(?))', (distance, chat_id, source, dest, source, dest))
-    conn.execute('end transaction')
+    async def listlocationinfo(args, update, context):
+        send = make_send(update, context)
+
+        with sqlite3.connect('db.sqlite') as conn:
+            my_simple_sql = partial(simple_sql_args, connection=conn)
+
+            conn.execute('begin transaction')
+            graph_id = locationdistance.get_current_graph_id(update.effective_chat.id, conn)
+            graph_name = locationdistance.get_current_graph(update.effective_chat.id, conn)
+
+            cursor = conn.cursor()
+            cursor.execute('select source, dest, distance from LocationDistanceEdge where graph_id = ?', (graph_id, ))
+            edges = cursor.fetchall()
+            conn.execute('end transaction')
+
+        return await send(f'[Graph "{graph_name}"]\n' + (' //\n'.join(f"{source} / {dest} / {distance}" for source, dest, distance in edges) or '/'))
+
+    async def listgraphs(args, update, context):
+        send = make_send(update, context)
+
+        with get_connection() as conn:
+            my_simple_sql = partial(simple_sql_args, connection=conn)
+
+            conn.execute('begin transaction')
+            
+            chat_id = update.effective_chat.id
+
+            out = []
+            L = []
+            L += my_simple_sql('select rowid from LocationDistanceGraph where chat_id=?', (chat_id, ))
+            L += my_simple_sql('select graph_id from LocationDistanceImportedGraph where chat_id=?', (chat_id, ))
+
+            for graph_id, in L:
+                out.append("- {}".format(locationdistance.graph_full_name(chat_id=chat_id, graph_id=graph_id, connection=conn)))
+
+            conn.execute('end transaction')
+        
+        def key(x):
+            return ('.' in x, x)
+
+        return await send('\n'.join(sorted(out, key=key)) or '/')
+
+    def save_location_distance(chat_id, source, dest, distance, conn, graph_id):
+        if distance == 'delete':
+            conn.execute('delete from LocationDistanceEdge where chat_id = ? and graph_id = ? and (LOWER(source) = LOWER(?) and LOWER(dest) = LOWER(?) or LOWER(dest) = LOWER(?) and LOWER(source) = LOWER(?))', (chat_id, graph_id, source, dest, source, dest))
+        elif conn.execute('select count(*) from LocationDistanceEdge where chat_id = ? and graph_id = ? and (LOWER(source) = LOWER(?) and LOWER(dest) = LOWER(?) or LOWER(dest) = LOWER(?) and LOWER(source) = LOWER(?))', (chat_id, graph_id, source, dest, source, dest)).fetchone()[0] == 0:
+            conn.execute('insert into LocationDistanceEdge(chat_id, graph_id, source, dest, distance) values (?, ?, ?, ?, ?)', (chat_id, graph_id, source, dest, distance))
+        else:
+            conn.execute('update LocationDistanceEdge set distance = ? where chat_id = ? and graph_id = ? and (LOWER(source) = LOWER(?) and LOWER(dest) = LOWER(?) or LOWER(dest) = LOWER(?) and LOWER(source) = LOWER(?))', (distance, chat_id, graph_id, source, dest, source, dest))
+
+    def graph_full_name(chat_id, graph_id, connection=None):
+        my_simple_sql = partial(simple_sql_args, connection=connection)
+
+        graph_name, graph_visibility, graph_chat_id = only_one(my_simple_sql(''' select name, visibility, chat_id from LocationDistanceGraph where rowid = ?''', (graph_id, )))
+        
+        return locationdistance.get_full_name_from_db_infos(chat_id=chat_id, graph_name=graph_name, graph_visibility=graph_visibility, graph_chat_id=graph_chat_id)        
+
+    def get_current_graph(chat_id, connection=None):
+        my_simple_sql = partial(simple_sql_args, connection=connection)
+        alls = my_simple_sql(''' select g.name, g.visibility, g.chat_id from LocationDistanceCurrentGraphChat c inner join LocationDistanceGraph g on c.graph_id=g.rowid where c.chat_id=? ''', (chat_id, ))
+        graph_name, graph_visibility, graph_chat_id = only_one(alls) if alls else ('chat', 'chat', chat_id)
+
+        return locationdistance.get_full_name_from_db_infos(chat_id=chat_id, graph_name=graph_name, graph_visibility=graph_visibility, graph_chat_id=graph_chat_id)
+
+    def get_full_name_from_db_infos(*, chat_id, graph_name, graph_visibility, graph_chat_id, connection=None):
+        my_simple_sql = partial(simple_sql_args, connection=connection)
+
+        if graph_chat_id == chat_id and graph_visibility == 'chat':
+            namespace = None
+        else:
+            namespace, = only_one(my_simple_sql(''' select namespace from LocationDistanceGraphNamespace where chat_id = ?''', (graph_chat_id, )) or [(None, )])
+            if namespace is None:
+                namespace = '?'
+        return (namespace + '.' if namespace else '') + graph_name + (' (readonly)' if graph_chat_id != chat_id else '')
+
+    def get_current_graph_id(chat_id, connection=None):
+        my_simple_sql = partial(simple_sql_args, connection=connection)
+        my_simple_sql_create = partial(simple_sql_create_args, connection=connection)
+        alls = my_simple_sql(''' select graph_id from LocationDistanceCurrentGraphChat where chat_id=? ''', (chat_id, ))
+        graph_id, = only_one(alls) if alls else (None, )
+        if graph_id is None:
+            if r := my_simple_sql('''select rowid from LocationDistanceCurrentGraphChat where chat_id=? and visibility='chat' and name='chat' ''', (chat_id, )):
+                graph_id, = only_one(r)
+            else:
+                r = my_simple_sql_create(''' insert into LocationDistanceCurrentGraphChat(chat_id, visibility, name) VALUES (?,?,?)''', (chat_id, 'chat', 'chat'))
+                graph_id = r.lastrowid
+            my_simple_sql('insert into LocationDistanceCurrentGraphChat(chat_id, graph_id) VALUES (?, ?)''', (chat_id, graph_id))
+        return graph_id
+
+    def get_graph_id_default_chat(chat_id, connection=None):
+        my_simple_sql = partial(simple_sql_args, connection=connection)
+        alls = my_simple_sql(''' select rowid from LocationDistanceGraph where c.chat_id=? AND visibility="chat" and name="chat" ''', (chat_id, ))
+        g_infos = only_one(alls) if alls else (None, )
+        return g_infos[0]
+
+    async def switchgraph(args, update, context):
+        send = make_send(update, context)
+
+        async def print_usage(current_graph=False):
+            return await send(
+                "Usage:\n"
+                "/graph switch public.NAME\n"
+                "/graph switch NAME\n" + (
+                    f"\nCurrent graph: {locationdistance.get_current_graph(update.effective_chat.id)}"
+                    if current_graph else ''   
+                ))
+        
+        if not args:
+            return await print_usage(current_graph=True)
+        
+        module_name, = args
+
+        chat_id = update.effective_chat.id
+        with get_connection() as conn:
+            my_simple_sql_create = partial(simple_sql_create_args, connection=conn)
+            my_simple_sql_dict = partial(simple_sql_dict_args, connection=conn)
+            my_simple_sql = partial(simple_sql_args, connection=conn)
+
+            DOTTED = rf'({ListLangRegexes.NAME})[.]({ListLangRegexes.NAME})'
+            SIMPLE = ListLangRegexes.NAME
+
+            imported_chat_id = chat_id
+            if module_name /fullmatchesI/ 'public[.]chat':
+                raise UserError("public.chat is a reserved name")
+            
+            elif m := module_name /fullmatchesI/ DOTTED:
+                actual_module = m.group(2).lower()
+                visibility = 'public'
+                namespace = m.group(1).lower()
+                imported_chat_id, = only_one(my_simple_sql('select chat_id from LocationDistanceGraphNamespace where namespace=?', (namespace, )))
+                
+            elif m := module_name /fullmatchesI/ SIMPLE:
+                actual_module = m.group(0).lower()
+                visibility = 'chat'
+            
+            else:
+                raise UserError("Wrong format for a graph name")
+        
+            all_graphs = my_simple_sql_dict(''' select rowid, visibility from LocationDistanceGraph where chat_id=? AND name=? AND visibility=?''', (imported_chat_id, actual_module, visibility))
+            
+            if len(all_graphs) == 0:
+                r = my_simple_sql_create('''insert into LocationDistanceGraph(chat_id, name, visibility) VALUES (?,?,?)''', (chat_id, actual_module, visibility))
+                graph = {'rowid': r['lastrowid'], 'visibility': visibility}
+            elif len(all_graphs) == 1:
+                graph = all_graphs[0]
+            else:
+                raise AssertionError
+            
+            if my_simple_sql_dict(''' select rowid from LocationDistanceCurrentGraphChat where chat_id=? ''', (chat_id, )):
+                my_simple_sql_dict(''' update LocationDistanceCurrentGraphChat set graph_id=? where chat_id=? ''', (graph['rowid'], chat_id, ))
+            else:
+                my_simple_sql_create(''' insert into LocationDistanceCurrentGraphChat(graph_id, chat_id) VALUES(?,?)''', (graph['rowid'], chat_id, ))
+            
+        return await send(f"Current graph: {locationdistance.get_current_graph(chat_id)}")
+
+    async def importgraph(args, update, context):
+        send = make_send(update, context)
+        chat_id = update.effective_chat.id
+
+        graph_full_name, = args
+        graph_full_name = graph_full_name.lower()
+
+        if '.' not in graph_full_name:
+            raise UserError("Must specify the namespace as namespace.graph")
+        
+        try:
+            graph_namespace, graph_simple_name = graph_full_name.split('.')
+        except ValueError:
+            raise UserError("Only one dot in notation namespace.graph")
+        
+        with get_connection() as conn:
+            my_simple_sql = partial(simple_sql_args, connection=conn)
+
+            try:
+                imported_chat_id, = only_one_specific(my_simple_sql('''select chat_id from LocationDistanceGraphNamespace where namespace=? ''', (graph_namespace, )))
+            except NoRecords:
+                raise UserError(f"No public namespace {graph_namespace}")
+
+            try:
+                graph_id, = only_one_specific(my_simple_sql(''' select rowid as graph_id from LocationDistanceGraph where chat_id=? and name=? and visibility="public" ''', (imported_chat_id, graph_simple_name, )))
+            except NoRecords:
+                raise UserError("There is no public graph with that name")
+            
+            if not my_simple_sql(''' select rowid from LocationDistanceImportedGraph where graph_id = ? and chat_id = ?''', (graph_id, chat_id)):
+                my_simple_sql(''' insert into LocationDistanceImportedGraph(graph_id, chat_id) values (?,?)''', (graph_id, chat_id))
+
+        return await send(f'Graph {graph_full_name} is now imported in the chat')
+    
+    async def listimport(args, update, context):
+        ''' select g.name from imported_graph i join graph g on igraph_id=g.rowid '''
+
+    async def unimportgraph(args, update, context):
+        send = make_send(update, context)
+        chat_id = update.effective_chat.id
+
+        graph_full_name, = args
+        graph_full_name = graph_full_name.lower()
+
+        if '.' not in graph_full_name:
+            raise UserError("Must specify the namespace as namespace.graph")
+
+        try:
+            graph_namespace, graph_simple_name = graph_full_name.split('.')
+        except ValueError:
+            raise UserError("Only one dot in notation namespace.graph")
+
+        with get_connection() as conn:
+            my_simple_sql = partial(simple_sql_args, connection=conn)
+
+            try:
+                imported_chat_id, = only_one_specific(my_simple_sql('''select chat_id from LocationDistanceGraphNamespace where namespace=? ''', (graph_namespace, )))
+            except NoRecords:
+                raise UserError(f"No public namespace {graph_namespace}")
+
+            try:
+                graph_id, = only_one_specific(my_simple_sql(''' select rowid as graph_id from LocationDistanceGraph where chat_id=? AND name=? and visibility="public" ''', (imported_chat_id, graph_simple_name, )))
+            except NoRecords:
+                raise UserError("There is no public graph with that name")
+            
+            if my_simple_sql(''' select rowid from LocationDistanceImportedGraph where graph_id = ? and chat_id = ?''', (graph_id, chat_id)):
+                my_simple_sql(''' delete from LocationDistanceImportedGraph where graph_id = ? and chat_id = ? ''', (graph_id, chat_id))
+
+        return await send(f"Graph {graph_full_name} isn't imported in the chat anymore")
+
+    def get_current_graph_namespace(*, chat_id, connection) -> Optional[str]:
+        my_simple_sql = partial(simple_sql_args, connection=connection)
+
+        return only_one(only_one(my_simple_sql('''select namespace from LocationDistanceGraphNamespace where chat_id=?''', (chat_id, )) or [[None]]))
+
+    async def graphnamespace(args, update, context):
+        send = make_send(update, context)
+        
+        chat_id = update.effective_chat.id
+
+        try:
+            namespace, = args
+        except:
+            with get_connection() as conn:
+                current_namespace = locationdistance.get_current_graph_namespace(chat_id=chat_id, connection=conn)
+                return await send(f"Usage: /graph namespace NAMESPACE\n\nCurrent graph namespace: {current_namespace}")
+        
+        namespace = namespace.lower()
+
+        if not namespace /fullmatches/ ListLangRegexes.NAME:
+            raise UserError("Wrong format for a graph namespace")
+
+        with get_connection() as conn:
+            my_simple_sql = partial(simple_sql_args, connection=conn)
+
+            current_namespace = locationdistance.get_current_graph_namespace(chat_id=chat_id, connection=conn)
+            if current_namespace is None:
+                my_simple_sql('''insert into LocationDistanceGraphNamespace(namespace, chat_id) values (?,?)''', (namespace, chat_id))
+            else:
+                my_simple_sql('''update LocationDistanceGraphNamespace set namespace=? where chat_id=? ''', (namespace, chat_id))
+        
+        return await send(f"Current graph namespace: {namespace}")
 
 async def whereisanswer_responder(msg:str, send: AsyncSend, *, update, context):
     reply = update_get_reply(update)
@@ -1348,15 +1642,15 @@ def get_or_empty(L: list, i:int) -> str | object:
     except IndexError:
         return ''
 
-def make_read_my_settings(update: Update, context: CallbackContext=None):
+def make_read_my_settings(update: Update, context: CallbackContext=None, connection=None):
     from functools import partial
     return partial(read_settings, id=update.effective_user.id, settings_type='user')
 
-def make_read_chat_settings(update: Update, context: CallbackContext=None):
+def make_read_chat_settings(update: Update, context: CallbackContext=None, connection=None):
     from functools import partial
     return partial(read_settings, id=update.effective_chat.id, settings_type='chat')
 
-def make_read_chat_settings_from_chat_id(chat_id):
+def make_read_chat_settings_from_chat_id(chat_id, connection=None):
     from functools import partial
     return partial(read_settings, id=chat_id, settings_type='chat')
 
@@ -1591,6 +1885,7 @@ def simple_sql_args(text, args, *, connection):
     return simple_sql((text, args), connection=connection)
 
 SimpleSqlModifyReturn = TypedDict('SimpleSqlModifyReturn', {'rowcount': int})
+SimpleSqlCreateReturn = TypedDict('SimpleSqlModifyReturn', {'lastrowid': int})
 
 def simple_sql_modify(query, *, connection=None) -> SimpleSqlModifyReturn:
     conn = connection
@@ -1605,8 +1900,24 @@ def simple_sql_modify(query, *, connection=None) -> SimpleSqlModifyReturn:
         cursor.execute(*query).fetchall()
         return SimpleSqlModifyReturn(rowcount=cursor.rowcount)
 
+def simple_sql_create(query, *, connection=None) -> SimpleSqlCreateReturn:
+    conn = connection
+    assert isinstance(query, (tuple, list))
+    assert isinstance(query[1], (tuple, list))
+    if conn:
+        cursor = conn.cursor()
+        cursor.execute(*query)
+        return SimpleSqlCreateReturn(lastrowid=cursor.lastrowid)
+    with sqlite3.connect("db.sqlite") as conn:
+        cursor = conn.cursor()
+        cursor.execute(*query)
+        return SimpleSqlCreateReturn(lastrowid=cursor.lastrowid)
+
 def simple_sql_modify_args(text, args, *, connection):
     return simple_sql_modify((text, args), connection=connection)
+
+def simple_sql_create_args(text, args, *, connection) -> SimpleSqlCreateReturn:
+    return simple_sql_create((text, args), connection=connection)
 
 def simple_sql_dict(query, *, connection=None):
     conn = connection
@@ -6346,6 +6657,35 @@ def migration22():
         conn.execute('create table LocationDistanceEdge(chat_id, source, dest, distance)')
         conn.execute('end transaction')
 
+def migration23():
+    with sqlite3.connect('db.sqlite') as conn:
+        c = conn.cursor()
+        c.execute('begin transaction')
+        c.execute('create table LocationDistanceGraph(name, visibility, chat_id)')
+        c.execute('create table LocationDistanceEdgeGraphRelation(name, visibility, chat_id)')
+        c.execute('create table LocationDistanceCurrentGraphChat(chat_id, graph_id)')
+
+        c.execute('alter table LocationDistanceEdge add column graph_id')
+        for chat_id, in c.execute('select distinct chat_id from LocationDistanceEdge').fetchall():
+            c.execute('insert into LocationDistanceGraph(name, visibility, chat_id) VALUES (?,?,?)', ('chat', 'chat', chat_id))
+            c.execute('insert into LocationDistanceCurrentGraphChat(chat_id, graph_id) VALUES(?,?)', (chat_id, graph_id := c.lastrowid))
+            c.execute('update LocationDistanceEdge set graph_id=? where chat_id=?', (graph_id, chat_id))
+        c.execute('end transaction')
+
+def migration24():
+    with sqlite3.connect('db.sqlite') as conn:
+        c = conn.cursor()
+        c.execute('begin transaction')
+        c.execute('''create table LocationDistanceImportedGraph(chat_id, graph_id)''')
+        c.execute('end transaction')
+
+def migration25():
+    with get_connection() as conn:
+        c = conn.cursor()
+        c.execute('begin transaction')
+        c.execute('''create table LocationDistanceGraphNamespace(chat_id, namespace, UNIQUE(namespace))''')
+        c.execute('end transaction')
+
 def get_latest_euro_rates_from_api() -> json:
     import requests
     from telegram_settings_local import FIXER_TOKEN
@@ -6870,6 +7210,9 @@ class EventFormatting:
          Link="🔗",
     )
 
+class Unicode:
+    BULLET = "•"
+
 class EventInfosAnalyse:
     possibles = {
         'what': 'what', 'when': 'when', 'where': 'where',
@@ -7281,8 +7624,7 @@ if __name__ == '__main__':
     application.add_handler(CommandHandler('thereis', thereis))
     application.add_handler(CommandHandler('delthereis', delthereis))
     application.add_handler(CommandHandler('delwhereis', delthereis))
-    application.add_handler(CommandHandler('locationinfo', locationinfo))
-    application.add_handler(CommandHandler('listlocationinfo', listlocationinfo))
+    application.add_handler(CommandHandler('graph', locationdistance.locationinfo))
     application.add_handler(CommandHandler('distfrom', distfrom))
     application.add_handler(CommandHandler('pathfrom', pathfrom))
     application.add_handler(ConversationHandler(
