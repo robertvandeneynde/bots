@@ -375,6 +375,7 @@ def location_distance_apply(loc, *, chat_id, targets=None):
                 edges += my_simple_sql('select source, dest, distance from LocationDistanceEdge where graph_id = ?', (chat_id, graph_id))
                 S.add(graph_id)
 
+
         for graph_id, in my_simple_sql('select graph_id from LocationDistanceImportedGraph where chat_id = ?', (chat_id, )):
             if graph_id not in S:
                 edges += my_simple_sql('select source, dest, distance from LocationDistanceEdge where graph_id = ?', (graph_id, ))
@@ -564,9 +565,16 @@ class locationdistance:
     
     def get_current_graph(chat_id, connection=None):
         my_simple_sql = partial(simple_sql_args, connection=connection)
-        alls = my_simple_sql(''' select g.name, g.visibility from LocationDistanceCurrentGraphChat c inner join LocationDistanceGraph g on c.graph_id=g.rowid where c.chat_id=? ''', (chat_id, ))
-        g_infos = only_one(alls) if alls else ('chat', 'chat')
-        return ('public.' if g_infos[1] == 'public' else '') + g_infos[0]
+        alls = my_simple_sql(''' select g.name, g.visibility, g.chat_id from LocationDistanceCurrentGraphChat c inner join LocationDistanceGraph g on c.graph_id=g.rowid where c.chat_id=? ''', (chat_id, ))
+        g_infos = only_one(alls) if alls else ('chat', 'chat', chat_id)
+        print(*g_infos)
+        if g_infos[2] == chat_id and g_infos[1] == 'chat':
+            namespace = None
+        else:
+            namespace, = only_one(my_simple_sql(''' select namespace from LocationDistanceGraphNamespace where chat_id = ?''', (g_infos[2], )) or [(None, )])
+            if namespace is None:
+                namespace = '?'
+        return (namespace + '.' if namespace else '') + g_infos[0] + (' (readonly)' if g_infos[2] != chat_id else '')
     
     def get_current_graph_id(chat_id, connection=None):
         my_simple_sql = partial(simple_sql_args, connection=connection)
@@ -605,55 +613,48 @@ class locationdistance:
         
         module_name, = args
 
-        DOTTED = rf'({ListLangRegexes.NAME})[.]({ListLangRegexes.NAME})'
-        SIMPLE = ListLangRegexes.NAME
-
-        if module_name /fullmatchesI/ 'public[.]chat':
-            raise UserError("public.chat is a reserved name")
-        
-        elif m := module_name /fullmatchesI/ DOTTED:
-            if m.group(1).lower() == 'public':
-                actual_module = m.group(2).lower()
-                visibility = 'public'
-            else:
-                return await print_usage()
-            
-        elif m := module_name /fullmatchesI/ SIMPLE:
-            actual_module = m.group(0).lower()
-            visibility = 'chat'
-        
-        else:
-            raise UserError("Wrong format for a graph name")
-        
         chat_id = update.effective_chat.id
         with get_connection() as conn:
             my_simple_sql_create = partial(simple_sql_create_args, connection=conn)
             my_simple_sql_dict = partial(simple_sql_dict_args, connection=conn)
+            my_simple_sql = partial(simple_sql_args, connection=conn)
 
-            graph = None
-            found_in_marketplace = False
-            if visibility == 'public':
-                if m := my_simple_sql_dict(''' select rowid from LocationDistanceGraph where visibility = 'public' and name=? ''', (actual_module, )):
-                    graph = {'rowid': only_one(m)[0], 'visibility': 'public'}
-                    found_in_marketplace = True
+            DOTTED = rf'({ListLangRegexes.NAME})[.]({ListLangRegexes.NAME})'
+            SIMPLE = ListLangRegexes.NAME
+
+            imported_chat_id = chat_id
+            if module_name /fullmatchesI/ 'public[.]chat':
+                raise UserError("public.chat is a reserved name")
             
-            if graph is None:
-                all_graphs = my_simple_sql_dict(''' select rowid, visibility from LocationDistanceGraph where chat_id=? AND name=? AND visibility=?''', (chat_id, actual_module, visibility))
+            elif m := module_name /fullmatchesI/ DOTTED:
+                actual_module = m.group(2).lower()
+                visibility = 'public'
+                namespace = m.group(1).lower()
+                imported_chat_id, = only_one(my_simple_sql('select chat_id from LocationDistanceGraphNamespace where namespace=?', (namespace, )))
                 
-                if len(all_graphs) == 0:
-                    r = my_simple_sql_create('''insert into LocationDistanceGraph(chat_id, name, visibility) VALUES (?,?,?)''', (chat_id, actual_module, visibility))
-                    graph = {'rowid': r['lastrowid'], 'visibility': visibility}
-                elif len(all_graphs) == 1:
-                    graph = all_graphs[0]
-                else:
-                    raise AssertionError
+            elif m := module_name /fullmatchesI/ SIMPLE:
+                actual_module = m.group(0).lower()
+                visibility = 'chat'
+            
+            else:
+                raise UserError("Wrong format for a graph name")
+        
+            all_graphs = my_simple_sql_dict(''' select rowid, visibility from LocationDistanceGraph where chat_id=? AND name=? AND visibility=?''', (imported_chat_id, actual_module, visibility))
+            
+            if len(all_graphs) == 0:
+                r = my_simple_sql_create('''insert into LocationDistanceGraph(chat_id, name, visibility) VALUES (?,?,?)''', (chat_id, actual_module, visibility))
+                graph = {'rowid': r['lastrowid'], 'visibility': visibility}
+            elif len(all_graphs) == 1:
+                graph = all_graphs[0]
+            else:
+                raise AssertionError
             
             if my_simple_sql_dict(''' select rowid from LocationDistanceCurrentGraphChat where chat_id=? ''', (chat_id, )):
                 my_simple_sql_dict(''' update LocationDistanceCurrentGraphChat set graph_id=? where chat_id=? ''', (graph['rowid'], chat_id, ))
             else:
                 my_simple_sql_create(''' insert into LocationDistanceCurrentGraphChat(graph_id, chat_id) VALUES(?,?)''', (graph['rowid'], chat_id, ))
             
-        return await send((f"Current graph:" if not found_in_marketplace else "Current graph (readonly): ") + locationdistance.get_current_graph(chat_id))
+        return await send(f"Current graph: {locationdistance.get_current_graph(chat_id)}")
 
     async def importgraph(args, update, context):
         send = make_send(update, context)
@@ -662,11 +663,24 @@ class locationdistance:
         graph_full_name, = args
         graph_full_name = graph_full_name.lower()
 
+        if '.' not in graph_full_name:
+            raise UserError("Must specify the namespace as namespace.graph")
+        
+        try:
+            graph_namespace, graph_simple_name = graph_full_name.split('.')
+        except ValueError:
+            raise UserError("Only one dot in notation namespace.graph")
+        
         with get_connection() as conn:
             my_simple_sql = partial(simple_sql_args, connection=conn)
 
             try:
-                graph_id, = only_one_specific(my_simple_sql(''' select rowid as graph_id from LocationDistanceGraph where name=? and visibility="public" ''', (graph_full_name, )))
+                imported_chat_id, = only_one_specific(my_simple_sql('''select chat_id from LocationDistanceGraphNamespace where namespace=? ''', (graph_namespace, )))
+            except NoRecords:
+                raise UserError(f"No public namespace {graph_namespace}")
+
+            try:
+                graph_id, = only_one_specific(my_simple_sql(''' select rowid as graph_id from LocationDistanceGraph where chat_id=? and name=? and visibility="public" ''', (imported_chat_id, graph_simple_name, )))
             except NoRecords:
                 raise UserError("There is no public graph with that name")
             
@@ -675,6 +689,9 @@ class locationdistance:
 
         return await send(f'Graph {graph_full_name} is now imported in the chat')
     
+    async def listimport(args, update, context):
+        ''' select g.name from imported_graph i join graph g on igraph_id=g.rowid '''
+
     async def unimportgraph(args, update, context):
         send = make_send(update, context)
         chat_id = update.effective_chat.id
@@ -682,11 +699,24 @@ class locationdistance:
         graph_full_name, = args
         graph_full_name = graph_full_name.lower()
 
+        if '.' not in graph_full_name:
+            raise UserError("Must specify the namespace as namespace.graph")
+
+        try:
+            graph_namespace, graph_simple_name = graph_full_name.split('.')
+        except ValueError:
+            raise UserError("Only one dot in notation namespace.graph")
+
         with get_connection() as conn:
             my_simple_sql = partial(simple_sql_args, connection=conn)
 
             try:
-                graph_id, = only_one_specific(my_simple_sql(''' select rowid as graph_id from LocationDistanceGraph where name=? and visibility="public" ''', (graph_full_name, )))
+                imported_chat_id, = only_one_specific(my_simple_sql('''select chat_id from LocationDistanceGraphNamespace where namespace=? ''', (graph_namespace, )))
+            except NoRecords:
+                raise UserError(f"No public namespace {graph_namespace}")
+
+            try:
+                graph_id, = only_one_specific(my_simple_sql(''' select rowid as graph_id from LocationDistanceGraph where chat_id=? AND name=? and visibility="public" ''', (imported_chat_id, graph_simple_name, )))
             except NoRecords:
                 raise UserError("There is no public graph with that name")
             
@@ -6615,7 +6645,7 @@ def migration25():
     with get_connection() as conn:
         c = conn.cursor()
         c.execute('begin transaction')
-        c.execute('''create table LocationDistanceGraphNamespace(chat_id, namespace)''')
+        c.execute('''create table LocationDistanceGraphNamespace(chat_id, namespace, UNIQUE(namespace))''')
         c.execute('end transaction')
 
 def get_latest_euro_rates_from_api() -> json:
