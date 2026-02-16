@@ -1803,7 +1803,8 @@ async def listflashcards(update, context):
     Args = InfiniteEmptyList(context.args)
     chat_id = update.effective_chat.id
 
-    return await send(flashcard.print_current_flashcards(chat_id=chat_id))
+    with get_connection() as conn:
+        return await send(flashcard.print_current_flashcards(chat_id=chat_id, connection=conn))
 
 async def listpageflashcards(update, context):
     send = make_send(update, context)
@@ -7063,7 +7064,7 @@ COMMAND_LIST_HELP = (
     CommandInfoSpecs('exportflashcards', 'flashcard'),
     CommandInfoSpecs('practiceflashcards', 'flashcard'),
     CommandInfoSpecs('switchpageflashcard', 'flashcard'),
-    CommandInfoSpecs('listflashcard', 'flashcard'),
+    CommandInfoSpecs('listflashcards', 'flashcard'),
     CommandInfoSpecs('listpageflashcard', 'flashcard'),
 
     CommandInfoSpecs('mysettings', 'settings'),
