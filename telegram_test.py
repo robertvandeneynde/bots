@@ -1148,7 +1148,7 @@ async def sharemoney_responder(msg:str, send: AsyncSend, *, update, context):
         )))
 
 async def flashcard_responder(msg, send, *, update, context):
-    if '/' in msg:
+    if ' / ' in msg:
         context.args = msg.split()
         return await add_flashcard(update, context, scope='general')
 
