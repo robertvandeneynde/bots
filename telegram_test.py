@@ -1147,6 +1147,11 @@ async def sharemoney_responder(msg:str, send: AsyncSend, *, update, context):
             ('Debt created:', f'"{debt.debitor_id}"', 'owes', f'"{debt.creditor_id}"', f'{debt.amount}', (f'# {debt.reason}' if debt.reason else ''))
         )))
 
+async def flashcard_responder(msg, send, *, update, context):
+    if '/' in msg:
+        context.args = msg.split()
+        return await add_flashcard(update, context, scope='general')
+
 async def englishpractice_responder(msg: str, send: AsyncSend, *, update, context):
     pass
 
@@ -1169,7 +1174,8 @@ RESPONDERS = (
     (eventedit_responder, 'eventedit', 'on'),
     (list_responder, 'list', 'off'),
     (englishpractice_responder, 'englishpractice', 'off'),
-    (locationdistance_responder, 'locationdistance', 'off')
+    (locationdistance_responder, 'locationdistance', 'off'),
+    (flashcard_responder, 'flashcard', 'off'),
 )
 
 async def on_message(update: Update, context: CallbackContext):
@@ -6423,8 +6429,28 @@ async def convertmoney(update, context):
         raise UserError(f"Unknown currency: {e}")
     await send(format_currency(currency_list=[currency] + currencies_to_convert, amount_list=[amount_base] + amounts_converted))
 
+async def enable_disable_command(update, context, direction: Literal['enable', 'disable']):
+    async def send_command(msg):
+        import html
+        return await make_send(update, context)("<code>" + html.escape(msg) + "</code>", parse_mode="HTML")
+
+    if not context.args:
+        return await make_send(update, context)(
+            "Usage: /{'enable' if direction == 'enable' else 'disable'} responder\n\n"
+            "Available commands: {}".format(', '.join(_[1] for _ in RESPONDERS)))
+
+    responder, = context.args
+    responder = responder.lower()
+    if responder not in (_[1] for _ in RESPONDERS):
+        raise UserError(f"Unknown responder: {responder}\n\nAvailable responders: {', '.join(_[1] for _ in RESPONDERS)}")
+    
+    return await send_command(f"/chatsettings {responder}.active {'on' if direction == 'enable' else 'off'}")
+
 async def implicit_setting_command(update, context, type: Literal['disable', 'only', 'known']):
-    if not (reply := update_get_reply(update)):
+    reply = update_get_reply(update)
+    if type == 'disable' and not reply:
+        return await enable_disable_command(update, context, direction='disable')
+    if not reply:
         raise UserError("Use this on a message")
     if not reply.from_user.id == context.bot.id:
         raise UserError("Use this on a bot message")
@@ -7278,6 +7304,7 @@ if __name__ == '__main__':
     application.add_handler(CommandHandler('dirlist', listsmodule.dirlist()))
     application.add_handler(CommandHandler('dellist', listsmodule.dellist()))
     application.add_handler(CommandHandler('delist', listsmodule.dellist()))
+    application.add_handler(CommandHandler('enable', partial(enable_disable_command, direction='enable')))
     application.add_handler(CommandHandler('disable', partial(implicit_setting_command, type='disable')))
     application.add_handler(CommandHandler('only', partial(implicit_setting_command, type='only')))
     application.add_handler(CommandHandler('known', partial(implicit_setting_command, type='known')))
