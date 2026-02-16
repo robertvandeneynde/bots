@@ -372,9 +372,8 @@ def location_distance_apply(loc, *, chat_id, targets=None):
         S = set()
         for graph_id, in my_simple_sql('select rowid from LocationDistanceGraph where chat_id = ?', (chat_id, )):
             if graph_id not in S:
-                edges += my_simple_sql('select source, dest, distance from LocationDistanceEdge where graph_id = ?', (chat_id, graph_id))
+                edges += my_simple_sql('select source, dest, distance from LocationDistanceEdge where graph_id = ?', (graph_id, ))
                 S.add(graph_id)
-
 
         for graph_id, in my_simple_sql('select graph_id from LocationDistanceImportedGraph where chat_id = ?', (chat_id, )):
             if graph_id not in S:
