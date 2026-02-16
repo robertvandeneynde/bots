@@ -1807,10 +1807,10 @@ class flashcard:
             ''', (chat_id, page_id)))
 
         return ('\n\n' if not select else '\n').join(
-            f"{sentence}\n→ {translation}" if not select else f"- {sentence}" if select == 'first' else f'- {translation}' if select == 'second' else None
+            f"{sentence}\n→ {translation}" if not select else f"- {sentence}" if select == 'first' else f'- {translation}' if select == 'second' else raise_error(AssertionError)
             for sentence, translation in results) or '/'
     
-    def enumerate_flashcards(*, page_name:str | Current, chat_id, connection):
+    def enumerate_flashcards(*, page_name:str | Current, chat_id, connection, select=None):
         my_simple_sql = partial(simple_sql, connection=connection)
 
         page_id = (get_current_flashcard_page_id(chat_id=chat_id) if page_name is flashcard.Current else
@@ -1821,12 +1821,20 @@ class flashcard:
                 where flashcardpage.chat_id=? and flashcardpage.rowid=?
             ''', (chat_id, page_id)))
         
-        return '\n'.join(f"{n}. {sentence}\n→ {translation}" for n, (sentence, translation) in enumerate(results, start=1)) or '/'
+        return ('\n\n' if not select else '\n').join(
+            f"{n}. {sentence}\n→ {translation}" if not select else f"{n}. {sentence}" if select == 'first' else f"{n}. {translation}" if select == 'second' else raise_error(AssertionError)
+            for n, (sentence, translation) in enumerate(results, start=1)) or '/'
     
     def clear_current_flashcards(chat_id, connection):
         my_simple_sql = partial(simple_sql_args, connection=connection)
 
         page_id = get_current_flashcard_page_id(chat_id=chat_id)
+        my_simple_sql('''DELETE FROM flashcard where page_id=?''', (page_id, ))
+    
+    def clear_page_flashcards(chat_id, page_name, connection):
+        my_simple_sql = partial(simple_sql_args, connection=connection)
+
+        page_id = get_named_flashcard_page_id(page_name=page_name, chat_id=chat_id, connection=connection)
         my_simple_sql('''DELETE FROM flashcard where page_id=?''', (page_id, ))
 
 async def listflashcards(update, context):
@@ -4082,9 +4090,11 @@ class listsmodule:
     class clear_dynamic:
         @staticmethod
         def do_it(*, conn, chat_id, name, dynamic_list):
-            match dynamic_list:
+            match listsmodule.dynamic_list_analyze(dynamic_list):
                 case 'flashcard.current':
                     return flashcard.clear_current_flashcards(chat_id=chat_id, connection=conn)
+                case 'flashcard.page', page_name:
+                    return flashcard.clear_page_flashcards(chat_id=chat_id, page_name=page_name, connection=conn)
                 case _:
                     raise UserError(f'Unknown dynamic list type {dynamic_list}')
     
@@ -4107,9 +4117,9 @@ class listsmodule:
         def it(*, conn, chat_id, name, parameters, dynamic_list):
             if parameters:
                 raise UserError("This dynamic list does not take parameters")
-            match dynamic_list:
+            match listsmodule.dynamic_list_analyze(dynamic_list):
                 case 'flashcard.current':
-                    return flashcard.enumerate_flashcards(page_name=page_name, chat_id=chat_id, connection=conn)
+                    return flashcard.enumerate_flashcards(page_name=flashcard.Current, chat_id=chat_id, connection=conn)
                 case 'flashcard.page', page_name:
                     return flashcard.enumerate_flashcards(page_name=page_name, chat_id=chat_id, connection=conn)
                 case _:
