@@ -417,7 +417,7 @@ class locationdistance:
         async def print_usage():
             return await send(
                 "Usage:\n"
-                "/graph addedge|listedges|switchgraph|currentgraph|importgraph|unimportgraph"
+                "/graph addedge|listedges|switch|current|import|unimport|namespace"
             )
         
         Args = InfiniteEmptyList(context.args)
@@ -695,27 +695,38 @@ class locationdistance:
 
         return await send(f"Graph {graph_full_name} isn't imported in the chat anymore")
 
+    def get_current_graph_namespace(*, chat_id, connection) -> Optional[str]:
+        my_simple_sql = partial(simple_sql_args, connection=connection)
+
+        return only_one(only_one(my_simple_sql('''select namespace from LocationDistanceGraphNamespace where chat_id=?''', (chat_id, )) or [[None]]))
+
     async def graphnamespace(args, update, context):
-        raise UserError("Not implemented")
-    
         send = make_send(update, context)
         
+        chat_id = update.effective_chat.id
+
         try:
             namespace, = args
         except:
-            return await send("Usage:\n/graph namespace NAMESPACE\n\nThis command allows you to see the list of public graphs in a specific namespace. It doesn't have to be an exact match, just the namespace part of the graph name (the part before the dot if the graph is named like NAMESPACE.NAME)")
+            with get_connection() as conn:
+                current_namespace = locationdistance.get_current_graph_namespace(chat_id=chat_id, connection=conn)
+                return await send(f"Usage: /graph namespace NAMESPACE\n\nCurrent graph namespace: {current_namespace}")
+        
         namespace = namespace.lower()
-        if not ListLangRegexes.NAME.fullmatch(namespace):
-            raise UserError("Wrong format for a graph namespace")
 
-        chat_id = update.effective_chat.id
+        if not namespace /fullmatches/ ListLangRegexes.NAME:
+            raise UserError("Wrong format for a graph namespace")
 
         with get_connection() as conn:
             my_simple_sql = partial(simple_sql_args, connection=conn)
 
-            graph_names = [name for name, in my_simple_sql(''' select name from LocationDistanceGraph where visibility='public' ''', ())]
+            current_namespace = locationdistance.get_current_graph_namespace(chat_id=chat_id, connection=conn)
+            if current_namespace is None:
+                my_simple_sql('''insert into LocationDistanceGraphNamespace(namespace, chat_id) values (?,?)''', (namespace, chat_id))
+            else:
+                my_simple_sql('''update LocationDistanceGraphNamespace set namespace=? where chat_id=? ''', (namespace, chat_id))
         
-        return await send("Public graphs:\n" + '\n'.join(f"• {name}" for name in graph_names))
+        return await send(f"Current graph namespace: {namespace}")
 
 async def whereisanswer_responder(msg:str, send: AsyncSend, *, update, context):
     reply = update_get_reply(update)
@@ -1563,15 +1574,15 @@ def get_or_empty(L: list, i:int) -> str | object:
     except IndexError:
         return ''
 
-def make_read_my_settings(update: Update, context: CallbackContext=None):
+def make_read_my_settings(update: Update, context: CallbackContext=None, connection=None):
     from functools import partial
     return partial(read_settings, id=update.effective_user.id, settings_type='user')
 
-def make_read_chat_settings(update: Update, context: CallbackContext=None):
+def make_read_chat_settings(update: Update, context: CallbackContext=None, connection=None):
     from functools import partial
     return partial(read_settings, id=update.effective_chat.id, settings_type='chat')
 
-def make_read_chat_settings_from_chat_id(chat_id):
+def make_read_chat_settings_from_chat_id(chat_id, connection=None):
     from functools import partial
     return partial(read_settings, id=chat_id, settings_type='chat')
 
@@ -6600,6 +6611,13 @@ def migration24():
         c.execute('''create table LocationDistanceImportedGraph(chat_id, graph_id)''')
         c.execute('end transaction')
 
+def migration25():
+    with get_connection() as conn:
+        c = conn.cursor()
+        c.execute('begin transaction')
+        c.execute('''create table LocationDistanceGraphNamespace(chat_id, namespace)''')
+        c.execute('end transaction')
+
 def get_latest_euro_rates_from_api() -> json:
     import requests
     from telegram_settings_local import FIXER_TOKEN
@@ -7123,6 +7141,9 @@ class EventFormatting:
          Location="📍",
          Link="🔗",
     )
+
+class Unicode:
+    BULLET = "•"
 
 class EventInfosAnalyse:
     possibles = {
