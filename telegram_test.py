@@ -5743,6 +5743,8 @@ async def menu_button_handler(update, context):
         function: Any
         params: list
 
+    NoHandler = object()
+
     handlers = {
         'help': help,
         'mytimezone': mytimezone,
@@ -5757,9 +5759,9 @@ async def menu_button_handler(update, context):
         ),
         'addevent': add_event,
         'addschedule': addschedule,
-        'delevent': NotImplemented,  # delevent,
-        'iaddevent': NotImplemented, # InteractiveAddEvent.ask_when,
-        'selectevent': NotImplemented,
+        'delevent': NoHandler,  # delevent,
+        'iaddevent': NoHandler, # InteractiveAddEvent.ask_when,
+        'selectevent': NoHandler,
         'nextevent': next_event,
         'lastevent': last_event,
         'listdays': list_days,
@@ -5787,7 +5789,7 @@ async def menu_button_handler(update, context):
     if not handler_info:
         return await make_send(update, context)(f"/{cmd} is not supported")
     
-    if handler_info is NotImplemented:
+    if handler_info is NoHandler:
         send = make_send(update, context)
         return await send("Not Implemented yet")
 
