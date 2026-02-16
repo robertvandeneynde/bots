@@ -815,6 +815,8 @@ async def list_responder(msg: str, send: AsyncSend, *, update, context):
                             listsmodule.delintree(**P()).run(parameters=parameters)
                         elif list_type in ('list', 'tasklist'):
                             listsmodule.delinlist.do_it(**P(), value=parameters)
+                        elif dynamic_list:
+                            listsmodule.delindynamic.do_it(**P(), value=parameters, dynamic_list=dynamic_list)
                         else:
                             raise DoNotAnswer
                     
@@ -1813,8 +1815,7 @@ class flashcard:
     def enumerate_flashcards(*, page_name:str | Current, chat_id, connection, select=None):
         my_simple_sql = partial(simple_sql, connection=connection)
 
-        page_id = (get_current_flashcard_page_id(chat_id=chat_id) if page_name is flashcard.Current else
-                   get_named_flashcard_page_id(chat_id=chat_id, page_name=page_name))
+        page_id = flashcard.get_page_id(chat_id=chat_id, page_name=page_name, connection=connection)
         
         results = my_simple_sql((
             ''' select flashcard.sentence, flashcard.translation from flashcard inner join flashcardpage on flashcard.page_id=flashcardpage.rowid
@@ -1825,18 +1826,27 @@ class flashcard:
             f"{n}. {sentence}\n→ {translation}" if not select else f"{n}. {sentence}" if select == 'first' else f"{n}. {translation}" if select == 'second' else raise_error(AssertionError)
             for n, (sentence, translation) in enumerate(results, start=1)) or '/'
     
-    def clear_current_flashcards(chat_id, connection):
+    def get_page_id(*, chat_id, page_name, connection):
+        return (get_current_flashcard_page_id(chat_id=chat_id, connection=connection) if page_name is flashcard.Current else
+                get_named_flashcard_page_id(chat_id=chat_id, page_name=page_name, connection=connection))
+
+    def clear_flashcards(chat_id, page_name, connection):
         my_simple_sql = partial(simple_sql_args, connection=connection)
 
-        page_id = get_current_flashcard_page_id(chat_id=chat_id)
+        page_id = flashcard.get_page_id(page_name=page_name, chat_id=chat_id, connection=connection)
         my_simple_sql('''DELETE FROM flashcard where page_id=?''', (page_id, ))
-    
-    def clear_page_flashcards(chat_id, page_name, connection):
+
+    def delete_in_page(do_all_delete, chat_id, page_name, connection):
         my_simple_sql = partial(simple_sql_args, connection=connection)
 
-        page_id = get_named_flashcard_page_id(page_name=page_name, chat_id=chat_id, connection=connection)
-        my_simple_sql('''DELETE FROM flashcard where page_id=?''', (page_id, ))
+        page_id = flashcard.get_page_id(chat_id=chat_id, page_name=page_name, connection=connection)
+        rowids = my_simple_sql(''' select rowid from flashcard where page_id=? ''', (page_id, ))
 
+        def delete(i):
+            my_simple_sql(''' delete from flashcard where rowid=? ''', (rowids[i][0], ))
+
+        do_all_delete(delete, len(rowids))
+        
 async def listflashcards(update, context):
     send = make_send(update, context)
     Args = InfiniteEmptyList(context.args)
@@ -3900,6 +3910,26 @@ class listsmodule:
                     delrowid = rowids[i][0]
                     my_simple_sql((''' delete from ListElement where listid=? and rowid=?''', (listid, delrowid, )))
 
+    class delindynamic:
+        @staticmethod
+        def do_it(*, conn, chat_id, name, value, dynamic_list):
+            my_simple_sql = partial(simple_sql, connection=conn)
+
+            def do_all_delete(delete, N):
+                for v in value.split():
+                    for i in map(listsmodule.one_based_to_zero_based, listsmodule.parse_interval(v, N)):
+                        delete(i)
+
+            match listsmodule.dynamic_list_analyze(dynamic_list):
+                case 'flashcard.current':
+                    flashcard.delete_in_page(do_all_delete=do_all_delete, connection=conn, chat_id=chat_id, page_name=flashcard.Current)
+                case 'flashcard.page', page_name:
+                    flashcard.delete_in_page(do_all_delete=do_all_delete, connection=conn, chat_id=chat_id, page_name=page_name)
+                case 'event.today':
+                    raise UserError("Not implemented yet")
+                case _:
+                    raise UserError("Unknown dynamic type")
+
     class delintree(OnTreeAction):
         def run(self, *, parameters):
             itree_str_multiple = parameters.split()
@@ -4092,9 +4122,9 @@ class listsmodule:
         def do_it(*, conn, chat_id, name, dynamic_list):
             match listsmodule.dynamic_list_analyze(dynamic_list):
                 case 'flashcard.current':
-                    return flashcard.clear_current_flashcards(chat_id=chat_id, connection=conn)
+                    return flashcard.clear_flashcards(chat_id=chat_id, connection=conn, page_name=flashcard.Current)
                 case 'flashcard.page', page_name:
-                    return flashcard.clear_page_flashcards(chat_id=chat_id, page_name=page_name, connection=conn)
+                    return flashcard.clear_flashcards(chat_id=chat_id, page_name=page_name, connection=conn)
                 case _:
                     raise UserError(f'Unknown dynamic list type {dynamic_list}')
     
