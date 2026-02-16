@@ -1790,15 +1790,15 @@ class flashcard:
         
         save_flashcard(sentence, translation, page_id=page_id, connection=conn)
 
-    def print_current_flashcards(chat_id, connection):
+    def print_current_flashcards(*, chat_id, connection, select=None):
         page_id = get_current_flashcard_page_id(chat_id=chat_id)
-        return flashcard.print_page_flashcards_from_id(chat_id=chat_id, page_id=page_id, connection=connection)
+        return flashcard.print_page_flashcards_from_id(chat_id=chat_id, page_id=page_id, connection=connection, select=select)
     
-    def print_page_flashcards(chat_id, page_name, connection):
+    def print_page_flashcards(chat_id, page_name, connection, select=None):
         page_id = get_named_flashcard_page_id(page_name=page_name, chat_id=chat_id, connection=connection)
-        return flashcard.print_page_flashcards_from_id(chat_id=chat_id, page_id=page_id, connection=connection)
+        return flashcard.print_page_flashcards_from_id(chat_id=chat_id, page_id=page_id, connection=connection, select=select)
 
-    def print_page_flashcards_from_id(chat_id, page_id, connection):
+    def print_page_flashcards_from_id(chat_id, page_id, connection, select=None):
         my_simple_sql = partial(simple_sql, connection=connection)
 
         results = my_simple_sql((
@@ -1806,7 +1806,9 @@ class flashcard:
                 where flashcardpage.chat_id=? and flashcardpage.rowid=?
             ''', (chat_id, page_id)))
 
-        return '\n'.join(f"{sentence}\n→ {translation}" for sentence, translation in results) or '/'
+        return ('\n\n' if not select else '\n').join(
+            f"{sentence}\n→ {translation}" if not select else f"- {sentence}" if select == 'first' else f'- {translation}' if select == 'second' else None
+            for sentence, translation in results) or '/'
     
     def enumerate_flashcards(*, page_name:str | Current, chat_id, connection):
         my_simple_sql = partial(simple_sql, connection=connection)
@@ -1832,8 +1834,15 @@ async def listflashcards(update, context):
     Args = InfiniteEmptyList(context.args)
     chat_id = update.effective_chat.id
 
+    if Args[0].lower() == 'first':
+        select = 'first'
+    elif Args[0].lower() == 'second':
+        select = 'second'
+    else:
+        select = None
+
     with get_connection() as conn:
-        return await send(flashcard.print_current_flashcards(chat_id=chat_id, connection=conn))
+        return await send(flashcard.print_current_flashcards(chat_id=chat_id, select=select, connection=conn))
 
 async def listpageflashcards(update, context):
     send = make_send(update, context)
