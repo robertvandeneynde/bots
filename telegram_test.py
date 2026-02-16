@@ -418,7 +418,7 @@ class locationdistance:
         async def print_usage():
             return await send(
                 "Usage:\n"
-                "/graph addedge|listedges|switch|current|import|unimport|namespace"
+                "/graph addedge|listedges|listgraphs|switch|current|import|unimport|namespace"
             )
         
         Args = InfiniteEmptyList(context.args)
@@ -431,6 +431,8 @@ class locationdistance:
             return await send(f'Current graph: {locationdistance.get_current_graph(update.effective_chat.id)}')
         if Args[0] /fullmatchesI/ r'list|listedge|listedges':
             return await locationdistance.listlocationinfo(Args[1:], update, context)
+        if Args[0] /fullmatchesI/ r'listgraph|listgraphs':
+            return await locationdistance.listgraphs(Args[1:], update, context)
         if Args[0] /fullmatchesI/ r'import':
             return await locationdistance.importgraph(Args[1:], update, context)
         if Args[0] /fullmatchesI/ r'unimport':
@@ -555,6 +557,31 @@ class locationdistance:
 
         return await send(f'[Graph "{graph_name}"]\n' + (' //\n'.join(f"{source} / {dest} / {distance}" for source, dest, distance in edges) or '/'))
 
+    async def listgraphs(args, update, context):
+        send = make_send(update, context)
+
+        with get_connection() as conn:
+            my_simple_sql = partial(simple_sql_args, connection=conn)
+
+            conn.execute('begin transaction')
+            
+            chat_id = update.effective_chat.id
+
+            out = []
+            L = []
+            L += my_simple_sql('select rowid from LocationDistanceGraph where chat_id=?', (chat_id, ))
+            L += my_simple_sql('select graph_id from LocationDistanceImportedGraph where chat_id=?', (chat_id, ))
+
+            for graph_id, in L:
+                out.append("- {}".format(locationdistance.graph_full_name(chat_id=chat_id, graph_id=graph_id, connection=conn)))
+
+            conn.execute('end transaction')
+        
+        def key(x):
+            return ('.' in x, x)
+
+        return await send('\n'.join(sorted(out, key=key)) or '/')
+
     def save_location_distance(chat_id, source, dest, distance, conn, graph_id):
         if distance == 'delete':
             conn.execute('delete from LocationDistanceEdge where chat_id = ? and graph_id = ? and (LOWER(source) = LOWER(?) and LOWER(dest) = LOWER(?) or LOWER(dest) = LOWER(?) and LOWER(source) = LOWER(?))', (chat_id, graph_id, source, dest, source, dest))
@@ -562,20 +589,32 @@ class locationdistance:
             conn.execute('insert into LocationDistanceEdge(chat_id, graph_id, source, dest, distance) values (?, ?, ?, ?, ?)', (chat_id, graph_id, source, dest, distance))
         else:
             conn.execute('update LocationDistanceEdge set distance = ? where chat_id = ? and graph_id = ? and (LOWER(source) = LOWER(?) and LOWER(dest) = LOWER(?) or LOWER(dest) = LOWER(?) and LOWER(source) = LOWER(?))', (distance, chat_id, graph_id, source, dest, source, dest))
-    
+
+    def graph_full_name(chat_id, graph_id, connection=None):
+        my_simple_sql = partial(simple_sql_args, connection=connection)
+
+        graph_name, graph_visibility, graph_chat_id = only_one(my_simple_sql(''' select name, visibility, chat_id from LocationDistanceGraph where rowid = ?''', (graph_id, )))
+        
+        return locationdistance.get_full_name_from_db_infos(chat_id=chat_id, graph_name=graph_name, graph_visibility=graph_visibility, graph_chat_id=graph_chat_id)        
+
     def get_current_graph(chat_id, connection=None):
         my_simple_sql = partial(simple_sql_args, connection=connection)
         alls = my_simple_sql(''' select g.name, g.visibility, g.chat_id from LocationDistanceCurrentGraphChat c inner join LocationDistanceGraph g on c.graph_id=g.rowid where c.chat_id=? ''', (chat_id, ))
-        g_infos = only_one(alls) if alls else ('chat', 'chat', chat_id)
-        print(*g_infos)
-        if g_infos[2] == chat_id and g_infos[1] == 'chat':
+        graph_name, graph_visibility, graph_chat_id = only_one(alls) if alls else ('chat', 'chat', chat_id)
+
+        return locationdistance.get_full_name_from_db_infos(chat_id=chat_id, graph_name=graph_name, graph_visibility=graph_visibility, graph_chat_id=graph_chat_id)
+
+    def get_full_name_from_db_infos(*, chat_id, graph_name, graph_visibility, graph_chat_id, connection=None):
+        my_simple_sql = partial(simple_sql_args, connection=connection)
+
+        if graph_chat_id == chat_id and graph_visibility == 'chat':
             namespace = None
         else:
-            namespace, = only_one(my_simple_sql(''' select namespace from LocationDistanceGraphNamespace where chat_id = ?''', (g_infos[2], )) or [(None, )])
+            namespace, = only_one(my_simple_sql(''' select namespace from LocationDistanceGraphNamespace where chat_id = ?''', (graph_chat_id, )) or [(None, )])
             if namespace is None:
                 namespace = '?'
-        return (namespace + '.' if namespace else '') + g_infos[0] + (' (readonly)' if g_infos[2] != chat_id else '')
-    
+        return (namespace + '.' if namespace else '') + graph_name + (' (readonly)' if graph_chat_id != chat_id else '')
+
     def get_current_graph_id(chat_id, connection=None):
         my_simple_sql = partial(simple_sql_args, connection=connection)
         my_simple_sql_create = partial(simple_sql_create_args, connection=connection)
