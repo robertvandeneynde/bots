@@ -417,23 +417,25 @@ class locationdistance:
         async def print_usage():
             return await send(
                 "Usage:\n"
-                "/locationinfo addedge|listedges|switchgraph|currentgraph|importgraph|unimportgraph"
+                "/graph addedge|listedges|switchgraph|currentgraph|importgraph|unimportgraph"
             )
         
         Args = InfiniteEmptyList(context.args)
         
         if Args[0] /fullmatchesI/ r'addedges?':
             return await locationdistance.addedges(Args[1:], update, context)
-        if Args[0] /fullmatchesI/ r'switchgraph':
+        if Args[0] /fullmatchesI/ r'switch':
             return await locationdistance.switchgraph(Args[1:], update, context)
-        if Args[0] /fullmatchesI/ r'currentgraph':
+        if Args[0] /fullmatchesI/ r'current':
             return await send(f'Current graph: {locationdistance.get_current_graph(update.effective_chat.id)}')
         if Args[0] /fullmatchesI/ r'list|listedge|listedges':
             return await locationdistance.listlocationinfo(Args[1:], update, context)
-        if Args[0] /fullmatchesI/ r'importgraph':
+        if Args[0] /fullmatchesI/ r'import':
             return await locationdistance.importgraph(Args[1:], update, context)
-        if Args[0] /fullmatchesI/ r'unimportgraph':
+        if Args[0] /fullmatchesI/ r'unimport':
             return await locationdistance.unimportgraph(Args[1:], update, context)
+        if Args[0] /fullmatchesI/ r'namespace':
+            return await locationdistance.graphnamespace(Args[1:], update, context)
         return await print_usage()
     
     async def addedges(args, update, context):
@@ -513,11 +515,11 @@ class locationdistance:
         except ValueError as e:
             return await send(
                 'Usage:\n'
-                '/locationinfo from to distance\n'
-                '/locationinfo from / to / distance\n'
-                '/locationinfo from / to / distance // from / to / distance\n'
-                '/locationinfo path: A dist B dist C\n'
-                '/locationinfo star: A / B dist / C dist\n')
+                '/graph addedges from to distance\n'
+                '/graph addedges from / to / distance\n'
+                '/graph addedges from / to / distance // from / to / distance\n'
+                '/graph addedges path: A dist B dist C\n'
+                '/graph addedges star: A / B dist / C dist\n')
 
         chat_id = update.effective_chat.id
         with sqlite3.connect('db.sqlite') as conn:
@@ -592,8 +594,8 @@ class locationdistance:
         async def print_usage(current_graph=False):
             return await send(
                 "Usage:\n"
-                "/locationinfo switchgraph public.NAME\n"
-                "/locationinfo switchgraph NAME\n" + (
+                "/graph switch public.NAME\n"
+                "/graph switch NAME\n" + (
                     f"\nCurrent graph: {locationdistance.get_current_graph(update.effective_chat.id)}"
                     if current_graph else ''   
                 ))
@@ -693,6 +695,27 @@ class locationdistance:
 
         return await send(f"Graph {graph_full_name} isn't imported in the chat anymore")
 
+    async def graphnamespace(args, update, context):
+        raise UserError("Not implemented")
+    
+        send = make_send(update, context)
+        
+        try:
+            namespace, = args
+        except:
+            return await send("Usage:\n/graph namespace NAMESPACE\n\nThis command allows you to see the list of public graphs in a specific namespace. It doesn't have to be an exact match, just the namespace part of the graph name (the part before the dot if the graph is named like NAMESPACE.NAME)")
+        namespace = namespace.lower()
+        if not ListLangRegexes.NAME.fullmatch(namespace):
+            raise UserError("Wrong format for a graph namespace")
+
+        chat_id = update.effective_chat.id
+
+        with get_connection() as conn:
+            my_simple_sql = partial(simple_sql_args, connection=conn)
+
+            graph_names = [name for name, in my_simple_sql(''' select name from LocationDistanceGraph where visibility='public' ''', ())]
+        
+        return await send("Public graphs:\n" + '\n'.join(f"• {name}" for name in graph_names))
 
 async def whereisanswer_responder(msg:str, send: AsyncSend, *, update, context):
     reply = update_get_reply(update)
@@ -7512,7 +7535,7 @@ if __name__ == '__main__':
     application.add_handler(CommandHandler('thereis', thereis))
     application.add_handler(CommandHandler('delthereis', delthereis))
     application.add_handler(CommandHandler('delwhereis', delthereis))
-    application.add_handler(CommandHandler('locationinfo', locationdistance.locationinfo))
+    application.add_handler(CommandHandler('graph', locationdistance.locationinfo))
     application.add_handler(CommandHandler('distfrom', distfrom))
     application.add_handler(CommandHandler('pathfrom', pathfrom))
     application.add_handler(ConversationHandler(
