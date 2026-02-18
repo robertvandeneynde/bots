@@ -7015,23 +7015,24 @@ async def detaildebts(update, context):
             )
 
     
-    sql = 'select chat_id, debitor_id, creditor_id, amount, currency, reason from NamedChatDebt where chat_id=? AND (%s) ORDER BY rowid DESC LIMIT ?' % sql_filter
+    sql = 'select chat_id, debitor_id, creditor_id, amount, currency, reason from NamedChatDebt where chat_id=? AND (%s) ORDER BY rowid DESC' % sql_filter
 
-    count = simple_sql_dict(('select count(*) as c from NamedChatDebt where chat_id=? AND (%s)' % sql_filter, (chat_id, ) + filter_params))[0]['c']
+    #count = simple_sql_dict(('select count(*) as c from NamedChatDebt where chat_id=? AND (%s)' % sql_filter, (chat_id, ) + filter_params))[0]['c']
 
-    lines = simple_sql_dict((sql, (chat_id, ) + filter_params + (last_n, )))
+    lines = simple_sql_dict((sql, (chat_id, ) + filter_params))
 
     to_print = []
-    if count > len(lines):
-        to_print.append('...')
     
     if account_filter and account_filter[0] == 'multi':
         to_print.append('// "{}" owes "{}"'.format(*account_filter[1]))
         from collections import defaultdict
         total_displayed = defaultdict(Decimal)
+    
+    if last_n < len(lines):
+        to_print.append('...')
 
     debt: NamedChatDebt
-    for debt in reversed([NamedChatDebt(**x) for x in lines]):
+    for i, debt in enumerate(reversed([NamedChatDebt(**x) for x in lines])):
         name_re = regex.compile(r"(\p{L}\w*)([.]([A-Za-z]+))?")
         debitor_name = name_re.fullmatch(debt.debitor_id).group(1)
         creditor_name = name_re.fullmatch(debt.creditor_id).group(1)
@@ -7051,25 +7052,27 @@ async def detaildebts(update, context):
             else:
                 raise ValueError('Logic problem in identify directed_amount')
             
-            to_print.append(' '.join(filter(None, (
-                '+' if directed_amount >= 0 else '-',
-                str(abs(directed_amount)),
-                str(currency) if currency else '',
-                f'# {debt.reason}' if debt.reason else '',
-            ))))
+            if len(lines) - i  <= last_n:
+                to_print.append(' '.join(filter(None, (
+                    '+' if directed_amount >= 0 else '-',
+                    str(abs(directed_amount)),
+                    str(currency) if currency else '',
+                    f'# {debt.reason}' if debt.reason else '',
+                ))))
 
             total_displayed[currency or ''] += directed_amount
 
         else:
-            to_print.append(' '.join(filter(None, (
-                'Debt',
-                f'"{debitor_name}"',
-                'owes',
-                f'"{creditor_name}"',
-                f'{debt.amount}',
-                f'{currency}' if currency else '',
-                f'# {debt.reason}' if debt.reason else ''
-            ))))
+            if len(lines) - i <= last_n:
+                to_print.append(' '.join(filter(None, (
+                    'Debt',
+                    f'"{debitor_name}"',
+                    'owes',
+                    f'"{creditor_name}"',
+                    f'{debt.amount}',
+                    f'{currency}' if currency else '',
+                    f'# {debt.reason}' if debt.reason else ''
+                ))))
     
     if account_filter and account_filter[0] == 'multi':
         to_print.append("// Total: {}".format(" + ".join(f"{y} {x}" if x else f"{y}" for x,y in sorted(total_displayed.items()))))
