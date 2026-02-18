@@ -6784,6 +6784,18 @@ async def convertmoney(update, context):
     send = make_send(update, context)
     read_chat_settings = make_read_chat_settings(update, context)
 
+    def k_notation_decimal(x):
+        if match := x.lower() /fullmatches/ r'(\d+[.]?\d*)([k]?)':
+            value, suffix = match.groups()
+            value = Decimal(value)
+            if suffix == 'k':
+                value = value * 1000
+            else:
+                raise AssertionError
+            return value
+        else:
+            raise ValueError("Not a decimal number")
+
     try:
         if len(context.args) == 2:
             value, currency = context.args
@@ -6805,7 +6817,7 @@ async def convertmoney(update, context):
     if currency_converted is not None:
         currency_converted = MONEY_CURRENCIES_ALIAS.get(currency_converted.lower(), currency_converted)
 
-    amount_base = Decimal(value)
+    amount_base = k_notation_decimal(value)
     rates = get_database_euro_rates()
 
     if mode == 'to_chat_currencies':
