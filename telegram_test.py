@@ -126,7 +126,7 @@ MONEY_CURRENCIES_ALIAS = {
     'cad': 'cad',
     'sol': 'pen',
 }
-MONEY_RE = re.compile('(\\d+[.]?\\d*) ?(' + '|'.join(map(re.escape, MONEY_CURRENCIES_ALIAS)) + ')', re.I)
+MONEY_RE = re.compile('(\\d+[.]?\\d*[k]?) ?(' + '|'.join(map(re.escape, MONEY_CURRENCIES_ALIAS)) + ')', re.I)
 
 def read_pure_json(filename):
     import json 
@@ -261,7 +261,7 @@ async def money_responder(msg:str, send: AsyncSend, *, update, context):
             if db_known_currencies is None or currency not in db_known_currencies:
                 if currency in chat_currencies:
                     currencies_to_convert = [x for x in chat_currencies if x != currency]
-                    amount_base = Decimal(value)
+                    amount_base = k_notation_decimal(value)
                     amounts_converted = [convert_money(amount_base, currency_base=currency, currency_converted=currency_to_convert, rates=rates()) for currency_to_convert in currencies_to_convert]
                     await send(format_currency(currency_list=[currency] + currencies_to_convert, amount_list=[amount_base] + amounts_converted))
 
@@ -6780,21 +6780,21 @@ eur = make_money_command("eur", "eur")
 brl = make_money_command("brl", "brl")
 rub = make_money_command("rub", "rub")
 
+def k_notation_decimal(x):
+    if match := x.lower() /fullmatches/ r'(\d+[.]?\d*)([k]?)':
+        value, suffix = match.groups()
+        value = Decimal(value)
+        if suffix == 'k':
+            value = value * 1000
+        else:
+            raise AssertionError
+        return value
+    else:
+        raise ValueError("Not a decimal number")
+
 async def convertmoney(update, context):
     send = make_send(update, context)
     read_chat_settings = make_read_chat_settings(update, context)
-
-    def k_notation_decimal(x):
-        if match := x.lower() /fullmatches/ r'(\d+[.]?\d*)([k]?)':
-            value, suffix = match.groups()
-            value = Decimal(value)
-            if suffix == 'k':
-                value = value * 1000
-            else:
-                raise AssertionError
-            return value
-        else:
-            raise ValueError("Not a decimal number")
 
     try:
         if len(context.args) == 2:
