@@ -126,7 +126,7 @@ MONEY_CURRENCIES_ALIAS = {
     'cad': 'cad',
     'sol': 'pen',
 }
-MONEY_RE = re.compile('(\\d+) ?(' + '|'.join(map(re.escape, MONEY_CURRENCIES_ALIAS)) + ')', re.I)
+MONEY_RE = re.compile('(\\d+[.]?\\d*) ?(' + '|'.join(map(re.escape, MONEY_CURRENCIES_ALIAS)) + ')', re.I)
 
 def read_pure_json(filename):
     import json 
