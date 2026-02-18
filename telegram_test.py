@@ -6967,14 +6967,40 @@ async def detaildebts(update, context):
     send = make_send(update, context)
     chat_id = update.effective_chat.id
 
-    sql_filter = ('1=1' if account_filter is None else
-                  'debitor_id=? OR creditor_id=?' if account_filter[0] == 'simple' else
-                  'debitor_id=? AND creditor_id=? OR debitor_id=? AND creditor_id=?')
-    
-    filter_params = (() if account_filter is None else
-                     (account_filter[1], account_filter[1]) if account_filter[0] == 'simple' else 
-                     (account_filter[1][0], account_filter[1][1], account_filter[1][1], account_filter[1][0]))
+    if account_filter is None:
+        sql_filter = '1=1'
+        filter_params = ()
+    elif account_filter[0] == 'simple':
+        if '.' in account_filter:
+            sql_filter = 'debitor_id=? OR creditor_id=?'
+            filter_params = (account_filter[1], account_filter[1])
+        else:
+            sql_filter = 'debitor_id LIKE ? OR creditor_id LIKE ? OR debitor_id = ? OR creditor_id = ?'
+            filter_params = (
+                account_filter[1] + '.' + '%', account_filter[1] + '.' + '%',
+                account_filter[1], account_filter[1],
+            )
+    else:
+        if '.' in account_filter:
+            sql_filter = (
+                '(debitor_id LIKE ? AND creditor_id LIKE ? OR debitor_id LIKE ? AND creditor_id LIKE ?)'
+                'OR (debitor_id=? AND creditor_id=? OR debitor_id=? AND creditor_id=?)'
+            )
+            filter_params = (
+                account_filter[1][0] + '.' + '%', account_filter[1][1] + '.' + '%', account_filter[1][1] + '.' + '%', account_filter[1][0] + '.' + '%',
+                account_filter[1][0], account_filter[1][1], account_filter[1][1], account_filter[1][0]
+            )
+        else:
+            sql_filter = (
+                '(debitor_id LIKE ? AND creditor_id LIKE ? OR debitor_id LIKE ? AND creditor_id LIKE ?)'
+                'OR (debitor_id = ? AND creditor_id = ? OR debitor_id = ? AND creditor_id = ?)'
+            )
+            filter_params = (
+                account_filter[1][0] + '.' + '%', account_filter[1][1] + '.' + '%', account_filter[1][1] + '.' + '%', account_filter[1][0] + '.' + '%',
+                account_filter[1][0], account_filter[1][1], account_filter[1][1], account_filter[1][0],
+            )
 
+    
     sql = 'select chat_id, debitor_id, creditor_id, amount, currency, reason from NamedChatDebt where chat_id=? AND (%s) ORDER BY rowid DESC LIMIT ?' % sql_filter
 
     count = simple_sql_dict(('select count(*) as c from NamedChatDebt where chat_id=? AND (%s)' % sql_filter, (chat_id, ) + filter_params))[0]['c']
@@ -6987,7 +7013,8 @@ async def detaildebts(update, context):
     
     if account_filter and account_filter[0] == 'multi':
         to_print.append('// "{}" owes "{}"'.format(*account_filter[1]))
-        total_displayed = 0
+        from collections import defaultdict
+        total_displayed = defaultdict(Decimal)
 
     debt: NamedChatDebt
     for debt in reversed([NamedChatDebt(**x) for x in lines]):
@@ -7003,10 +7030,10 @@ async def detaildebts(update, context):
     
         if account_filter and account_filter[0] == 'multi':
             
-            if (debt.debitor_id, debt.creditor_id, ) == tuple(account_filter[1]):
-                directed_amount = debt.amount
-            elif (debt.creditor_id, debt.debitor_id, ) == tuple(account_filter[1]):
-                directed_amount = - debt.amount
+            if (debitor_name, creditor_name, ) == tuple(account_filter[1]) or (debt.debitor_id, debt.creditor_id) == tuple(account_filter[1]):
+                directed_amount = Decimal(debt.amount)
+            elif (creditor_name, debitor_name, ) == tuple(account_filter[1]) or (debt.creditor_id, debt.debitor_id) == tuple(account_filter[1]):
+                directed_amount = - Decimal(debt.amount)
             else:
                 raise ValueError('Logic problem in identify directed_amount')
             
@@ -7017,7 +7044,7 @@ async def detaildebts(update, context):
                 f'# {debt.reason}' if debt.reason else '',
             ))))
 
-            total_displayed += directed_amount
+            total_displayed[currency or ''] += directed_amount
 
         else:
             to_print.append(' '.join(filter(None, (
@@ -7031,7 +7058,7 @@ async def detaildebts(update, context):
             ))))
     
     if account_filter and account_filter[0] == 'multi':
-        to_print.append("// Total: {}".format(total_displayed))
+        to_print.append("// Total: {}".format(" + ".join(f"{y} {x}" if x else f"{y}" for x,y in sorted(total_displayed.items()))))
 
     return await send('\n'.join(to_print) or 'No debts in that chat !')
 
