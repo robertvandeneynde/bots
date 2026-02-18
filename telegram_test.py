@@ -6786,6 +6786,8 @@ def k_notation_decimal(x):
         value = Decimal(value)
         if suffix == 'k':
             value = value * 1000
+        elif not suffix:
+            value = value
         else:
             raise AssertionError
         return value
