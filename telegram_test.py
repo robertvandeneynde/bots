@@ -1320,7 +1320,7 @@ async def sharemoney_responder(msg:str, send: AsyncSend, *, update, context):
                 self.value = ''.join(tokens)
 
             def eval(self):
-                return Decimal(self.value)
+                return k_notation_decimal(self.value)
             
         class EvalOne:
             SIGNS = {"+": 1, "-": -1}
@@ -1357,7 +1357,7 @@ async def sharemoney_responder(msg:str, send: AsyncSend, *, update, context):
 
 
         arithmetics = infix_notation(
-            (Word(nums) + Optional(Literal('.') + Word(nums))).set_parse_action(EvalConstant),
+            (Word(nums) + Optional(Literal('.') + Word(nums) + Optional(one_of('k K')))).set_parse_action(EvalConstant),
             [
                 (one_of("+ -"), 1, opAssoc.RIGHT, EvalOne),
                 (one_of("* /"), 2, opAssoc.LEFT, EvalTwo),
