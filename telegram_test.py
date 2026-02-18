@@ -1313,14 +1313,14 @@ async def sharemoney_responder(msg:str, send: AsyncSend, *, update, context):
     chat_id = update.effective_chat.id
 
     def Amount():
-        from pyparsing import Word, nums, infix_notation, opAssoc, one_of
+        from pyparsing import Word, nums, infix_notation, opAssoc, one_of, Literal, Optional
 
         class EvalConstant:
             def __init__(self, tokens):
-                self.value = tokens[0]
+                self.value = ''.join(tokens)
 
             def eval(self):
-                return int(self.value)
+                return Decimal(self.value)
             
         class EvalOne:
             SIGNS = {"+": 1, "-": -1}
@@ -1357,7 +1357,7 @@ async def sharemoney_responder(msg:str, send: AsyncSend, *, update, context):
 
 
         arithmetics = infix_notation(
-            Word(nums).set_parse_action(EvalConstant),
+            (Word(nums) + Optional(Literal('.') + Word(nums))).set_parse_action(EvalConstant),
             [
                 (one_of("+ -"), 1, opAssoc.RIGHT, EvalOne),
                 (one_of("* /"), 2, opAssoc.LEFT, EvalTwo),
@@ -1376,7 +1376,7 @@ async def sharemoney_responder(msg:str, send: AsyncSend, *, update, context):
     # Name owes Name 50 [EUR]
     # Name owes Name 50 [EUR] [for Something]
 
-    if name.fullmatch(Args[0]) and Args[1] in ('owes', 'paid') and name.fullmatch(Args[2]) and amount.matches(Args[3]):
+    if name.fullmatch(Args[0]) and Args[1].lower() in ('owes', 'paid') and name.fullmatch(Args[2]) and amount.matches(Args[3]):
         i = 4
         if currency_re.fullmatch(Args[i]):
             currency_string: str = Args[i].upper()
@@ -1384,7 +1384,7 @@ async def sharemoney_responder(msg:str, send: AsyncSend, *, update, context):
         else:
             currency_string: str = None
         
-        if Args[i] in ('for', '#') and Args[i+1]:
+        if Args[i].lower() in ('for', '#') and Args[i+1]:
             reason = ' '.join(Args[i+1:])
         elif Args[i].startswith('#') and Args[i][1:]:
             reason = ' '.join([Args[i][1:]] + Args[i+1:])
@@ -1397,7 +1397,7 @@ async def sharemoney_responder(msg:str, send: AsyncSend, *, update, context):
 
         first_name, operation, second_name, amount_str = Args[:4]
 
-        if operation == 'paid':
+        if operation.lower() == 'paid':
             first_name, second_name = second_name, first_name
             # now it's like owes
 
@@ -1425,7 +1425,7 @@ async def sharemoney_responder(msg:str, send: AsyncSend, *, update, context):
             debitor_id=first_name,
             creditor_id=second_name,
             chat_id=chat_id,
-            amount=amount.parse_string(amount_str, parse_all=True)[0].eval(),
+            amount=str(amount.parse_string(amount_str, parse_all=True)[0].eval()),
             reason=reason,
             currency=the_currency and the_currency.upper())
     
