@@ -819,6 +819,14 @@ class locationdistance:
         graph_full_name, = args
         graph_full_name = graph_full_name.lower()
 
+        if graph_full_name == '*':
+            with get_connection() as connection:
+                my_simple_sql = partial(simple_sql_args, connection=connection)
+
+                my_simple_sql('delete from LocationDistanceImportedGraph where chat_id = ?', (chat_id, ))
+
+            return await send("All imports aren't in the chat anymore")
+
         if '.' not in graph_full_name:
             raise UserError("Must specify the namespace as namespace.graph")
 
