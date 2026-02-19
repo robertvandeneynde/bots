@@ -480,6 +480,8 @@ class locationdistance:
         edges = []
         try:
             for edge in ' '.join(args).split('//'):
+                if not edge.strip():
+                    continue
                 if m := edge /fullmatchesI/ '(path|star)\s*:\s*(.*)':
                     pattern, data = m.group(1), m.group(2)
                     data_list = InfiniteEmptyList(data.split('/'))
