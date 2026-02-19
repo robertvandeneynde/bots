@@ -436,8 +436,11 @@ class locationdistance:
             return await locationdistance.importgraph(Args[1:], update, context)
         if Args[0] /fullmatchesI/ r'unimport|unimportgraph':
             return await locationdistance.unimportgraph(Args[1:], update, context)
+        if Args[0] /fullmatchesI/ r'cleargraph':
+            return await locationdistance.deletegraph_or_cleargraph(Args[1:], update, context, operation='clear')
         if Args[0] /fullmatchesI/ r'deletegraph|delgraph':
-            return await locationdistance.deletegraph(Args[1:], update, context)
+            return await send("Not implemeted (but cleargraph is)")
+            # return await locationdistance.deletegraph_or_cleargraph(Args[1:], update, context, operation='delete')
         if Args[0] /fullmatchesI/ r'namespace':
             return await locationdistance.graphnamespace(Args[1:], update, context)
         return await print_usage()
@@ -586,13 +589,16 @@ class locationdistance:
 
         return await send('\n'.join(sorted(out, key=key)) or '/')
     
-    async def deletegraph(args, update, context):
+    async def deletegraph_or_cleargraph(args, update, context, *, operation:Literal["delete", "clear"]):
+        assert operation in ('delete', 'clear')
+
+        send = make_send(update, context)
         chat_id = update.effective_chat.id
 
         try:
             module_name, = args
         except ValueError:
-            return await make_send(update, context)('Usage: /graph deletegraph NAME')
+            return await send('Usage: /graph deletegraph NAME')
 
         with get_connection() as connection:
 
@@ -602,12 +608,27 @@ class locationdistance:
                 raise UserError("No graph found with that name")
             
             if imported_graph.chat_id != chat_id:
-                raise UserError("You are not allowed to delete this readonly graph.\nUse /graph unimport if you don't want to see it anymore")
+                raise UserError("You are not allowed to modify this readonly graph.\nUse /graph unimport if you don't want to see it anymore")
 
-            locationdistance.delete_full_graph(current_chat_id=chat_id, graph_id=imported_graph.graph_id, connection=connection)
+            if operation == 'clear':
+                locationdistance.clear_full_graph(current_chat_id=chat_id, graph_id=imported_graph.graph_id, connection=connection)
+            elif operation == 'delete':
+                locationdistance.delete_full_graph(current_chat_id=chat_id, graph_id=imported_graph.graph_id, connection=connection)
+            else:
+                raise AssertionError
         
-        return await send("Deletion done")
+        return await send("Done")
+    
+    def clear_full_graph(*, current_chat_id, graph_id, connection):
+        my_simple_sql = partial(simple_sql_args, connection=connection)
+
+        graph_chat_id, = only_one(my_simple_sql('select chat_id from LocationDistanceGraph where rowid=?', (graph_id, )))
+
+        if current_chat_id != graph_chat_id:
+            raise UserError("You are not allowed to modify this readonly graph")
         
+        my_simple_sql('delete from LocationDistanceEdge where graph_id=?', (graph_id, ))
+
     def delete_full_graph(*, current_chat_id, graph_id, connection):
         my_simple_sql = partial(simple_sql_args, connection=connection)
 
@@ -616,8 +637,8 @@ class locationdistance:
         if current_chat_id != graph_chat_id:
             raise UserError("You are not allowed to delete this readonly graph")
         
-        my_simple_sql('delete from LocationDistanceCurrentGraphChat where chat_id=? and graph_id=?', (graph_chat_id, graph_id, ))
         my_simple_sql('delete from LocationDistanceEdge where graph_id=?', (graph_id, ))
+        my_simple_sql('delete from LocationDistanceCurrentGraphChat where chat_id=? and graph_id=?', (graph_chat_id, graph_id, ))
         my_simple_sql('delete from LocationDistanceGraph where chat_id=? AND rowid=?', (graph_chat_id, graph_id))
 
     def save_location_distance(chat_id, source, dest, distance, conn, graph_id):
