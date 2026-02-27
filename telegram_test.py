@@ -5386,6 +5386,10 @@ def kwarg_prop_re_match(x: None|str, s):
         return None
 
 def clean_kwarg_args(args) -> tuple[list[str], dict[str, list[str]]]:
+    """
+    "today tz:chat dayofweek:Monday other: val1 val2".split()
+    -> ['today'], {'tz': ['chat'], 'dayofweek': ['Monday'], other: ['val1', 'val2']}
+    """
     D = dict()
     bits = [0]
     for i, x in enumerate(args):
@@ -5844,18 +5848,33 @@ async def timein(update, context):
     send = make_send(update, context)
     read_chat_settings = make_read_chat_settings(update, context)
 
-    if not context.args:
+    pargs, kwargs = clean_kwarg_args(context.args)
+
+    if not pargs:
         if not (tzs := read_chat_settings('event.timezones')):
             return await send("Usage: /timein [timezone]\nExample: /timein Europe/Brussels")
     else:
         tzs = None
 
-    if len(context.args) == 1:
-        tz_str, = context.args
-    elif len(context.args) == 2:
-        tz_str = '/'.join(context.args)
-    elif len(context.args) > 2:
+    if len(pargs) == 1:
+        tz_str, = pargs
+    elif len(pargs) == 2:
+        tz_str = '/'.join(pargs)
+    elif len(pargs) > 2:
         raise ValueError("Too much arguments")
+    
+    if kwargs.get('at'):
+        at = only_one(kwargs.get('at'))
+        if match := at /fullmatchesI/ r'(\d{1,2})[:h](\d{2})?':
+            h,m = match.groups()
+            h = int(h)
+            m = 0 if m is None else int(m)
+            at = Time(h, m)
+    else:
+        at = None
+
+    chat_id = update.effective_chat.id
+    user_id = update.effective_user.id
     
     if tzs is None:
         try:
@@ -5863,12 +5882,25 @@ async def timein(update, context):
         except (ZoneInfoNotFoundError, IsADirectoryError):
             raise UserError(f"{context.args[0]!r} is not a timezone")
         
-        dt = datetime.now().astimezone(tz).replace(tzinfo=None)
+        if at is None:
+            dt = datetime.now().astimezone(tz).replace(tzinfo=None)
+        else:
+            tz_user = induce_my_timezone(chat_id=chat_id, user_id=user_id)
+            dt_user = datetime.combine(datetime.now().astimezone(tz_user).replace(tzinfo=None).date(), at).replace(tzinfo=tz_user)
+            dt = dt_user.astimezone(tz).replace(tzinfo=None)
 
         return await send(f"{dt:%H:%M} on {dt.date():%d/%m/%Y}")
     else:
-        def get_dt(tz):
-            return datetime.now().astimezone(tz).replace(tzinfo=None)
+        if at is None:
+            N = datetime.now()
+            def get_dt(tz):
+                return N.astimezone(tz).replace(tzinfo=None)
+        else:
+            tz_user = induce_my_timezone(chat_id=chat_id, user_id=user_id)
+            print('tz_user', tz_user)
+            dt_user = datetime.combine(datetime.now().astimezone(tz_user).replace(tzinfo=None), at).replace(tzinfo=tz_user)
+            def get_dt(tz):
+                return dt_user.astimezone(tz).replace(tzinfo=None)
 
         def dt_tz_format_old(dt, tz):
             return "{} ({})".format(f"{dt:%H:%M} on {dt.date():%d/%m/%Y}", tz)
