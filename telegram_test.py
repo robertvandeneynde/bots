@@ -5875,6 +5875,16 @@ async def timein(update, context):
 
     chat_id = update.effective_chat.id
     user_id = update.effective_user.id
+
+    if at is None:
+        N = datetime.now()
+        def get_dt(tz):
+            return N.astimezone(tz).replace(tzinfo=None)
+    else:
+        tz_user = induce_my_timezone(chat_id=chat_id, user_id=user_id)
+        dt_user = datetime.combine(datetime.now().astimezone(tz_user).replace(tzinfo=None), at).replace(tzinfo=tz_user)
+        def get_dt(tz):
+            return dt_user.astimezone(tz).replace(tzinfo=None)
     
     if tzs is None:
         try:
@@ -5882,26 +5892,10 @@ async def timein(update, context):
         except (ZoneInfoNotFoundError, IsADirectoryError):
             raise UserError(f"{context.args[0]!r} is not a timezone")
         
-        if at is None:
-            dt = datetime.now().astimezone(tz).replace(tzinfo=None)
-        else:
-            tz_user = induce_my_timezone(chat_id=chat_id, user_id=user_id)
-            dt_user = datetime.combine(datetime.now().astimezone(tz_user).replace(tzinfo=None).date(), at).replace(tzinfo=tz_user)
-            dt = dt_user.astimezone(tz).replace(tzinfo=None)
+        dt = get_dt(tz)
 
         return await send(f"{dt:%H:%M} on {dt.date():%d/%m/%Y}")
     else:
-        if at is None:
-            N = datetime.now()
-            def get_dt(tz):
-                return N.astimezone(tz).replace(tzinfo=None)
-        else:
-            tz_user = induce_my_timezone(chat_id=chat_id, user_id=user_id)
-            print('tz_user', tz_user)
-            dt_user = datetime.combine(datetime.now().astimezone(tz_user).replace(tzinfo=None), at).replace(tzinfo=tz_user)
-            def get_dt(tz):
-                return dt_user.astimezone(tz).replace(tzinfo=None)
-
         def dt_tz_format_old(dt, tz):
             return "{} ({})".format(f"{dt:%H:%M} on {dt.date():%d/%m/%Y}", tz)
 
