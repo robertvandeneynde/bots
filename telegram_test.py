@@ -687,7 +687,7 @@ class locationdistance:
                 graph_id, = only_one(r)
             else:
                 r = my_simple_sql_create(''' insert into LocationDistanceGraph(chat_id, visibility, name) VALUES (?,?,?)''', (chat_id, 'chat', 'chat'))
-                graph_id = r.lastrowid
+                graph_id = r['lastrowid']
             my_simple_sql('insert into LocationDistanceCurrentGraphChat(chat_id, graph_id) VALUES (?, ?)''', (chat_id, graph_id))
         return graph_id
 
