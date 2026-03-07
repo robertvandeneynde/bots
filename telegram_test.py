@@ -683,10 +683,10 @@ class locationdistance:
         alls = my_simple_sql(''' select graph_id from LocationDistanceCurrentGraphChat where chat_id=? ''', (chat_id, ))
         graph_id, = only_one(alls) if alls else (None, )
         if graph_id is None:
-            if r := my_simple_sql('''select rowid from LocationDistanceCurrentGraphChat where chat_id=? and visibility='chat' and name='chat' ''', (chat_id, )):
+            if r := my_simple_sql('''select rowid from LocationDistanceGraph where chat_id=? and visibility='chat' and name='chat' ''', (chat_id, )):
                 graph_id, = only_one(r)
             else:
-                r = my_simple_sql_create(''' insert into LocationDistanceCurrentGraphChat(chat_id, visibility, name) VALUES (?,?,?)''', (chat_id, 'chat', 'chat'))
+                r = my_simple_sql_create(''' insert into LocationDistanceGraph(chat_id, visibility, name) VALUES (?,?,?)''', (chat_id, 'chat', 'chat'))
                 graph_id = r.lastrowid
             my_simple_sql('insert into LocationDistanceCurrentGraphChat(chat_id, graph_id) VALUES (?, ?)''', (chat_id, graph_id))
         return graph_id
