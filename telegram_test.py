@@ -269,15 +269,28 @@ class DoNotAnswer(Exception):
     pass
 
 async def locationdistance_responder(msg:str, send: AsyncSend, *, update, context):
+    """ Example: now @ Kurskaya Station """
     if match := msg /fullmatches_with_flags(re.I)/ 'now\s+[@]\s+(.*)':
         destinations = locationdistance.load_destinations(update, context, connection=None)
         destinationsLower = set(map(str.lower, destinations))
         if destinations:
             loc = match.group(1)
             dists = location_distance_apply(loc, chat_id=update.effective_chat.id, targets=destinations).dists
+            
+            def extended_dist(name):
+                if name in dists:
+                    return dists[name]
+                else:
+                    return float('Infinity')
+
+            def format_dist(name):
+                if name in dists:
+                    return str(dists[name])
+                else:
+                    return '\N{INFINITY}'
+
             if len(dists) > 1:
-                destinationsReachable = set(d for d in destinationsLower if d in dists)
-                return await send('\n'.join(f"• {dists[name]} | {name}" for name in sorted(destinationsReachable, key=dists.get)) or "Can't reach any destination from {}".format(loc))
+                return await send('\n'.join(f"• {format_dist(name)} | {name}" for name in sorted(destinationsLower, key=extended_dist)) or "Can't reach any destination from {}".format(loc))
 
 def split_based_on_indices(L, indices):
     if len(indices) == 0:
@@ -324,7 +337,19 @@ async def distfrom(update, context):
     else:
         display = list(map(str.lower, targets))
 
-    return await send('\n'.join(f"• {dists[name]} | {name}" for name in display))
+    def extended_dist(name):
+        if name in dists:
+            return dists[name]
+        else:
+            return float('Infinity')
+
+    def format_dist(name):
+        if name in dists:
+            return str(dists[name])
+        else:
+            return '\N{INFINITY}'
+
+    return await send('\n'.join(f"• {format_dist(name)} | {name}" for name in sorted(display, key=extended_dist)))
 
 
 async def pathfrom(update, context):
@@ -358,6 +383,18 @@ async def pathfrom(update, context):
         path.reverse()
         return path
 
+    def extended_dist(name):
+        if name in dists:
+            return dists[name]
+        else:
+            return float('Infinity')
+
+    def format_dist(name):
+        if name in dists:
+            return str(dists[name])
+        else:
+            return '\N{INFINITY}'
+
     if len(targets) > 1:
         # Multiple targets, tree of path
         path = {}
@@ -368,12 +405,12 @@ async def pathfrom(update, context):
         for p in path.values():
             all_useful |= set(p)
         
-        return await send('\n'.join(f"• {dists[name]} | {name} (by {prevs.get(name)})" for name in sorted(all_useful, key=dists.get)))
+        return await send('\n'.join(f"• {format_dist(name)} | {name} (by {prevs.get(name)})" for name in sorted(all_useful, key=extended_dist)))
 
     path = reconstruct_path(target=targets[0], prevs=prevs)
 
     # One target, one path
-    return await send('\n'.join(f"• {dists[name]} | {name}" for name in path))
+    return await send('\n'.join(f"• {format_dist(name)} | {name}" for name in path))
 
 @dataclass
 class DijkstraResult:
