@@ -417,7 +417,7 @@ class locationdistance:
         async def print_usage():
             return await send(
                 "Usage:\n"
-                "/graph addedge|listedges|listgraphs|switch|current|import|unimport|namespace"
+                "/graph addedge|listedges|listgraphs|switch|current|import|unimport|namespace|destinations"
             )
         
         Args = InfiniteEmptyList(context.args)
@@ -443,6 +443,8 @@ class locationdistance:
             # return await locationdistance.deletegraph_or_cleargraph(Args[1:], update, context, operation='delete')
         if Args[0] /fullmatchesI/ r'namespace':
             return await locationdistance.graphnamespace(Args[1:], update, context)
+        if Args[0] /fullmatchesI/ r'destination|destinations':
+            return await locationdistance.destinations(Args[1:], update, context)
         return await print_usage()
     
     async def addedges(args, update, context):
@@ -887,6 +889,48 @@ class locationdistance:
                 my_simple_sql('''update LocationDistanceGraphNamespace set namespace=? where chat_id=? ''', (namespace, chat_id))
         
         return await send(f"Current graph namespace: {namespace}")
+
+    async def destinations(args, update, context):
+        send = make_send(update, context)
+
+        if args:
+            operation = 'set'
+            splits = [i for i,x in enumerate(args) if x in ('/', '//')]
+            
+            intervals = [[0, None]]
+            for i in splits:
+                intervals[-1][1] = i
+                intervals.append([i+1, None])
+            intervals[-1][1] = len(args)
+            
+            destinations = [' '.join(args[a:b]) for a,b in intervals]
+        else:
+            operation = 'get'
+        
+        chat_id = update.effective_chat.id
+
+        with get_connection() as conn:
+            conn.execute('begin transaction')
+
+            my_simple_sql = partial(simple_sql_args, connection=conn)
+
+            if operation == 'get':
+                L = my_simple_sql('''select destination from LocationDistanceDestination where chat_id = ?''', (chat_id, ))
+                L = list(map(only_one, L))
+                
+                conn.execute('end transaction')
+                return await send("\n".join(map("\N{BULLET} {}".format, L)) or '/')
+
+            elif operation == 'set':
+                my_simple_sql('''delete from LocationDistanceDestination where chat_id = ?''', (chat_id, ))
+                for destination in destinations:
+                    my_simple_sql('''insert into LocationDistanceDestination(chat_id, destination) values (?,?) ''', (chat_id, destination))
+
+                conn.execute('end transaction')
+                return await send("Destinations edited, total: {}".format(len(destinations)))
+
+            else:
+                raise AssertionError
 
 async def whereisanswer_responder(msg:str, send: AsyncSend, *, update, context):
     reply = update_get_reply(update)
@@ -6802,6 +6846,13 @@ def migration25():
         c = conn.cursor()
         c.execute('begin transaction')
         c.execute('''create table LocationDistanceGraphNamespace(chat_id, namespace, UNIQUE(namespace))''')
+        c.execute('end transaction')
+
+def migration25():
+    with get_connection() as conn:
+        c = conn.cursor()
+        c.execute('begin transaction')
+        c.execute('''create table LocationDistanceDestination(chat_id, destination)''')
         c.execute('end transaction')
 
 def get_latest_euro_rates_from_api() -> json:
