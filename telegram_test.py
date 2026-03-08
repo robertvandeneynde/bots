@@ -270,10 +270,14 @@ class DoNotAnswer(Exception):
 
 async def locationdistance_responder(msg:str, send: AsyncSend, *, update, context):
     if match := msg /fullmatches_with_flags(re.I)/ 'now\s+[@]\s+(.*)':
-        loc = match.group(1)
-        dists = location_distance_apply(loc, chat_id=update.effective_chat.id).dists
-        if len(dists) > 1:
-            return await send('\n'.join(f"• {dist} | {name}" for name, dist in dists.items()))
+        destinations = locationdistance.load_destinations(update, context, connection=None)
+        destinationsLower = set(map(str.lower, destinations))
+        if destinations:
+            loc = match.group(1)
+            dists = location_distance_apply(loc, chat_id=update.effective_chat.id, targets=destinations).dists
+            if len(dists) > 1:
+                destinationsReachable = set(d for d in destinationsLower if d in dists)
+                return await send('\n'.join(f"• {dists[name]} | {name}" for name in sorted(destinationsReachable, key=dists.get)) or "Can't reach any destination from {}".format(loc))
 
 def split_based_on_indices(L, indices):
     if len(indices) == 0:
@@ -306,16 +310,16 @@ async def distfrom(update, context):
     tos = [i for i, x in enumerate(context.args) if x.lower() in ('to:', ':to')]
 
     if not tos:
-        targets = None
+        targets = locationdistance.load_destinations(update, context, connection=None)
         loc = ' '.join(context.args)
     else:
         bits = split_based_on_indices(context.args, tos)
         loc = ' '.join(bits[0])
         targets = [' '.join(sub) for sub in bits[1:]]
         
-    dists = (d := location_distance_apply(loc, chat_id=update.effective_chat.id, targets=targets)).dists
+    dists = location_distance_apply(loc, chat_id=update.effective_chat.id, targets=targets).dists
 
-    if targets is None:
+    if targets == '*':
         display = dists.keys()
     else:
         display = list(map(str.lower, targets))
@@ -332,29 +336,43 @@ async def pathfrom(update, context):
     tos = [i for i, x in enumerate(context.args) if x.lower() in ('to:', ':to')]
 
     if not tos:
-        targets = None
+        targets = locationdistance.load_destinations(update, context, connection=None)
         loc = ' '.join(context.args)
     else:
         bits = split_based_on_indices(context.args, tos)
         loc = ' '.join(bits[0])
         targets = [' '.join(sub) for sub in bits[1:]]
 
-    assert_true(targets is None or len(targets) <= 1, UserError("Not implemented"))
+        assert_true(len(targets) <= 1, UserError("Not implemented"))
         
     dijkstra = location_distance_apply(loc, chat_id=update.effective_chat.id, targets=targets)
 
     dists, prevs = dijkstra.dists, dijkstra.prevs
 
-    if targets is None:
-        return await send('\n'.join(f"• {dists[name]} | {name} (by {prevs.get(name)})" for name in dists))
+    def reconstruct_path(prevs, target):
+        c = target.lower()
+        path = [c]
+        while c in prevs:
+            path.append(prevs[c])
+            c = prevs[c]
+        path.reverse()
+        return path
 
-    c = targets[0].lower()
-    path = L = [c]
-    while c in prevs:
-        L.append(prevs[c])
-        c = prevs[c]
-    path.reverse()
+    if len(targets) > 1:
+        # Multiple targets, tree of path
+        path = {}
+        for target in targets:
+            path[target] = reconstruct_path(prevs=prevs, target=target)
         
+        all_useful = set()
+        for p in path.values():
+            all_useful |= set(p)
+        
+        return await send('\n'.join(f"• {dists[name]} | {name} (by {prevs.get(name)})" for name in sorted(all_useful, key=dists.get)))
+
+    path = reconstruct_path(target=targets[0], prevs=prevs)
+
+    # One target, one path
     return await send('\n'.join(f"• {dists[name]} | {name}" for name in path))
 
 @dataclass
@@ -417,7 +435,7 @@ class locationdistance:
         async def print_usage():
             return await send(
                 "Usage:\n"
-                "/graph addedge|listedges|listgraphs|switch|current|import|unimport|namespace"
+                "/graph addedge|listedges|listgraphs|switch|current|import|unimport|namespace|destinations"
             )
         
         Args = InfiniteEmptyList(context.args)
@@ -443,8 +461,10 @@ class locationdistance:
             # return await locationdistance.deletegraph_or_cleargraph(Args[1:], update, context, operation='delete')
         if Args[0] /fullmatchesI/ r'namespace':
             return await locationdistance.graphnamespace(Args[1:], update, context)
+        if Args[0] /fullmatchesI/ r'destination|destinations':
+            return await locationdistance.destinations(Args[1:], update, context)
         return await print_usage()
-    
+
     async def addedges(args, update, context):
         send = make_send(update, context)
 
@@ -887,6 +907,55 @@ class locationdistance:
                 my_simple_sql('''update LocationDistanceGraphNamespace set namespace=? where chat_id=? ''', (namespace, chat_id))
         
         return await send(f"Current graph namespace: {namespace}")
+
+    def load_destinations(update, context, connection):
+        chat_id = update.effective_chat.id
+        my_simple_sql = partial(simple_sql_args, connection=connection)
+
+        L = my_simple_sql('select destination from LocationDistanceDestination where chat_id=?', (chat_id, ))
+        return [L[0] for L in L]
+
+    async def destinations(args, update, context):
+        send = make_send(update, context)
+
+        if args:
+            operation = 'set'
+            splits = [i for i,x in enumerate(args) if x in ('/', '//')]
+            
+            intervals = [[0, None]]
+            for i in splits:
+                intervals[-1][1] = i
+                intervals.append([i+1, None])
+            intervals[-1][1] = len(args)
+            
+            destinations = [' '.join(args[a:b]) for a,b in intervals]
+        else:
+            operation = 'get'
+        
+        chat_id = update.effective_chat.id
+
+        with get_connection() as conn:
+            conn.execute('begin transaction')
+
+            my_simple_sql = partial(simple_sql_args, connection=conn)
+
+            if operation == 'get':
+                L = my_simple_sql('''select destination from LocationDistanceDestination where chat_id = ?''', (chat_id, ))
+                L = list(map(only_one, L))
+                
+                conn.execute('end transaction')
+                return await send("\n".join(map("\N{BULLET} {}".format, L)) or '/')
+
+            elif operation == 'set':
+                my_simple_sql('''delete from LocationDistanceDestination where chat_id = ?''', (chat_id, ))
+                for destination in destinations:
+                    my_simple_sql('''insert into LocationDistanceDestination(chat_id, destination) values (?,?) ''', (chat_id, destination))
+
+                conn.execute('end transaction')
+                return await send("Destinations edited, total: {}".format(len(destinations)))
+
+            else:
+                raise AssertionError
 
 async def whereisanswer_responder(msg:str, send: AsyncSend, *, update, context):
     reply = update_get_reply(update)
@@ -6802,6 +6871,13 @@ def migration25():
         c = conn.cursor()
         c.execute('begin transaction')
         c.execute('''create table LocationDistanceGraphNamespace(chat_id, namespace, UNIQUE(namespace))''')
+        c.execute('end transaction')
+
+def migration25():
+    with get_connection() as conn:
+        c = conn.cursor()
+        c.execute('begin transaction')
+        c.execute('''create table LocationDistanceDestination(chat_id, destination)''')
         c.execute('end transaction')
 
 def get_latest_euro_rates_from_api() -> json:
