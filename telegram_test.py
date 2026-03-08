@@ -405,7 +405,7 @@ async def pathfrom(update, context):
         for p in path.values():
             all_useful |= set(p)
         
-        return await send('\n'.join(f"• {format_dist(name)} | {name} (by {prevs.get(name)})" for name in sorted(all_useful, key=extended_dist)))
+        return await send('\n'.join(f"• {format_dist(name)} | {name} ← {prevs.get(name)}" for name in sorted(all_useful, key=extended_dist)))
 
     path = reconstruct_path(target=targets[0], prevs=prevs)
 
