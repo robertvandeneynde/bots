@@ -1035,6 +1035,7 @@ class ListLang:
         "delete", "del",
         "insert",
         "replace", "rep",
+        'move',
         # list
         "clear",
         "shuffle",
@@ -1335,6 +1336,12 @@ async def list_responder(msg: str, send: AsyncSend, *, update, context):
                                 listsmodule.replaceintree.do_it(**PP())
                         elif list_type in ('list', ):
                             listsmodule.replaceinlist.do_it(**PP())
+                        else:
+                            raise DoNotAnswer
+                    
+                    elif operation in ('move', ):
+                        if list_type in ('list', 'tasklist', ):
+                            listsmodule.moveinlist.do_it(**PP())
                         else:
                             raise DoNotAnswer
                     
@@ -4218,7 +4225,7 @@ class listsmodule:
         @staticmethod
         def do_it(*, conn, chat_id, name, parameters):
             i, to_add = parameters.split(maxsplit=1)
-            value = i
+            i = int(i)
             
             my_simple_sql = partial(simple_sql, connection=conn)
 
@@ -4226,21 +4233,18 @@ class listsmodule:
 
             rowids = my_simple_sql((''' select rowid, value from ListElement where listid=? ''', (listid, )))
 
-            value = int(value)
+            i = listsmodule.one_based_to_positive_index_zero_based(i, len(rowids), extended=True)
 
-            assert value in irange(-len(rowids), len(rowids)+1)
-            assert value != 0
+            listsmodule.insertinlist.actual_insert(to_add=to_add, rowids=rowids, index=i, listid=listid, connection=conn)
 
-            if value < 0:
-                value = len(rowids) + value
-            else:
-                value = value - 1
+        def actual_insert(*, to_add, rowids, index, listid, connection):
+            my_simple_sql = partial(simple_sql, connection=connection)
 
-            for (rowid, v), (nextrowid, nextv) in zip(rowids[value:], rowids[value+1:]):
+            for (rowid, v), (nextrowid, nextv) in zip(rowids[index:], rowids[index+1:]):
                 my_simple_sql((''' update ListElement set value=? where rowid=? ''' , (v, nextrowid, )))
 
-            if value < len(rowids):
-                my_simple_sql((''' update ListElement set value=? where rowid=? ''', (to_add, rowids[value][0], )))
+            if index < len(rowids):
+                my_simple_sql((''' update ListElement set value=? where rowid=? ''', (to_add, rowids[index][0], )))
                 my_simple_sql((''' insert into ListElement(listid, value) values(?,?)''', (listid, rowids[-1][1], )))
             else:
                 my_simple_sql((''' insert into ListElement(listid, value) values(?,?)''', (listid, to_add, )))
@@ -4249,7 +4253,7 @@ class listsmodule:
         @staticmethod
         def do_it(*, conn, chat_id, name, parameters):
             i, to_rep = parameters.split(maxsplit=1)
-            value = i
+            i = int(i)
             
             my_simple_sql = partial(simple_sql, connection=conn)
 
@@ -4257,17 +4261,29 @@ class listsmodule:
 
             N = only_one(only_one(my_simple_sql(('''select count(*) from ListElement where listid=?''', (listid,)))))
 
-            value = int(value)
+            i = listsmodule.one_based_to_positive_index_zero_based(i, N)
+            
+            my_simple_sql(('''update ListElement set value=? where listid=? LIMIT 1 OFFSET ? ''', (to_rep, listid, i)))
 
-            assert value in irange(-N, +N)
-            assert value != 0
+    class moveinlist(GeneralAction):
+        @staticmethod
+        def do_it(*, conn, chat_id, name, parameters):
+            i, j = map(int, parameters.split())
+            
+            my_simple_sql = partial(simple_sql, connection=conn)
 
-            if value < 0:
-                value = N + value
-            else:
-                value = value - 1
+            listid, = only_one(my_simple_sql(('''select rowid from List where chat_id=? and lower(name)=lower(?)''', (chat_id, name,))))
 
-            my_simple_sql(('''update ListElement set value=? where listid=? LIMIT 1 OFFSET ? ''', (to_rep, listid, value)))
+            rowids = my_simple_sql((''' select rowid, value from ListElement where listid=? ''', (listid, )))
+            
+            i, j = [listsmodule.one_based_to_positive_index_zero_based(x, len(rowids)) for x in (i, j)]
+
+            # pop
+            delrowid, to_add = rowids.pop(i)
+            my_simple_sql((''' delete from ListElement where listid=? and rowid=?''', (listid, delrowid, )))
+
+            # insert
+            listsmodule.insertinlist.actual_insert(to_add=to_add, index=j, rowids=rowids, listid=listid, connection=conn)
 
     @staticmethod
     def parse_interval(value:str, N:int=None) -> range:
@@ -4309,7 +4325,13 @@ class listsmodule:
     
     @staticmethod
     def one_based_to_zero_based(i: int) -> int:
-        return i if i < 0 else i - 1        
+        return i if i < 0 else i - 1       
+
+    def one_based_to_positive_index_zero_based(i: int, N: int, *, extended=False) -> int:
+        assert i in irange(-N, +N if not extended else N+1)
+        assert i != 0
+        i = listsmodule.one_based_to_zero_based(i)
+        return N + i if i < 0 else i
 
     @staticmethod
     def is_negative_range(r: range):
@@ -4358,14 +4380,7 @@ class listsmodule:
             rowids = my_simple_sql((''' select rowid, value from ListElement where listid=? ''', (listid, )))
 
             def action(i: int):
-                assert i in irange(-len(rowids), len(rowids))
-                assert i != 0
-
-                if i < 0:
-                    i = len(rowids) + i
-                else:
-                    i = i - 1
-                
+                i = listsmodule.one_based_to_positive_index_zero_based(i, len(rowids))
                 rowid, old_value = rowids[i]
 
                 if m := ListLang.IsTask.fullmatch(old_value):
