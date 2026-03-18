@@ -1502,7 +1502,7 @@ def format_event_emoji_style_from_event_id(event_id, *, chat_id, user_id):
     read_chat_settings = make_read_chat_settings_from_chat_id(chat_id)
     chat_timezones = read_chat_settings("event.timezones")
     display_link = do_if_setting_on(read_chat_settings('event.addevent.display_link'))
-    link = None
+    link = event_fetch_one_link(event_id=event_id, connection=None)
     return EventFormatter.format_emoji_style(name=name, datetime=datetime, date=date, time=time, tz=tz, chat_timezones=chat_timezones, link=link, display_link=display_link)
 
 
@@ -5361,7 +5361,7 @@ async def next_or_last_event(update: Update, context: CallbackContext, n:int, *,
     now = Datetime.now(UTC) if not datetime_str else DatetimeDbSerializer.strptime(datetime_str.replace('T', ' ')).replace(tzinfo=tz).astimezone(ZoneInfo('UTC'))
 
     events = simple_sql_dict(('''
-        SELECT date as date_utc, name as name
+        SELECT date as date_utc, name as name, rowid as rowid
         FROM Events
         WHERE %s
         AND chat_id=?
@@ -5375,13 +5375,18 @@ async def next_or_last_event(update: Update, context: CallbackContext, n:int, *,
 
     strptime = DatetimeDbSerializer.strptime
 
-    date_utc, name = events[0]
+    date_utc, name, rowid = events[0]
     datetime = strptime(date_utc).replace(tzinfo=ZoneInfo('UTC')).astimezone(tz)
     date, time = datetime.date(), datetime.time()
-    link = None
+    link = event_fetch_one_link(event_id=rowid, connection=None)
     display_link = do_if_setting_on(read_chat_settings('event.addevent.display_link'))
 
     await send(EventFormatter.format_one(relative=relative, name=name, datetime=datetime, date=date, time=time, tz=tz, chat_timezones=chat_timezones, link=link, display_link=display_link))
+
+def event_fetch_one_link(event_id, connection):
+    my_simple_sql = partial(simple_sql_args, connection=connection)
+    x = my_simple_sql('SELECT link FROM EventLinkAttr where event_id=?', (event_id, ))
+    return only_one(only_one(x)) if x else None
 
 class EventFormatter:
     @staticmethod
