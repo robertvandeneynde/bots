@@ -322,15 +322,16 @@ async def distfrom(update, context):
 
     tos = [i for i, x in enumerate(context.args) if x.lower() in ('to:', ':to')]
 
-    if not tos:
-        targets = locationdistance.load_destinations(update, context, connection=None)
-        loc = ' '.join(context.args)
-    else:
-        bits = split_based_on_indices(context.args, tos)
-        loc = ' '.join(bits[0])
-        targets = [' '.join(sub) for sub in bits[1:]]
-        
-    dists = location_distance_apply(loc, chat_id=update.effective_chat.id, targets=targets).dists
+    with get_connection() as connection:
+        if not tos:
+            targets = locationdistance.load_destinations(update, context, connection=connection)
+            loc = ' '.join(context.args)
+        else:
+            bits = split_based_on_indices(context.args, tos)
+            loc = ' '.join(bits[0])
+            targets = [' '.join(sub) for sub in bits[1:]]
+            
+        dists = location_distance_apply(loc, chat_id=update.effective_chat.id, targets=targets, connection=connection).dists
 
     if targets == '*':
         display = dists.keys()
@@ -360,17 +361,18 @@ async def pathfrom(update, context):
 
     tos = [i for i, x in enumerate(context.args) if x.lower() in ('to:', ':to')]
 
-    if not tos:
-        targets = locationdistance.load_destinations(update, context, connection=None)
-        loc = ' '.join(context.args)
-    else:
-        bits = split_based_on_indices(context.args, tos)
-        loc = ' '.join(bits[0])
-        targets = [' '.join(sub) for sub in bits[1:]]
+    with get_connection() as connection:
+        if not tos:
+            targets = locationdistance.load_destinations(update, context, connection=connection)
+            loc = ' '.join(context.args)
+        else:
+            bits = split_based_on_indices(context.args, tos)
+            loc = ' '.join(bits[0])
+            targets = [' '.join(sub) for sub in bits[1:]]
 
-        assert_true(len(targets) <= 1, UserError("Not implemented"))
-        
-    dijkstra = location_distance_apply(loc, chat_id=update.effective_chat.id, targets=targets)
+            assert_true(len(targets) <= 1, UserError("Not implemented"))
+            
+        dijkstra = location_distance_apply(loc, chat_id=update.effective_chat.id, targets=targets, connection=connection)
 
     dists, prevs = dijkstra.dists, dijkstra.prevs
 
@@ -417,23 +419,22 @@ class DijkstraResult:
     dists: dict
     prevs: dict
 
-def location_distance_apply(loc, *, chat_id, targets=None):
+def location_distance_apply(loc, *, chat_id, targets=None, connection=None):
     targets = set(map(str.lower, targets)) if targets is not None else None
     loc = loc.lower()      
 
     edges = []
-    with get_connection() as conn:
-        my_simple_sql = partial(simple_sql_args, connection=conn)
-        S = set()
-        for graph_id, in my_simple_sql('select rowid from LocationDistanceGraph where chat_id = ?', (chat_id, )):
-            if graph_id not in S:
-                edges += my_simple_sql('select source, dest, distance from LocationDistanceEdge where graph_id = ?', (graph_id, ))
-                S.add(graph_id)
+    my_simple_sql = partial(simple_sql_args, connection=connection)
+    S = set()
+    for graph_id, in my_simple_sql('select rowid from LocationDistanceGraph where chat_id = ?', (chat_id, )):
+        if graph_id not in S:
+            edges += my_simple_sql('select source, dest, distance from LocationDistanceEdge where graph_id = ?', (graph_id, ))
+            S.add(graph_id)
 
-        for graph_id, in my_simple_sql('select graph_id from LocationDistanceImportedGraph where chat_id = ?', (chat_id, )):
-            if graph_id not in S:
-                edges += my_simple_sql('select source, dest, distance from LocationDistanceEdge where graph_id = ?', (graph_id, ))
-                S.add(graph_id)
+    for graph_id, in my_simple_sql('select graph_id from LocationDistanceImportedGraph where chat_id = ?', (chat_id, )):
+        if graph_id not in S:
+            edges += my_simple_sql('select source, dest, distance from LocationDistanceEdge where graph_id = ?', (graph_id, ))
+            S.add(graph_id)
 
     from collections import defaultdict
     Graph = defaultdict(list)
