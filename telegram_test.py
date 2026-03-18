@@ -1211,6 +1211,7 @@ async def list_responder(msg: str, send: AsyncSend, *, update, context):
                     
                     P = lambda: dict(conn=conn, name=list_name, chat_id=chat_id)
                     PP = lambda: P() | dict(parameters=parameters)
+                    PV = lambda: P() | dict(values=parameters)
 
                     list_type = listsmodule.get_list_type(**P())
                     list_type_is_tree = list_type in ('tree', 'tasktree')
@@ -1241,18 +1242,18 @@ async def list_responder(msg: str, send: AsyncSend, *, update, context):
                         space_between_lines = do_if_setting_on(read_chat_settings('list.space_between_lines'))
                         if list_type_is_tree:
                             indent = int_or_none(read_chat_settings('list.indent'))
-                            await send(listsmodule.printtree.it(**P(), parameters=parameters, indent=indent, space_between_lines=space_between_lines))
+                            await send(listsmodule.printtree.it(**PP(), indent=indent, space_between_lines=space_between_lines))
                         elif dynamic_list:
-                            await send(listsmodule.print_dynamic.it(**P(), parameters=parameters, dynamic_list=dynamic_list))
+                            await send(listsmodule.print_dynamic.it(**PP(), dynamic_list=dynamic_list))
                         elif list_type in ('list', 'tasklist', ):
-                            await send(listsmodule.printlist.it(**P(), parameters=parameters, space_between_lines=space_between_lines))
+                            await send(listsmodule.printlist.it(**PP(), space_between_lines=space_between_lines))
                         else:
                             raise DoNotAnswer
                         did_edit = False
 
                     elif operation in ('clear', ):
                         if list_type in ('list', 'tree', 'tasklist', 'tasktree'):
-                            listsmodule.clearlist.do_it(conn=conn, name=list_name, chat_id=chat_id)
+                            listsmodule.clearlist.do_it(**P())
                         elif dynamic_list:
                             listsmodule.clear_dynamic.do_it(**P(), dynamic_list=dynamic_list)
                         else:
@@ -1260,15 +1261,15 @@ async def list_responder(msg: str, send: AsyncSend, *, update, context):
 
                     elif operation in ('extendmulti', ):
                         if list_type in ('tasktree', ):
-                            listsmodule.extendmultitasktree.do_it(conn=conn, name=list_name, chat_id=chat_id, values=parameters)
+                            listsmodule.extendmultitasktree.do_it(**PV())
                         elif list_type in ('tree', ):
-                            listsmodule.extendmultitree.do_it(conn=conn, name=list_name, chat_id=chat_id, values=parameters)
+                            listsmodule.extendmultitree.do_it(**PV())
                         elif list_type in ('tasklist', ):
-                            listsmodule.extendmultitasklist.do_it(conn=conn, name=list_name, chat_id=chat_id, values=parameters)
+                            listsmodule.extendmultitasklist.do_it(**PV())
                         elif list_type in ('list', ):
-                            listsmodule.extendmultilist.do_it(conn=conn, name=list_name, chat_id=chat_id, values=parameters)
+                            listsmodule.extendmultilist.do_it(**PV())
                         elif dynamic_list:
-                            listsmodule.extend_multi_dynamic.do_it(**P(), values=parameters, dynamic_list=dynamic_list)
+                            listsmodule.extend_multi_dynamic.do_it(**PV(), dynamic_list=dynamic_list)
                         else:
                             raise DoNotAnswer
                     
@@ -1276,9 +1277,9 @@ async def list_responder(msg: str, send: AsyncSend, *, update, context):
                         if list_type in ('tasktree', ):
                             raise UserError("Impossible at the moment")
                         if list_type in ('tasklist', ):
-                            listsmodule.editmultitasklist.do_it(conn=conn, name=list_name, chat_id=chat_id, values=parameters)
+                            listsmodule.editmultitasklist.do_it(**PV())
                         elif list_type in ('list', 'tree'):
-                            listsmodule.editmultilist.do_it(conn=conn, name=list_name, chat_id=chat_id, values=parameters)
+                            listsmodule.editmultilist.do_it(**PV())
                         else:
                             raise DoNotAnswer
 
@@ -1286,19 +1287,18 @@ async def list_responder(msg: str, send: AsyncSend, *, update, context):
                         if list_type_is_tree:
                             raise UserError("Operation not possible")
                         elif list_type in ('list', 'tasklist'):
-                            listsmodule.shuffle.do_it(conn=conn, name=list_name, chat_id=chat_id)
-                        else:
+                            listsmodule.shuffle.do_it(**P())
                             raise DoNotAnswer
 
                     elif operation in ('enum', 'enumerate', ):
                         space_between_lines = do_if_setting_on(read_chat_settings('list.space_between_lines'))
                         if list_type_is_tree:
                             indent = int_or_none(read_chat_settings('list.indent'))
-                            await send(listsmodule.enumeratetree.it(**P(), parameters=parameters, indent=indent, space_between_lines=space_between_lines))
+                            await send(listsmodule.enumeratetree.it(**PP(), indent=indent, space_between_lines=space_between_lines))
                         elif dynamic_list:
-                            await send(listsmodule.enumerate_dynamic.it(**P(), parameters=parameters, dynamic_list=dynamic_list))
+                            await send(listsmodule.enumerate_dynamic.it(**PP(), dynamic_list=dynamic_list))
                         elif list_type in ('list', 'tasklist'):
-                            await send(listsmodule.enumeratelist.it(**P(), parameters=parameters, space_between_lines=space_between_lines))
+                            await send(listsmodule.enumeratelist.it(**PP(), space_between_lines=space_between_lines))
                         else:
                             raise DoNotAnswer
                         
@@ -1316,13 +1316,13 @@ async def list_responder(msg: str, send: AsyncSend, *, update, context):
                     
                     elif operation in ('insert', ):
                         if list_type in ('tasklist', ):
-                            listsmodule.insertintasklist.do_it(**P(), parameters=parameters)
+                            listsmodule.insertintasklist.do_it(**PP())
                         elif list_type in ('tasktree', ):
-                            listsmodule.insertintasktree.do_it(**P(), parameters=parameters)
+                            listsmodule.insertintasktree.do_it(**PP())
                         elif list_type in ('tree', ):
                             listsmodule.insertintree(**P()).run(parameters=parameters)
                         elif list_type in ('list', ):
-                            listsmodule.insertinlist.do_it(**P(), parameters=parameters)
+                            listsmodule.insertinlist.do_it(**PP())
                         else:
                             raise DoNotAnswer
                     
@@ -1360,12 +1360,12 @@ async def list_responder(msg: str, send: AsyncSend, *, update, context):
                                 if list_type == 'tasktree':
                                     listsmodule.tasktreecheck(**P()).run(value=parameters, direction='x')
                                 else:
-                                    listsmodule.tasklistcheck.do_it(conn=conn, name=list_name, chat_id=chat_id, value=parameters, direction='x')
+                                    listsmodule.tasklistcheck.do_it(**P(), value=parameters, direction='x')
                             elif operation == 'uncheck':
                                 if list_type == 'tasktree':
                                     listsmodule.tasktreecheck(**P()).run(value=parameters, direction=' ')
                                 else:
-                                    listsmodule.tasklistcheck.do_it(conn=conn, name=list_name, chat_id=chat_id, value=parameters, direction=' ')
+                                    listsmodule.tasklistcheck.do_it(**P(), value=parameters, direction=' ')
                         else:
                             raise DoNotAnswer
 
@@ -1501,7 +1501,9 @@ def format_event_emoji_style_from_event_id(event_id, *, chat_id, user_id):
     date, time = datetime.date(), datetime.time()
     read_chat_settings = make_read_chat_settings_from_chat_id(chat_id)
     chat_timezones = read_chat_settings("event.timezones")
-    return format_event_emoji_style(name=name, datetime=datetime, date=date, time=time, tz=tz, chat_timezones=chat_timezones)
+    display_link = do_if_setting_on(read_chat_settings('event.addevent.display_link'))
+    link = None
+    return EventFormatter.format_emoji_style(name=name, datetime=datetime, date=date, time=time, tz=tz, chat_timezones=chat_timezones, link=link, display_link=display_link)
 
 
 class GetOrEmpty(list):
@@ -3705,16 +3707,13 @@ def implicit_thereis(*, what:str, chat_id):
 
     do_update_thereis_db(location, address, chat_id=chat_id)
 
-async def post_event(update, context, *, name, datetime, time, link, date_str, chat_timezones, tz, tz_explicit=False, chat_id, datetime_utc):
-    send = make_send(update, context)
-    read_chat_settings = make_read_chat_settings(update, context)
-
-    emojis = EventFormatting.emojis
-
-    infos = split_event_with_where_etc({'what': name, 'link': link})
-
-    # 1. Send info in text
-
+def tz_displays_from_tz_information(*, tz, time, chat_timezones, tz_explicit):
+    """
+    Returns a list of TimezoneDisplaySpec
+    Each line may be:
+    - 'simple' -> Display in current timezone
+    - 'tz_conversion', Timezone -> Display in selected timezone
+    """
     displays = []
     if not time:
         displays = []
@@ -3724,24 +3723,18 @@ async def post_event(update, context, *, name, datetime, time, link, date_str, c
         displays.append('simple' if tz in chat_timezones else ('tz_conversion', chat_timezones[0]))
     else:
         displays.extend(('tz_conversion', timezone) for timezone in chat_timezones)
+    return displays
 
-    await send(event_text := '\n'.join(filter(None, [
-        f"Event added:",
-        f"{emojis.Name} {infos['what']}",
-    ] + ([
-        f"{emojis.Location} {infos['where']}",
-    ] if infos.get('where') else []) + [
-        f"{emojis.Date} {datetime:%A} {datetime.date():%d/%m/%Y} ({date_str})"
-    ] + [
-        f"{emojis.Time} {datetime_tz:%H:%M}" if display == 'simple' else 
-        f"{emojis.Time} {datetime_tz:%H:%M} ({timezone})" if datetime_tz.date() == datetime.date() else
-        f"{emojis.Time} {datetime_tz:%H:%M} on {datetime_tz.date():%d/%m/%Y} ({timezone})"
-        for display in displays
-        for timezone in [tz if display == 'simple' else display[1] if display[0] == 'tz_conversion' else raise_error(AssertionError)]
-        for datetime_tz in [datetime.astimezone(timezone)]
-    ] + [
-        f"{emojis.Link} {link}"
-    ] * (bool(link) and do_if_setting_on(read_chat_settings('event.addevent.display_link'))))))
+async def post_event(update, context, *, name, datetime, time, link, date_str, chat_timezones, tz, tz_explicit=False, chat_id, datetime_utc):
+    send = make_send(update, context)
+    read_chat_settings = make_read_chat_settings(update, context)
+
+    # 1. Send info in text
+
+    displays = tz_displays_from_tz_information(tz=tz, time=time, chat_timezones=chat_timezones, tz_explicit=tz_explicit)
+
+    display_link = do_if_setting_on(read_chat_settings('event.addevent.display_link'))
+    await send(event_text := EventFormatter.format_for_post(displays=displays, name=name, datetime=datetime, tz=tz, link=link, display_link=display_link))
     
     if do_if_setting_on(read_chat_settings('event.addevent.display_file')):
         # 2. Send info as clickable ics file to add to calendar
@@ -5323,7 +5316,13 @@ def parse_datetime_range(update, *, args, default="week", tz=None):
     else:
         D2 = make(when_2)
         return dict(beg_utc=D1['beg_utc'], end_utc=D2['end_utc'], tz=tz, when=when + '-' + when_2, beg_local=D1['beg_local'], end_local=D2['end_local'])
-    
+
+def sum_list_args(*lists):
+    result = []
+    for lst in lists:
+        result.extend(lst)
+    return result
+
 async def next_or_last_event(update: Update, context: CallbackContext, n:int, *, relative=False):
     from datetime import datetime as Datetime
     send = make_send(update, context)
@@ -5379,49 +5378,104 @@ async def next_or_last_event(update: Update, context: CallbackContext, n:int, *,
     date_utc, name = events[0]
     datetime = strptime(date_utc).replace(tzinfo=ZoneInfo('UTC')).astimezone(tz)
     date, time = datetime.date(), datetime.time()
-    infos = split_event_with_where_etc({'what': name})
+    link = None
+    display_link = do_if_setting_on(read_chat_settings('event.addevent.display_link'))
 
-    emojis = EventFormatting.emojis
-    await send('\n'.join(natural_filter([
-        f"Event!",
-        f"{emojis.Name} {infos['what']}",
-    ] + ([
-        f"{emojis.Location} {infos['where']}",
-    ] if infos.get('where') else []) + [
-        f"{emojis.Date} {datetime:%A} {datetime.date():%d/%m/%Y}",
-        (f"{emojis.Time} {time:%H:%M} ({tz})" if chat_timezones and set(chat_timezones) != {tz} else
-         f"{emojis.Time} {time:%H:%M}") if time else None
-    ] + ([
-        f"{emojis.Time} {datetime_tz:%H:%M} ({timezone})" if datetime_tz.date() == datetime.date() else
-        f"{emojis.Time} {datetime_tz:%H:%M} on {datetime_tz.date()} ({timezone})"
-        for timezone in chat_timezones or []
-        if timezone != tz
-        for datetime_tz in [datetime.astimezone(timezone)]
-    ] if time else [])) if not relative else natural_filter([
-        f"Event!",
-        f"{emojis.Name} {name}",
-        f"{emojis.Date} {DatetimeText.format_td_T_minus(datetime - now)}",
-    ])))
+    await send(EventFormatter.format_one(relative=relative, name=name, datetime=datetime, date=date, time=time, tz=tz, chat_timezones=chat_timezones, link=link, display_link=display_link))
 
-def format_event_emoji_style(*, name, datetime, date, time, tz, chat_timezones):
-    infos = split_event_with_where_etc({'what': name})
+class EventFormatter:
+    @staticmethod
+    def format_one(*, relative, name, datetime, date, time, tz, chat_timezones, link, display_link):
+        absolute = not relative
+        infos = split_event_with_where_etc({'what': name})
+        emojis = EventFormatting.emojis
+        return '\n'.join(natural_filter(sum_list_args(
+            [
+                f"Event!",
+                f"{emojis.Name} {infos['what']}",
+            ],
+            [
+                f"{emojis.Location} {infos['where']}",
+            ] if bool(infos.get('where')) else [],
+            [
+                f"{emojis.Date} {datetime:%A} {datetime.date():%d/%m/%Y}",
+            ] if absolute else [],
+            [
+                f"{emojis.Time} {time:%H:%M} ({tz})" if chat_timezones and set(chat_timezones) != {tz} else
+                f"{emojis.Time} {time:%H:%M}"
+            ] if absolute and time else [],
+            [
+                f"{emojis.Time} {datetime_tz:%H:%M} ({timezone})" if datetime_tz.date() == datetime.date() else
+                f"{emojis.Time} {datetime_tz:%H:%M} on {datetime_tz.date()} ({timezone})"
+                for timezone in chat_timezones or []
+                if timezone != tz
+                for datetime_tz in [datetime.astimezone(timezone)]
+            ] if absolute and bool(time) else [],
+            [
+                f"{emojis.Date} {DatetimeText.format_td_T_minus(datetime - now)}",
+            ] if relative else [],
+            [
+                f"{emojis.Link} {link}"
+            ] if (bool(link) and display_link) else [],
+        )))
 
-    emojis = EventFormatting.emojis
-    return '\n'.join(natural_filter([
-        f"{emojis.Name} {infos['what']}",
-    ] + ([
-        f"{emojis.Location} {infos['where']}",
-    ] if infos.get('where') else []) + [
-        f"{emojis.Date} {datetime:%A} {datetime.date():%d/%m/%Y}",
-        (f"{emojis.Time} {time:%H:%M} ({tz})" if chat_timezones and set(chat_timezones) != {tz} else
-         f"{emojis.Time} {time:%H:%M}") if time else None
-    ] + ([
-        f"{emojis.Time} {datetime_tz:%H:%M} ({timezone})" if datetime_tz.date() == datetime.date() else
-        f"{emojis.Time} {datetime_tz:%H:%M} on {datetime_tz.date()} ({timezone})"
-        for timezone in chat_timezones or []
-        if timezone != tz
-        for datetime_tz in [datetime.astimezone(timezone)]
-    ] if time else [])))
+    @staticmethod
+    def format_emoji_style(*, name, datetime, date, time, tz, chat_timezones, link=None, display_link=False):
+        infos = split_event_with_where_etc({'what': name, 'link': link})
+        emojis = EventFormatting.emojis
+        return '\n'.join(natural_filter(sum_list_args(
+            [
+                f"{emojis.Name} {infos['what']}",
+            ],
+            [
+                f"{emojis.Location} {infos['where']}",
+            ] if infos.get('where') else [],
+            [
+                f"{emojis.Date} {datetime:%A} {datetime.date():%d/%m/%Y}",
+            ],
+            [
+                f"{emojis.Time} {time:%H:%M} ({tz})" if chat_timezones and set(chat_timezones) != {tz} else
+                f"{emojis.Time} {time:%H:%M}"
+            ] if time else [],
+            [
+                f"{emojis.Time} {datetime_tz:%H:%M} ({timezone})" if datetime_tz.date() == datetime.date() else
+                f"{emojis.Time} {datetime_tz:%H:%M} on {datetime_tz.date()} ({timezone})"
+                for timezone in chat_timezones or []
+                if timezone != tz
+                for datetime_tz in [datetime.astimezone(timezone)]
+            ] if time else [],
+            [
+                f"{emojis.Link} {link}"
+            ] if bool(link) and display_link else []
+        )))
+
+    @staticmethod
+    def format_for_post(*, displays, name, datetime, tz, link, display_link):
+        infos = split_event_with_where_etc({'what': name, 'link': link})
+        emojis = EventFormatting.emojis
+        return '\n'.join(natural_filter(sum_list_args(
+            [
+                f"Event added:",
+                f"{emojis.Name} {infos['what']}",
+            ],
+            [
+                f"{emojis.Location} {infos['where']}",
+            ] if infos.get('where') else [],
+            [
+                f"{emojis.Date} {datetime:%A} {datetime.date():%d/%m/%Y}"
+            ],
+            [
+                f"{emojis.Time} {datetime_tz:%H:%M}" if display == 'simple' else 
+                f"{emojis.Time} {datetime_tz:%H:%M} ({timezone})" if datetime_tz.date() == datetime.date() else
+                f"{emojis.Time} {datetime_tz:%H:%M} on {datetime_tz.date():%d/%m/%Y} ({timezone})"
+                for display in displays
+                for timezone in [tz if display == 'simple' else display[1] if display[0] == 'tz_conversion' else raise_error(AssertionError)]
+                for datetime_tz in [datetime.astimezone(timezone)]
+            ],
+            [
+                f"{emojis.Link} {link}"
+            ] if bool(link) and display_link else []
+        )))
 
 async def last_event(update, context, *, relative=False):
     return await next_or_last_event(update, context, -1, relative=relative)
