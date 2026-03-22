@@ -339,6 +339,8 @@ async def pathfrom(update, context):
 
     tos = [i for i, x in enumerate(context.args) if x.lower() in ('to:', ':to')]
 
+    display_mode: Literal['tree', 'parent_list'] = 'parent_list'
+
     with get_connection() as connection:
         if not tos:
             targets = locationdistance.load_destinations(update, context, connection=connection)
@@ -366,17 +368,30 @@ async def pathfrom(update, context):
     formatter = locationdistance.InfinityFormatter(dists)
     if len(targets) > 1:
         # Multiple targets, tree of path
-        path = {}
-        for target in targets:
-            path[target] = reconstruct_path(prevs=prevs, target=target)
-        
-        all_useful = set()
-        for p in path.values():
-            all_useful |= set(p)
-        
-        return await send('\n'.join(f"• {formatter.format(name)} | {name} ← {prevs.get(name)}" for name in sorted(all_useful, key=formatter.key)))
+        if display_mode == 'tree':
+            tree = locationdistance.make_tree(prevs=prevs, loc=loc.lower(), targets=list(map(str.lower, targets)))
 
-    path = reconstruct_path(target=targets[0], prevs=prevs)
+            def format_node(node, indent=0):
+                name = node.value
+                return f"{indent * 2 * ' '}• {formatter.format(name)} | {name}" + ''.join('\n' + format_node(c, indent + 1) for c in node.children) 
+
+            return await send(format_node(tree))
+        
+        elif display_mode == 'parent_list':
+            path = {}
+            for target in map(str.lower, targets):
+                path[target] = reconstruct_path(prevs=prevs, target=target)
+            
+            all_useful = set()
+            for p in path.values():
+                all_useful |= set(p)
+            
+            return await send('\n'.join(f"• {formatter.format(name)} | {name} ← {prevs.get(name)}" for name in sorted(all_useful, key=formatter.key)))
+        
+        else:
+            raise AssertionError
+
+    path = reconstruct_path(target=targets[0].lower(), prevs=prevs)
 
     # One target, one path
     return await send('\n'.join(f"• {formatter.format(name)} | {name}" for name in path))
@@ -491,6 +506,22 @@ class locationdistance:
                 return str(self.dists[name])
             else:
                 return '\N{INFINITY}'
+
+    class TreeNode:
+        def __init__(self, value: Any, children: list[locationdistance.TreeNode]):
+            self.value = value
+            self.children = children
+
+        def print(self, indent=0):
+            print(indent * '  ' + self.value)
+            for c in self.children:
+                c.print(indent + 1)
+            
+    def make_tree(*, loc, prevs, targets):
+        def all_with_parent(x):
+            return [locationdistance.TreeNode(c, all_with_parent(c)) for c, prev_c in prevs.items() if prev_c == x]
+
+        return locationdistance.TreeNode(loc, all_with_parent(loc))
 
     async def addedges(args, update, context):
         send = make_send(update, context)
