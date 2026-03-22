@@ -242,7 +242,7 @@ def lazy_value(getter):
         return value
     return f
 
-AsyncSend = Callable[[Update, CallbackContext], Awaitable[None]]
+AsyncSend = Callable[[str], Awaitable[None]]
 
 async def money_responder(msg:str, send: AsyncSend, *, update, context):
     if detected_currencies := detect_currencies(msg):
@@ -277,20 +277,9 @@ async def locationdistance_responder(msg:str, send: AsyncSend, *, update, contex
             loc = match.group(1)
             dists = location_distance_apply(loc, chat_id=update.effective_chat.id, targets=destinations).dists
             
-            def extended_dist(name):
-                if name in dists:
-                    return dists[name]
-                else:
-                    return float('Infinity')
-
-            def format_dist(name):
-                if name in dists:
-                    return str(dists[name])
-                else:
-                    return '\N{INFINITY}'
-
+            formatter = locationdistance.InfinityFormatter(dists)
             if len(dists) > 1:
-                return await send('\n'.join(f"• {format_dist(name)} | {name}" for name in sorted(destinationsLower, key=extended_dist)) or "Can't reach any destination from {}".format(loc))
+                return await send('\n'.join(f"• {formatter.format(name)} | {name}" for name in sorted(destinationsLower, key=formatter.key)) or "Can't reach any destination from {}".format(loc))
 
 def split_based_on_indices(L, indices):
     if len(indices) == 0:
@@ -338,19 +327,8 @@ async def distfrom(update, context):
     else:
         display = list(map(str.lower, targets))
 
-    def extended_dist(name):
-        if name in dists:
-            return dists[name]
-        else:
-            return float('Infinity')
-
-    def format_dist(name):
-        if name in dists:
-            return str(dists[name])
-        else:
-            return '\N{INFINITY}'
-
-    return await send('\n'.join(f"• {format_dist(name)} | {name}" for name in sorted(display, key=extended_dist)))
+    formatter = locationdistance.InfinityFormatter(dists)
+    return await send('\n'.join(f"• {formatter.format(name)} | {name}" for name in sorted(display, key=formatter.key)))
 
 
 async def pathfrom(update, context):
@@ -385,18 +363,7 @@ async def pathfrom(update, context):
         path.reverse()
         return path
 
-    def extended_dist(name):
-        if name in dists:
-            return dists[name]
-        else:
-            return float('Infinity')
-
-    def format_dist(name):
-        if name in dists:
-            return str(dists[name])
-        else:
-            return '\N{INFINITY}'
-
+    formatter = locationdistance.InfinityFormatter(dists)
     if len(targets) > 1:
         # Multiple targets, tree of path
         path = {}
@@ -407,19 +374,19 @@ async def pathfrom(update, context):
         for p in path.values():
             all_useful |= set(p)
         
-        return await send('\n'.join(f"• {format_dist(name)} | {name} ← {prevs.get(name)}" for name in sorted(all_useful, key=extended_dist)))
+        return await send('\n'.join(f"• {formatter.format(name)} | {name} ← {prevs.get(name)}" for name in sorted(all_useful, key=formatter.key)))
 
     path = reconstruct_path(target=targets[0], prevs=prevs)
 
     # One target, one path
-    return await send('\n'.join(f"• {format_dist(name)} | {name}" for name in path))
+    return await send('\n'.join(f"• {formatter.format(name)} | {name}" for name in path))
 
 @dataclass
 class DijkstraResult:
     dists: dict
     prevs: dict
 
-def location_distance_apply(loc, *, chat_id, targets=None, connection=None):
+def location_distance_apply(loc, *, chat_id, targets=None, connection=None, target_mode:Literal['all', 'any']='all') -> DijkstraResult:
     targets = set(map(str.lower, targets)) if targets is not None else None
     loc = loc.lower()      
 
@@ -453,9 +420,15 @@ def location_distance_apply(loc, *, chat_id, targets=None, connection=None):
         dists[current_name] = current_dist
 
         if targets is not None:
-            targets.discard(current_name)
-            if not targets:
-                break
+            if target_mode == 'any':
+                if current_name in targets:
+                    break
+            elif target_mode == 'all':
+                targets.discard(current_name)
+                if not targets:
+                    break
+            else:
+                raise AssertionError("Enum out of range")
 
         for neigh_name, neigh_dist in Graph[current_name]:
             if neigh_name not in dists:
@@ -502,6 +475,22 @@ class locationdistance:
         if Args[0] /fullmatchesI/ r'destination|destinations':
             return await locationdistance.destinations(Args[1:], update, context)
         return await print_usage()
+
+    class InfinityFormatter:
+        def __init__(self, dists):
+            self.dists = dists
+        
+        def key(self, name):
+            if name in self.dists:
+                return self.dists[name]
+            else:
+                return float('Infinity')
+
+        def format(self, name):
+            if name in self.dists:
+                return str(self.dists[name])
+            else:
+                return '\N{INFINITY}'
 
     async def addedges(args, update, context):
         send = make_send(update, context)
@@ -7147,7 +7136,7 @@ async def enable_disable_command(update, context, direction: Literal['enable', '
 
     if not context.args:
         return await make_send(update, context)(
-            "Usage: /{'enable' if direction == 'enable' else 'disable'} responder\n\n"
+            f"Usage: /{'enable' if direction == 'enable' else 'disable'} responder\n\n" +
             "Available commands: {}".format(', '.join(_[1] for _ in RESPONDERS)))
 
     responder, = context.args
