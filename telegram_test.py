@@ -6225,12 +6225,12 @@ async def timein(update, context):
             return f"{date:%d/%m/%Y} ({DatetimeText.days_english[date.weekday()].capitalize()})"
 
         dts = list(map(get_dt, tzs))
-        data = sorted(zip(dts, tzs))
+        data = sorted(zip(dts, range(len(dts)), tzs))
 
         lines = []
         for k, group in itertools.groupby(data, key=lambda t:t[0].date()):
             lines.append(dt_tz_format_group(k))
-            lines.extend(dt_tz_format_new(dt, tz) for dt, tz in group)
+            lines.extend(dt_tz_format_new(dt, tz) for dt, _, tz in group)
 
         return await send('\n'.join(lines))
 
