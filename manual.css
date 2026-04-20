@@ -64,14 +64,14 @@ p {
     max-width: 42rem;
 }
 
-.collapsible {
+.collapse {
     background: #ffffff;
     border: 1px solid #e2e8f0;
     border-radius: 1rem;
     margin-top: 1.5rem;
 }
 
-.collapsible-header {
+.collapse {
     display: flex;
     align-items: center;
     justify-content: space-between;
@@ -80,7 +80,7 @@ p {
     border-bottom: 1px solid #e2e8f0;
 }
 
-.collapsible-header h2 {
+.collapse h2 {
     margin: 0;
     font-size: 1.3rem;
 }
@@ -107,11 +107,28 @@ p {
     background: #1d4ed8;
 }
 
-.collapsible-body {
+.collapse {
+    overflow: hidden;
+    max-height: 0;
+    opacity: 0;
+    transition: max-height 0.26s ease, opacity 0.2s ease;
+}
+
+.collapse.expanded {
+    max-height: 1200px;
+    opacity: 1;
+}
+
+.collapse:not(.expanded) {
+    max-height: 0;
+    opacity: 0;
+}
+
+.collapse {
     padding: 1.25rem 1.35rem 1.5rem;
 }
 
-.collapsible-body[hidden] {
+.collapse[hidden] {
     display: none;
 }
 

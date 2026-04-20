@@ -14,13 +14,10 @@ window.addEventListener('load', () => {
 
     // Ensure all collapsed elements are hidden by default unless aria-expanded is true
     document.querySelectorAll('.collapse').forEach(collapse => {
-        const computedDisplay = window.getComputedStyle(collapse).display;
-        collapse.initialDisplay = computedDisplay === 'none' ? 'block' : computedDisplay;
         const button = document.querySelector(`[aria-controls="${collapse.id}"]`);
-        collapse.style.display = 'none';
-        if (button && button.getAttribute('aria-expanded') === 'true') {
-            collapse.style.display = collapse.initialDisplay;
-        }
+        const isExpanded = button && button.getAttribute('aria-expanded') === 'true';
+        collapse.classList.toggle('expanded', isExpanded);
+        collapse.hidden = !isExpanded;
     });
 
     // Handle example button clicks
@@ -33,10 +30,10 @@ window.addEventListener('load', () => {
             button.addEventListener('click', () => {
                 const isExpanded = button.getAttribute('aria-expanded') === 'true';
                 if (!isExpanded) {
-                    // Close all other collapses
-                    document.querySelectorAll('.collapse').forEach(other => {
+                    document.querySelectorAll('.collapse.expanded').forEach(other => {
                         if (other !== panel) {
-                            other.style.display = 'none';
+                            other.classList.remove('expanded');
+                            other.hidden = true;
                             const otherButton = document.querySelector(`[aria-controls="${other.id}"]`);
                             if (otherButton) {
                                 otherButton.setAttribute('aria-expanded', 'false');
@@ -47,13 +44,15 @@ window.addEventListener('load', () => {
                 }
                 button.setAttribute('aria-expanded', String(!isExpanded));
                 button.textContent = isExpanded ? 'Show example' : 'Hide example';
-                panel.style.display = isExpanded ? 'none' : panel.initialDisplay;
+                panel.classList.toggle('expanded', !isExpanded);
+                panel.hidden = isExpanded;
             });
         }
 
         if (closeButton && panel) {
             closeButton.addEventListener('click', () => {
-                panel.style.display = 'none';
+                panel.classList.remove('expanded');
+                panel.hidden = true;
                 button.setAttribute('aria-expanded', 'false');
                 button.textContent = 'Show example';
             });
