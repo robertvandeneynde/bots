@@ -44,7 +44,7 @@ logging.getLogger('httpx').setLevel(logging.WARN)
 async def start(update: Update, context: CallbackContext):
     await context.bot.send_message(
         chat_id=update.effective_chat.id,
-        text="I'm a bot, please talk to me! To get a tour of functionalities, send a message to my creator t.me/robertvend")
+        text="I'm a bot, please talk to me! To get a tour of functionalities, send a message to my creator t.me/robertvend and read my manual at robertvandeneynde.ru/bot !")
     print("Someone started me!")
 
 
