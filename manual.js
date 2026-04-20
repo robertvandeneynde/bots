@@ -33,3 +33,11 @@ function dedent(text) {
 document.querySelectorAll('pre').forEach(pre => {
     pre.textContent = dedent(pre.textContent);
 });
+
+// Ensure all collapsed elements are hidden by default unless aria-expanded is true
+document.querySelectorAll('.collapse').forEach(collapse => {
+    const button = document.querySelector(`[aria-controls="${collapse.id}"]`);
+    if (button && button.getAttribute('aria-expanded') !== 'true') {
+        collapse.hidden = true;
+    }
+});

@@ -173,6 +173,8 @@ li {
     display: flex;
     flex-direction: column;
     gap: 0.5rem;
+    width: 70%;
+    max-width: 500px;
 }
 
 .user {
@@ -234,5 +236,10 @@ li {
 
     h1 {
         font-size: 2rem;
+    }
+
+    .conversation {
+        width: 100%;
+        max-width: none;
     }
 }
