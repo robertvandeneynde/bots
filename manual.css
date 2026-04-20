@@ -169,12 +169,12 @@ li {
     border-radius: 0.5rem;
     padding: 1rem;
     background: #f8fafc;
-    margin: 0.5rem 0;
+    margin: 0.5rem auto;
     display: flex;
     flex-direction: column;
     gap: 0.5rem;
     width: 70%;
-    max-width: 500px;
+    max-width: 750px;
 }
 
 .user {
