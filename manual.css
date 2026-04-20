@@ -140,7 +140,7 @@ section, nav {
     margin-top: 1.5rem;
 }
 
-#group-or-private-message {
+h3 {
     color: #3b82f6;
     border-bottom: 2px solid #dbe7f3;
     padding-bottom: 0.5rem;
@@ -213,7 +213,7 @@ li {
 
 .bot {
     align-self: flex-start;
-    background: #f1f5f9;
+    background: #dbf3e7;
     color: #000000;
     padding: 0.5rem 1rem;
     border-radius: 1rem 1rem 1rem 0.25rem;

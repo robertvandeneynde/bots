@@ -4,7 +4,16 @@ function dedent(text) {
     const nonEmptyLines = lines.filter(line => line.trim());
     if (nonEmptyLines.length === 0) return text;
     const minIndent = Math.min(...nonEmptyLines.map(line => line.length - line.trimStart().length));
-    return lines.map(line => line.startsWith(' '.repeat(minIndent)) ? line.slice(minIndent) : line).join('\n');
+    function trimLines(list) {
+        while(list.length && !list[0].trim()) {
+            list.shift();
+        }
+        while(list.length && !list[list.length - 1].trim()) {
+            list.pop();
+        }
+        return list;
+    }
+    return trimLines(lines.map(line => line.startsWith(' '.repeat(minIndent)) ? line.slice(minIndent) : line)).join('\n');
 }
 
 window.addEventListener('load', () => {

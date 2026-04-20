@@ -3,13 +3,13 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Robertvend's Bot Manual</title>
+    <title>🤖🐦 Robertvend's Bot Manual</title>
     <link rel="stylesheet" href="manual.css">
     <script defer src="manual.js"></script>
 </head>
 <body>
     <header>
-    <h1>Robertvend's Bot Manual</h1>
+    <h1>🤖&nbsp;Robertvend's Bot Manual&nbsp;🐦</h1>
     <p>
         Hello, my name is <a href="https://www.github.com/robertvandeneynde">Robert Vanden Eynde</a>
         and I made my <a href="https://t.me/rvesleep_bot">Telegram bot</a>,
@@ -35,6 +35,9 @@
                 </pre></div>
                 <div class="comment">The bot will remember that today, there's a party! Use <a href="#/listdays">/listdays</a> or <a href="#/today">/today</a> to see it</div>
                 <div class="user"><span class="command">/addevent</span> Tomorrow Swimming Pool</div>
+                <div class="comment">Tomorrow is a valid day, relative, there's also Yesterday or Overmorrow</div>
+                <div class="user"><span class="command">/addevent</span> Friday Basketball</div>
+                <div class="comment">Friday will be the first Friday in the future <span class="beware">but not today</span></div>
                 <div class="user"><span class="command">/addevent</span> Tomorrow 18h Billiard</div>
                 <div class="comment">Here the time is provided <span class="beware">beware: there's no space between <em>18</em> and <em>h</em></span></div>
                 <div class="user"><span class="command">/addevent</span> Tomorrow 14:30 Picnic</div>
@@ -85,7 +88,8 @@
                     - 17:00 Tea time
                 </pre></div>
             </div>
-            <li><code>/selectevent</code> Select an future event from the calendar, to display it in a nice block with emojis</li>
+            <li><code>/selectevent</code> Select an future event from the calendar, to display it in a nice block with emojis
+                <button class="example" aria-expanded="false" aria-controls="selectevent-example">Show example</button></li>
             <div class="collapse conversation" id="selectevent-example">
                 <div class="user"><span class="command">/addevent</span> 21.04.2026 18h Pool @ Mario's</div>
                 <div class="user"><span class="command">/selectevent</span></div>
@@ -102,7 +106,7 @@
     </section>
     <section>
         <h2>Appendix</h2>
-        <h3 id="group-or-private-message">Group or private message</h3>
+        <h3 id="group-or-private-message"><a href="#group-or-private-message">Group or private message</a></h3>
         <p>
             The bot can be used in both group chats and private messages.
             In a group chat, the bot will respond to commands issued by any member of the group.
@@ -113,7 +117,7 @@
             in private message it's only for you, your personal calendar.
         </p>
 
-        <h3 id="group-or-private-message">Timezones</h3>
+        <h3 id="timezones"><a href="#timezones">Timezones</a></h3>
         <p>
             To set your personal timezone, use the command <code class="command">/mytimezone</code> followed by your timezone.
             For example, if you are in New York, you would use <code class="command">/settimezone America/New_York</code>.
