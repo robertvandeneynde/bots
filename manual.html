@@ -21,30 +21,43 @@
         <h2>Commands</h2>
         <h3>Module <code>event</code></h3>
         <ul>
+            <p class="beware">In order for events to work, you must <a href="#timezones">set a timezone</a></p>
             <li id="/addevent"><code>/addevent</code> Add a new event to the calendar of the <a href="#group-or-private-message">group</a>
                 <button class="example" aria-expanded="false" aria-controls="addevent-example">Show example</button>
             </li>
             <div class="collapse conversation" id="addevent-example">
+                <div class="comment">Today is Monday 20/04/2026 (20th of April 2026)</div>
                 <div class="user"><span class="command">/addevent</span> Today Party</div>
-                <div class="comment">The bot will remember that today, there's a party ! Use <a href="#/listdays">/listdays</a> or <a href="#/today">/today</a> to see it</div>
+                <div class="bot"><pre>
+                    Event added:
+                    📃 Party
+                    🗓️ Monday 20/04/2026
+                </pre></div>
+                <div class="comment">The bot will remember that today, there's a party! Use <a href="#/listdays">/listdays</a> or <a href="#/today">/today</a> to see it</div>
                 <div class="user"><span class="command">/addevent</span> Tomorrow Swimming Pool</div>
                 <div class="user"><span class="command">/addevent</span> Tomorrow 18h Billiard</div>
                 <div class="comment">Here the time is provided <span class="beware">beware: there's no space between <em>18</em> and <em>h</em></span></div>
-                <div class="user"><span class="command">/addevent</span> Tomorrow 18:45 Bowling</div>
+                <div class="user"><span class="command">/addevent</span> Tomorrow 14:30 Picnic</div>
+                <div class="comment">Here the time is provided in full, beware to use the standard <em>:</em> separator and 24h format</div>
                 <div class="user"><span class="command">/addevent</span> Tomorrow 18:45 Bowling @ Mario's</div>
-                <div class="comment">Here the event a location was provided <span class="beware">beware to have spaces around the @ symbol</span></div>
-                <div class="user"><span class="command">/listdays</span></div>
                 <div class="bot"><pre>
-                    Monday 20/04/2026
-                    - Party
-
-                    Tuesday 21/04/2026
-                    - Swimming Pool
+                    Event added:
+                    📃 Bowling
+                    📍 Mario's
+                    🗓️ Monday 20/04/2026
+                    ⌚ 18:45
                 </pre></div>
+                <div class="comment">Here the event a location was provided <span class="beware">beware to have spaces around the @ symbol</span></div>
+                <div class="user"><span class="command">/addevent</span> 22.04.2026 18h Tennis @ Luigi's</div>
+                <div class="comment">Here the date is provided in absolute format, the bot can understand both <span class="beware">The bot understands only <em>.</em> as a separator</span></div>
             </div>
+
             <li id="/listdays"><code>/listdays</code> List events in the following 7 days in the calendar
                 <button class="example" aria-expanded="false" aria-controls="listdays-example">Show example</button></li>
             <div class="collapse conversation" id="listdays-example">
+                <div class="user">/addevent Today Party</div>
+                <div class="user">/addevent Tomorrow Party</div>
+                <div class="user">/addevent Wednesday 15:00 Tennis @ Luigi's</div>
                 <div class="user"><span class="command">/listdays</span></div>
                 <div class="bot"><pre>
                     Monday 20/04/2026
@@ -52,20 +65,24 @@
 
                     Tuesday 21/04/2026
                     - Swimming Pool
+
+                    Wednesday 22/04/2026
+                    - 15:00 Tennis @ Luigi's
                 </pre></div>
             </div>
+
             <li id="/today"><code>/today</code> List events of today
                 <button class="example" aria-expanded="false" aria-controls="today-content">Show example</button></li>
             <div class="collapse conversation" id="today-content">
+                <div class="comment">Today is Monday 20/04/2026 (20th of April 2026)</div>
                 <div class="user">/addevent Today Party</div>
                 <div class="user">/addevent Tomorrow Swimming Pool</div>
-                <div class="user">/listdays</div>
+                <div class="user">/addevent Today 17:00 Tea time</div>
+                <div class="user">/today</div>
                 <div class="bot"><pre>
                     Monday 20/04/2026
                     - Party
-
-                    Tuesday 21/04/2026
-                    - Swimming Pool
+                    - 17:00 Tea time
                 </pre></div>
             </div>
             <li><code>/selectevent</code> Select an future event from the calendar, to display it in a nice block with emojis</li>
@@ -74,6 +91,7 @@
                 <div class="user"><span class="command">/selectevent</span></div>
                 <div class="comment">A list is displayed with all events in the future, let's click on our event</div>
                 <div class="bot"><pre>
+                    Event!
                     📃 Pool
                     📍 Mario's
                     🗓️ Tuesday 21/04/2026
@@ -94,6 +112,48 @@
             For example, when adding an event using <code class="command">/addevent</code>, the calendar is shared in the whole group,
             in private message it's only for you, your personal calendar.
         </p>
+
+        <h3 id="group-or-private-message">Timezones</h3>
+        <p>
+            To set your personal timezone, use the command <code class="command">/mytimezone</code> followed by your timezone.
+            For example, if you are in New York, you would use <code class="command">/settimezone America/New_York</code>.
+            The bot uses the IANA time zone database format for timezones,
+            you can find the list of valid timezones <a href="https://en.wikipedia.org/wiki/List_of_tz_database_time_zones">here</a>.
+            <button class="example" aria-expanded="false" aria-controls="timezone-content">Show example</button>
+        </p>
+        <div class="collapse conversation" id="timezone-content">
+            <div class="user"><span class="command">/mytimezone</span> America/New_York</div>
+            <div class="bot"><pre>
+                Timezone set to America/New_York
+            </pre></div>
+        </div>
+        <div>If the chat/group has only one timezone, you can set the <em>group's timezone</em> so that not everyone will need to set their timezone
+            <button class="example" aria-expanded="false" aria-controls="group-timezone-content">Show example</button>
+        </div>
+        <div class="collapse conversation" id="group-timezone-content">
+            <div class="user"><span class="command">/chatsettings</span> event.timezones America/New_York</div>
+            <div class="bot"><pre>
+                Group timezone set to America/New_York
+            </pre></div>
+        </div>
+        <div>If you have a group with multiple timezones, you can just set multiple timezones but it will be more complex to manage. <button class="example" aria-expanded="false" aria-controls="multiple-timezones-content">Show example</button></div>
+        <div class="collapse conversation" id="multiple-timezones-content">
+            <div class="user"><span class="command">/chatsettings</span> event.timezones America/New_York Europe/London</div>
+            <div class="bot"><pre>
+                Group timezones set to America/New_York Europe/London
+            </pre></div>
+            <div class="user"><span class="command">/mytimezone</span> America/New_York</div>
+            <div class="user"><span class="command">/addevent</span> Today 10:00 Online chat</div>
+            <div class="bot"><pre>
+                Event!
+                📃 Online chat
+                🗓️ Monday 20/04/2026
+                ⌚ 10:00 (America/New_York)
+                ⌚ 15:00 (Europe/London)
+            </pre></div>
+        </div>
+
+
     </section>
 </body>
 </html>
