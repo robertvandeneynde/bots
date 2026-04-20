@@ -220,6 +220,10 @@ li {
     word-wrap: break-word;
 }
 
+.beware::before {
+    content: "⚠️ ";
+}
+
 .conversation pre {
     background: none;
     border: none;

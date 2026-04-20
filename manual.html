@@ -37,11 +37,11 @@
                 <div class="user"><span class="command">/addevent</span> Tomorrow Swimming Pool</div>
                 <div class="comment">Tomorrow is a valid day, relative, there's also Yesterday or Overmorrow</div>
                 <div class="user"><span class="command">/addevent</span> Friday Basketball</div>
-                <div class="comment">Friday will be the first Friday in the future <span class="beware">but not today</span></div>
+                <div class="comment">Friday will be the first Friday in the future <span class="beware">If today is Friday, then it will be Friday in 7 days</span></div>
                 <div class="user"><span class="command">/addevent</span> Tomorrow 18h Billiard</div>
-                <div class="comment">Here the time is provided <span class="beware">beware: there's no space between <em>18</em> and <em>h</em></span></div>
+                <div class="comment">Here the time is provided <span class="beware">There's no space between <em>18</em> and <em>h</em></span></div>
                 <div class="user"><span class="command">/addevent</span> Tomorrow 14:30 Picnic</div>
-                <div class="comment">Here the time is provided in full, beware to use the standard <em>:</em> separator and 24h format</div>
+                <div class="comment">Here the time is provided in full, <span class="beware">Use the standard <em>:</em> separator and 24h format</span></div>
                 <div class="user"><span class="command">/addevent</span> Tomorrow 18:45 Bowling @ Mario's</div>
                 <div class="bot"><pre>
                     Event added:
@@ -50,9 +50,12 @@
                     🗓️ Monday 20/04/2026
                     ⌚ 18:45
                 </pre></div>
-                <div class="comment">Here the event a location was provided <span class="beware">beware to have spaces around the @ symbol</span></div>
+                <div class="comment">Here a location was provided for the event <span class="beware">Write spaces around the @ symbol</span></div>
                 <div class="user"><span class="command">/addevent</span> 22.04.2026 18h Tennis @ Luigi's</div>
-                <div class="comment">Here the date is provided in absolute format, the bot can understand both <span class="beware">The bot understands only <em>.</em> as a separator</span></div>
+                <div class="comment">Here the date is provided in absolute format <span class="beware">The bot understands only <em>.</em> as a separator</span></div>
+                <div class="user"><span class="command">/addevent</span> 22.04 18h Tennis @ Luigi's</div>
+                <div class="comment">Omitting the year will use current year <span class="beware">Better be explicit when it's the end of the year!</span></div>
+                
             </div>
 
             <li id="/listdays"><code>/listdays</code> List events in the following 7 days in the calendar
@@ -61,6 +64,7 @@
                 <div class="user">/addevent Today Party</div>
                 <div class="user">/addevent Tomorrow Party</div>
                 <div class="user">/addevent Wednesday 15:00 Tennis @ Luigi's</div>
+                <div class="user">/addevent 30.04 18:00 Exhibition @ Art Gallery</div>
                 <div class="user"><span class="command">/listdays</span></div>
                 <div class="bot"><pre>
                     Monday 20/04/2026
