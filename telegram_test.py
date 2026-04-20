@@ -3557,19 +3557,21 @@ class InteractiveAddEvent:
         return 'ask-what-or-time'
     
     @staticmethod
-    async def ask_what_or_time(update, context, *, keyboard=False):
+    async def ask_what_or_time(update, context):
+        if update.callback_query:
+            await update.callback_query.answer()
         send = make_send(update, context)
 
-        if keyboard:
-            query = update.callback_query
-            await query.answer()
-            when = query.data
-        
+        if update.callback_query:
+            when = update.callback_query.data
         else:
             when = update.message.text
 
-        event: ParsedEventFinal = parse_datetime_point(update, context, when_infos=when, what_infos='')
-        # no error: ok
+        try:
+            event: ParsedEventFinal = parse_datetime_point(update, context, when_infos=when, what_infos='')
+        except UserError:
+            await send("I can't read this date, try again.")
+            return 'ask-what-or-time'
 
         context.user_data['when'] = when
 
@@ -3582,11 +3584,16 @@ class InteractiveAddEvent:
     async def ask_time(update, context):
         send = make_send(update, context)
 
-        await send('What is the time of the event ?\n\nExamples:\n- 8h\n- 16h\n- 20:15\n- /midnight\n- /empty')
+        keyboard = [
+            [InlineKeyboardButton("Midnight", callback_data='skip'), InlineKeyboardButton("No time", callback_data='skip')]
+        ]
+
+        await send('What is the time of the event ?\n\nExamples:\n- 8h\n- 16h\n- 20:15', reply_markup=InlineKeyboardMarkup(keyboard))
 
         context.user_data['did_ask_time'] = 'on'
 
         return 'ask-what'
+    
     @staticmethod
     async def ask_what_empty(update, context):
         if 'did_ask_time' in context.user_data:
@@ -3611,15 +3618,23 @@ class InteractiveAddEvent:
         else:
             pass # user_data.when is perfect
 
-        parse_datetime_point(update, context, when_infos=context.user_data['when'], what_infos='')
-        # no error: ok
+        try:
+            parse_datetime_point(update, context, when_infos=context.user_data['when'], what_infos='')
+        except UserError:
+            await send("I can't read this time, try again")
+            return 'ask-what'
 
-        await send("What is the event about ?\nThe name of the event.\n\nExamples:\n- Party\n- /empty")
+        keyboard = [
+            [InlineKeyboardButton("No description", callback_data='skip')]
+        ]
+        await send("What is the event about ?\nThe name of the event.\n\nExamples:\n- Party", reply_markup=InlineKeyboardMarkup(keyboard))
         return 'ask-where'
 
     @staticmethod
     async def ask_where(update, context):
-        send = make_send(update, context)
+        if update.callback_query:
+            await update.callback_query.answer()
+
         what = update.message.text
         context.user_data['what'] = what
 
@@ -3627,7 +3642,9 @@ class InteractiveAddEvent:
     
     @staticmethod
     async def ask_where_empty(update, context):
-        send = make_send(update, context)
+        if update.callback_query:
+            await update.callback_query.answer()
+
         what = ''
         context.user_data['what'] = what
 
@@ -3637,17 +3654,27 @@ class InteractiveAddEvent:
     async def really_ask_where(update, context):
         send = make_send(update, context)
 
-        await send("Where is the event ?\n\nExamples:\n- My house\n- Miami Beach (123 Ocean Drive)\n- /skip\n- /empty")
+        keyboard = [
+            [InlineKeyboardButton('No location', callback_data='skip')]
+        ]
+
+        await send("Where is the event ?\n\nExamples:\n- My house\n- Miami Beach (123 Ocean Drive)", reply_markup=InlineKeyboardMarkup(keyboard))
 
         return 'ask-confirm'
     
     @staticmethod
     async def ask_confirm(update, context):
+        if update.callback_query:
+            await update.callback_query.answer()
+
         where = update.message.text
         return await InteractiveAddEvent.continue_ask_confirm(update, context, where=where)
     
     @staticmethod
     async def ask_confirm_empty(update, context):
+        if update.callback_query:
+            await update.callback_query.answer()
+
         where = ''
         return await InteractiveAddEvent.continue_ask_confirm(update, context, where=where)
     
@@ -3666,7 +3693,10 @@ class InteractiveAddEvent:
         return 'do-add-event'
     
     @staticmethod
-    async def do_add_event(update: Update, context, *, keyboard=False):
+    async def do_add_event(update: Update, context):
+        if update.callback_query:
+            await update.callback_query.answer()
+
         send = make_send(update, context)
 
         when = context.user_data['when']
@@ -3674,11 +3704,8 @@ class InteractiveAddEvent:
         where = context.user_data['where']
         context.user_data.clear()
 
-        if keyboard:
-            query = update.callback_query
-            await query.answer()
-            
-            add = query.data.lower() != 'no'
+        if update.callback_query:
+            add = update.callback_query.data.lower() != 'no'
         else:
             add = update.message.text.lower() in ("no", "n")
         
@@ -8102,29 +8129,32 @@ if __name__ == '__main__':
         states={
             'ask-what-or-time': [
                 MessageHandler(filters.TEXT & ~filters.COMMAND, InteractiveAddEvent.ask_what_or_time),
-                CallbackQueryHandler(partial(InteractiveAddEvent.ask_what_or_time, keyboard=True))
+                CallbackQueryHandler(InteractiveAddEvent.ask_what_or_time)
             ],
             'ask-time': [
                 MessageHandler(filters.TEXT & ~filters.COMMAND, InteractiveAddEvent.ask_time),
             ],
             'ask-what': [
                 MessageHandler(filters.TEXT & ~filters.COMMAND, InteractiveAddEvent.ask_what),
+                CallbackQueryHandler(InteractiveAddEvent.ask_what_empty, pattern="skip"),
                 CommandHandler('empty', InteractiveAddEvent.ask_what_empty),
                 CommandHandler('midnight', InteractiveAddEvent.ask_what_empty),
             ],
             'ask-where': [
                 MessageHandler(filters.TEXT & ~filters.COMMAND, InteractiveAddEvent.ask_where),
+                CallbackQueryHandler(InteractiveAddEvent.ask_where_empty, pattern="skip"),
                 CommandHandler('empty', InteractiveAddEvent.ask_where_empty),
                 CommandHandler('skip', InteractiveAddEvent.ask_where_empty),
             ],
             'ask-confirm': [
                 MessageHandler(filters.TEXT & ~filters.COMMAND, InteractiveAddEvent.ask_confirm),
+                CallbackQueryHandler(InteractiveAddEvent.ask_confirm_empty, pattern="skip"),
                 CommandHandler('empty', InteractiveAddEvent.ask_confirm_empty),
                 CommandHandler('skip', InteractiveAddEvent.ask_confirm_empty),
             ],
             'do-add-event': [
                 MessageHandler(filters.TEXT & ~filters.COMMAND, InteractiveAddEvent.do_add_event),
-                CallbackQueryHandler(partial(InteractiveAddEvent.do_add_event, keyboard=True)),
+                CallbackQueryHandler(InteractiveAddEvent.do_add_event),
             ]
         },
         fallbacks=[
