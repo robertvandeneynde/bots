@@ -1,0 +1,238 @@
+/* Basic styling for the bot manual */
+:root {
+    color-scheme: light;
+    color: #1f2937;
+    background: #f8fafc;
+    font-family: Inter, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    font-size: 16px;
+    line-height: 1.6;
+}
+
+* {
+    box-sizing: border-box;
+}
+
+html, body {
+    margin: 0;
+    padding: 0;
+}
+
+body {
+    min-height: 100vh;
+    background: linear-gradient(180deg, #f9fbfd 0%, #eef2f8 100%);
+    color: #0f172a;
+}
+
+body > * {
+    max-width: 900px;
+    margin: 0 auto;
+    padding: 1.5rem 1.25rem;
+}
+
+header {
+    background: rgba(255, 255, 255, 0.82);
+    border: 1px solid rgba(156, 163, 175, 0.22);
+    border-radius: 1.25rem;
+    padding: 1.5rem 1.5rem 1.75rem;
+    box-shadow: 0 20px 45px rgba(15, 23, 42, 0.08);
+    backdrop-filter: blur(12px);
+    margin-bottom: 1.5rem;
+}
+
+header h1 {
+    margin-top: 0;
+}
+
+header p {
+    margin-bottom: 0;
+    color: #334155;
+}
+
+h1, h2, h3 {
+    color: #102a43;
+    margin-top: 1.5rem;
+    margin-bottom: 0.6rem;
+    line-height: 1.15;
+}
+
+h1 {
+    font-size: clamp(2.25rem, 2.5vw, 3rem);
+}
+
+p {
+    margin: 0 0 1rem;
+    max-width: 42rem;
+}
+
+.collapsible {
+    background: #ffffff;
+    border: 1px solid #e2e8f0;
+    border-radius: 1rem;
+    margin-top: 1.5rem;
+}
+
+.collapsible-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    padding: 1.25rem 1.35rem;
+    border-bottom: 1px solid #e2e8f0;
+}
+
+.collapsible-header h2 {
+    margin: 0;
+    font-size: 1.3rem;
+}
+
+.collapse-toggle,
+.example,
+.close {
+    border: none;
+    background: #2563eb;
+    color: #ffffff;
+    cursor: pointer;
+    padding: 0.55rem 0.95rem;
+    font-size: 0.9rem;
+    border-radius: 999px;
+    transition: background 0.2s ease;
+}
+
+.collapse-toggle:hover,
+.example:hover,
+.close:hover,
+.collapse-toggle:focus-visible,
+.example:focus-visible,
+.close:focus-visible {
+    background: #1d4ed8;
+}
+
+.collapsible-body {
+    padding: 1.25rem 1.35rem 1.5rem;
+}
+
+.collapsible-body[hidden] {
+    display: none;
+}
+
+section, nav {
+    background: #ffffff;
+    border-radius: 1rem;
+    border: 1px solid #e2e8f0;
+    padding: 1.25rem 1.35rem;
+    margin-top: 1.5rem;
+}
+
+#group-or-private-message {
+    color: #3b82f6;
+    border-bottom: 2px solid #dbe7f3;
+    padding-bottom: 0.5rem;
+    margin-bottom: 1rem;
+    font-size: 1.1rem;
+}
+
+section p, nav p {
+    margin-bottom: 1rem;
+    text-align: justify;
+    hyphens: auto;
+}
+
+a {
+    color: #2563eb;
+    text-decoration: none;
+}
+
+a:hover,
+a:focus {
+    text-decoration: underline;
+}
+
+code {
+    background: #f1f5f9;
+    color: #1f2937;
+    padding: 0.2rem 0.4rem;
+    border-radius: 0.35rem;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+    font-size: 0.95em;
+}
+
+ul {
+    padding-left: 1.3rem;
+}
+
+li {
+    margin-bottom: 0.55rem;
+}
+
+.conversation {
+    border: 1px solid #e2e8f0;
+    border-radius: 0.5rem;
+    padding: 1rem;
+    background: #f8fafc;
+    margin: 0.5rem 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+
+.user {
+    align-self: flex-end;
+    background: #dbe7f3;
+    padding: 0.5rem 1rem;
+    border-radius: 1rem 1rem 0.25rem 1rem;
+    max-width: 70%;
+    font-weight: 500;
+    word-wrap: break-word;
+}
+
+.user .command {
+    color: #2563eb;
+    background: none;
+    padding: 0;
+    font-weight: inherit;
+}
+
+.bot {
+    align-self: flex-start;
+    background: #f1f5f9;
+    color: #000000;
+    padding: 0.5rem 1rem;
+    border-radius: 1rem 1rem 1rem 0.25rem;
+    max-width: 70%;
+    word-wrap: break-word;
+}
+
+.conversation pre {
+    background: none;
+    border: none;
+    border-radius: 0;
+    padding: 0;
+    margin: 0;
+    font-size: inherit;
+    font-family: inherit;
+    font-weight: 500;
+    white-space: pre-wrap;
+    width: 100%;
+    box-sizing: border-box;
+    color: inherit;
+}
+.comment {
+    align-self: center;
+    background: #f3f4f6;
+    color: #374151;
+    padding: 0.5rem 1rem;
+    border-radius: 1rem;
+    max-width: 70%;
+    font-weight: 500;
+    word-wrap: break-word;
+    font-style: italic;
+}
+@media (max-width: 640px) {
+    body > * {
+        padding: 1rem;
+    }
+
+    h1 {
+        font-size: 2rem;
+    }
+}

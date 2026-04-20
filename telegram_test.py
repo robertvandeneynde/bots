@@ -1634,11 +1634,15 @@ async def sharemoney_responder(msg:str, send: AsyncSend, *, update, context):
 
     if name.fullmatch(Args[0]) and Args[1].lower() in ('owes', 'paid') and name.fullmatch(Args[2]) and amount.matches(Args[3]):
         i = 4
+
+        currency_str: str | None
         if currency_re.fullmatch(Args[i]):
-            currency_string: str = Args[i].upper()
+            currency_string = Args[i].upper()
             i += 1
         else:
-            currency_string: str = None
+            currency_string = None
+
+        reason: str | None
         
         if Args[i].lower() in ('for', '#') and Args[i+1]:
             reason = ' '.join(Args[i+1:])
@@ -1648,8 +1652,6 @@ async def sharemoney_responder(msg:str, send: AsyncSend, *, update, context):
             raise UserError("Too much infos")
         else:
             reason = None
-
-        reason: str | None
 
         first_name, operation, second_name, amount_str = Args[:4]
 
