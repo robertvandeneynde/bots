@@ -5525,6 +5525,7 @@ class EventFormatter:
         absolute = not relative
         infos = split_event_with_where_etc({'what': name})
         emojis = EventFormatting.emojis
+        now = Datetime.now().astimezone(UTC)
         return '\n'.join(natural_filter(sum_list_args(
             [
                 f"Event!",
