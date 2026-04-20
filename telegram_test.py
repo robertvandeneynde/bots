@@ -3528,14 +3528,45 @@ class InteractiveAddEvent:
     @staticmethod
     async def ask_when(update, context):
         send = make_send(update, context)
-        await send("When is the event ?\n\nExamples:\n- Today\n- Tomorrow\n- Sunday\n- 25.11\n- 31.12.2000")
+
+        tz = induce_my_timezone_from_update(update)
+
+        now: datetime = Datetime.now().astimezone(tz).replace(tzinfo=None)
+
+        def L():
+            for name, d in zip(["today", "tomorrow", *[None] * 6], range(8)):
+                dt = now + timedelta(days=d)
+                if name is None:
+                    yield DatetimeText.days_english[dt.weekday()], dt
+                else:
+                    yield name, dt
+
+        S = [f'{name} {dt:%d.%m}'for name, dt in L()]
+        
+        def c(*args):
+            return [InlineKeyboardButton(text, callback_data=text) for text in args]
+        
+        keyboard = [
+            c(S[0], S[1]),
+            c(S[2], S[3]),
+            c(S[4], S[5]),
+            c(S[6], S[7]),
+        ]
+
+        await send("When is the event ?\n\nExamples:\n- Today\n- Tomorrow\n- Sunday\n- 25.11\n- 31.12.2000", reply_markup=InlineKeyboardMarkup(keyboard))
         return 'ask-what-or-time'
     
     @staticmethod
-    async def ask_what_or_time(update, context):
+    async def ask_what_or_time(update, context, *, keyboard=False):
         send = make_send(update, context)
 
-        when = update.message.text
+        if keyboard:
+            query = update.callback_query
+            await query.answer()
+            when = query.data
+        
+        else:
+            when = update.message.text
 
         event: ParsedEventFinal = parse_datetime_point(update, context, when_infos=when, what_infos='')
         # no error: ok
@@ -3624,14 +3655,18 @@ class InteractiveAddEvent:
     async def continue_ask_confirm(update, context, where):
         send = make_send(update, context)
 
+        keyboard = [
+            [InlineKeyboardButton('Yes', callback_data='yes'), InlineKeyboardButton('No', callback_data='no')],
+        ]
+
         context.user_data['where'] = where
         when = context.user_data['when']
         what = context.user_data['what']
-        await send(f"Do you want to add this event ?\nWhen: {when}\nWhat: {what}\nWhere: {where}\n")
+        await send(f"Do you want to add this event ?\nWhen: {when}\nWhat: {what}\nWhere: {where}\n", reply_markup=InlineKeyboardMarkup(keyboard))
         return 'do-add-event'
     
     @staticmethod
-    async def do_add_event(update, context):
+    async def do_add_event(update: Update, context, *, keyboard=False):
         send = make_send(update, context)
 
         when = context.user_data['when']
@@ -3639,7 +3674,15 @@ class InteractiveAddEvent:
         where = context.user_data['where']
         context.user_data.clear()
 
-        if update.message.text.lower() in ("no", "n"):
+        if keyboard:
+            query = update.callback_query
+            await query.answer()
+            
+            add = query.data.lower() != 'no'
+        else:
+            add = update.message.text.lower() in ("no", "n")
+        
+        if not add:
             await send("Event not added.\n\n/addevent can be however applied on the last message.")
             return ConversationHandler.END
 
@@ -3647,10 +3690,10 @@ class InteractiveAddEvent:
         return ConversationHandler.END
     
     @staticmethod
-    async def do_all_add_event(update, context, *, what, when, where):
+    async def do_all_add_event(update: Update, context, *, what, when, where):
         read_chat_settings = make_read_chat_settings(update, context)
 
-        source_user_id = update.message.from_user.id
+        source_user_id = update.effective_user.id
         chat_id = update.effective_chat.id
 
         real_what = (what if not where else what + ' @ ' + where).strip()
@@ -8059,6 +8102,7 @@ if __name__ == '__main__':
         states={
             'ask-what-or-time': [
                 MessageHandler(filters.TEXT & ~filters.COMMAND, InteractiveAddEvent.ask_what_or_time),
+                CallbackQueryHandler(partial(InteractiveAddEvent.ask_what_or_time, keyboard=True))
             ],
             'ask-time': [
                 MessageHandler(filters.TEXT & ~filters.COMMAND, InteractiveAddEvent.ask_time),
@@ -8078,7 +8122,10 @@ if __name__ == '__main__':
                 CommandHandler('empty', InteractiveAddEvent.ask_confirm_empty),
                 CommandHandler('skip', InteractiveAddEvent.ask_confirm_empty),
             ],
-            'do-add-event': [MessageHandler(filters.TEXT & ~filters.COMMAND, InteractiveAddEvent.do_add_event)]
+            'do-add-event': [
+                MessageHandler(filters.TEXT & ~filters.COMMAND, InteractiveAddEvent.do_add_event),
+                CallbackQueryHandler(partial(InteractiveAddEvent.do_add_event, keyboard=True)),
+            ]
         },
         fallbacks=[
             CommandHandler('cancel', InteractiveAddEvent.cancel)
