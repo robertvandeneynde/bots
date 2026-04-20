@@ -2352,7 +2352,7 @@ def make_send_save_info(update: Update, context: CallbackContext) -> SendSaveInf
 async def switchpageflashcard(update: Update, context: CallbackContext):
     if not(update.effective_chat and update.effective_user):
         raise WrongUpdate(update)
-    if not(context.args):
+    if not(context.args is not None):
         raise WrongContext(context)
 
     send = make_send(update, context)
@@ -2486,7 +2486,7 @@ async def listflashcards(update, context):
         return await send(flashcard.print_current_flashcards(chat_id=chat_id, select=select, connection=conn))
 
 async def listpageflashcards(update: Update, context: CallbackContext):
-    if not(context.args):
+    if not(context.args is not None):
         raise WrongContext(context)
     
     send = make_send(update, context)
@@ -5250,7 +5250,7 @@ async def whereto(update:Update, context:CallbackContext):
     return await whereisto(update:=update, context=context, command='whereto') 
 
 async def thereis(update:Update, context:CallbackContext):
-    if not(context.args):
+    if not(context.args is not None):
         raise WrongContext(context)
     
     send = make_send(update, context)
@@ -5452,7 +5452,7 @@ def sum_list_args(*lists):
     return result
 
 async def next_or_last_event(update: Update, context: CallbackContext, n:int, *, relative=False):
-    if not(context.args):
+    if not(context.args is not None):
         raise WrongContext(context)
     
     from datetime import datetime as Datetime
