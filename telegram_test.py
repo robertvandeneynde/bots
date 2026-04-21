@@ -3612,17 +3612,20 @@ class InteractiveAddEvent:
             else:
                 time = update.message.text
             if time.strip():
-                context.user_data['when'] += ' ' + time
+                when = context.user_data['when'] + ' ' + time.strip()
             else:
-                pass # user_data.when is perfect
+                when = context.user_data['when']
         else:
-            pass # user_data.when is perfect
-
+            when = context.user_data['when']
+            
         try:
-            parse_datetime_point(update, context, when_infos=context.user_data['when'], what_infos='')
+            parse_datetime_point(update, context, when_infos=when, what_infos='')
         except UserError:
             await send("I can't read this time, try again")
             return 'ask-what'
+
+        # verified, we save it
+        context.user_data['when'] = when
 
         keyboard = [
             [InlineKeyboardButton("No description", callback_data='skip')]
