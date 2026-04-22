@@ -2228,11 +2228,11 @@ def simple_sql_create(query, *, connection=None) -> SimpleSqlCreateReturn:
     if conn:
         cursor = conn.cursor()
         cursor.execute(*query)
-        return SimpleSqlCreateReturn(lastrowid=cursor.lastrowid)
+        return SimpleSqlCreateReturn(lastrowid=cursor.lastrowid)  # if None, let it be  # type: ignore
     with sqlite3.connect("db.sqlite") as conn:
         cursor = conn.cursor()
         cursor.execute(*query)
-        return SimpleSqlCreateReturn(lastrowid=cursor.lastrowid)
+        return SimpleSqlCreateReturn(lastrowid=cursor.lastrowid)  # if None, let it be  # type: ignore
 
 def simple_sql_modify_args(text, args, *, connection):
     return simple_sql_modify((text, args), connection=connection)
