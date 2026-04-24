@@ -3301,13 +3301,17 @@ async def macro_event_follow(update: GoodUpdate, context: GoodContext):
     number_re = re.compile('[-]?\\d+')
 
     Args = InfiniteEmptyList(context.args)
-    if not Args:
-        return await event_action_follow(update, context)
-    
+    if (not Args) or '--help' in Args or 'help:' in Args or ':help' in Args:
+        return await send('Usage: /eventfollow (follow|accept|delete|rename)')
+
     elif number_re.fullmatch(Args[0]):
         context.args = list(Args)
         return await event_action_follow(update, context)
     
+    elif Args[0].lower() == 'follow':
+        context.args = list(Args[1:])
+        return await event_action_follow(update, context)
+
     elif Args[0].lower() in ('delete', 'del'):
         if Args[1].lower() in ('follower', 'followers'):
             context.args = list(Args[2:])
@@ -3321,7 +3325,7 @@ async def macro_event_follow(update: GoodUpdate, context: GoodContext):
             context.args = list(Args[2:])
             return await deleventfollow(update, context)
         
-        return await send('/eventfollow delete (follower|subscription)')
+        return await send('Usage: /eventfollow delete (follower|subscription)')
         
     elif Args[0].lower() in ('accept', ):
         context.args = list(Args[1:])
@@ -3336,14 +3340,19 @@ async def macro_event_follow(update: GoodUpdate, context: GoodContext):
             context.args = list(Args[2:])
             return await renameeventfollow(update, context)
 
-        return await send('/eventfollow delete (follower|subscription')
+        return await send('Usage: /eventfollow rename (follower|subscription)')
     
     elif Args[0].lower() in ('list', ):
         if Args[1].lower() in ('followers', 'follower'):
-            pass 
+            context.args = list(Args[2:])
+            return await send(send_these_chats_are_following_you(update, context))
+
         elif Args[1].lower() in ('sub', 'subscription', 'subscriptions'):
-            pass
-        raise UserError("Not implemented yet")
+            context.args = list(Args[2:])
+            return await send(send_you_are_following_these_chats(update, context))
+
+        return await send('Usage: /eventfollow list (follower|subscription)')
+
       
     return await send("Wrong parameters")
 
@@ -3426,25 +3435,25 @@ async def eventacceptfollow(update: GoodUpdate, context: GoodContext):
         "\n\n" +
         'To see and manage all your followers, see:\n/eventfollow list followers')
 
-async def send_you_are_following_these_chats(update: GoodUpdate, context: GoodContext):
+def send_you_are_following_these_chats(update: GoodUpdate, context: GoodContext) -> str:
     send = make_send(update, context)
 
     chat_id = update.effective_chat.id
 
     followings = simple_sql(('select b_chat_id, a_name from EventFollow where a_chat_id = ?', (str(chat_id), )))
-    await send('You are not following any chats' if not followings else
-        'You are following these chats:\n{}'.format('\n'.join(map("-> {}".format, (
+    return ('You are not following any chats' if not followings else
+        'You are following these chats:\n{}'.format('\n'.join(map("\N{BULLET} {}".format, (
             f"{x} ({y})" if x != y else str(x) for x, y in followings
         )))))
 
-async def send_these_chats_are_following_you(update: GoodUpdate, context: GoodContext):
+def send_these_chats_are_following_you(update: GoodUpdate, context: GoodContext) -> str:
     send = make_send(update, context)
 
     chat_id = update.effective_chat.id
 
     followers = simple_sql(('select a_chat_id, b_name from EventFollow where b_chat_id = ?', (str(chat_id), )))
-    await send('No chats is following you' if not followers else
-        'These chats are following you:\n{}'.format('\n'.join(map("-> {}".format, (
+    return ('No chats is following you' if not followers else
+        'These chats are following you:\n{}'.format('\n'.join(map("\N{BULLET} {}".format, (
             f"{x} ({y})" if x != y else str(x) for x, y in followers
         )))))
 
@@ -3454,8 +3463,9 @@ async def deleventfollow(update: GoodUpdate, context: GoodContext):
     chat_id = update.effective_chat.id
 
     if not context.args:
-        await send_you_are_following_these_chats(update, context)
-        return await send('Usage: /eventfollow delete [chat_id]')
+        return await send('\n\n'.join((
+            send_you_are_following_these_chats(update, context),
+            'Usage: /eventfollow delete [chat_id]')))
 
     target_chat_id = str(int(context.args[0]))
 
@@ -3472,8 +3482,9 @@ async def deleventacceptfollow(update: GoodUpdate, context: GoodContext):
     chat_id = update.effective_chat.id
 
     if not context.args:
-        await send_these_chats_are_following_you(update, context)
-        return await send('Usage: /eventfollow delete follower [chat_id]')
+        return await send('\n\n'.join((
+            send_these_chats_are_following_you(update, context),
+            'Usage: /eventfollow delete [chat_id]')))
 
     target_chat_id = str(int(context.args[0]))
 
@@ -3494,8 +3505,9 @@ async def eventanyfollowrename(update: GoodUpdate, context: GoodContext, *, dire
         my_relation_name = ' '.join(context.args[1:])
     except IndexError:
         listing = {'follow': send_you_are_following_these_chats, 'accept': send_these_chats_are_following_you}[direction]
-        await listing(update, context)
-        return await send("Usage: /{command} chat_id new name".format(command={'follow': 'eventfollow follower', 'accept': 'eventfollow rename subscription'}[direction]))
+        return await send('\n\n'.join((
+            listing(update, context),
+            "Usage: /{command} [chat_id] [new_name]".format(command={'follow': 'eventfollow rename follower', 'accept': 'eventfollow rename subscription'}[direction]))))
 
     if direction == 'follow':
         base_query = 'update %s set a_name = ? where a_chat_id = ? and b_chat_id = ?'
