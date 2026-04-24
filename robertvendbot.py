@@ -2630,8 +2630,8 @@ import functools
 
 def multi_dict_into_one(D):
     new = {}
-    for K, v in D:
-        if isinstance(k, (list, tuple, set, frozenset)):
+    for K, v in D.items():
+        if isinstance(K, (list, tuple, set, frozenset)):
             for k in K:
                 new[k] = v
         else:
@@ -2706,7 +2706,22 @@ class DatetimeText:
     month_in_russian = [
         *'январь февраль март апрель май июнь июль август сентябрь октябрь ноябрь декабрь'.split(),
     ]
-
+    
+    @classmethod
+    def _RelativeKeywords(cls):
+        return multi_dict_into_one(
+        {
+            ("today", "auj", "aujourdhui", "aujourd'hui", "aujourd’hui"): 'today',
+            ("tomorrow", "demain"): 'tomorrow',
+            ('yesterday', 'hier'): 'yesterday',
+            ('ereyesterday', 'avant-hier', 'avanthier'): 'ereyesterday',
+            ('overmorrow', 'après-demain', 'apres-demain', 'apresdemain', 'aprèsdemain'): 'overmorrow',
+        } | {
+            (cls.days_english[i], cls.days_french[i], cls.days_russian[i], cls.days_russian_short[i], cls._days_russian_short_dotted[i]):
+            cls.days_english[i]
+            for i in range(7)
+        })
+    
     class months:
         @staticmethod
         def in_lang(x: Literal["EN", "FR", "RU"]):
@@ -2730,20 +2745,9 @@ class DatetimeText:
         x: i for i, x in enumerate(months_list, start=1)
     } for months_list in (months_english, months_french, *_other_months_list)))
 
-    RelativeKeywords = multi_dict_into_one({
-        ("today", "auj", "aujourdhui", "aujourd'hui", "aujourd’hui"): 'today',
-        ("tomorrow", "demain"): 'tomorrow',
-        ('yesterday', 'hier'): 'yesterday',
-        ('ereyesterday', 'avant-hier', 'avanthier'): 'ereyesterday',
-        ('overmorrow', 'après-demain', 'apres-demain', 'apresdemain', 'aprèsdemain'): 'overmorrow,
-    } | {
-        (DatetimeText.days_in_english[i], DatetimeText.days_in_french[i]): DatetimeText.days_in_english[i],
-        for i in range(7)
-    })
-
     @classmethod
     def is_relative_day_keyword(cls, x:str):
-        return x.lower() in RelativeKeywords
+        return x.lower() in cls.RelativeKeywords
     
     @classmethod
     def is_valid_weekday(cls, x:str):
@@ -2776,7 +2780,6 @@ class DatetimeText:
 
     @classmethod
     def to_date_range(self, name: str, *, reference: Optional[Datetime] = None, tz: Optional[Timezone] = None) -> tuple[Date, Date]:
-        print("to date range", name)
         from datetime import datetime, timedelta, date, date as Date
         reference = reference or datetime.now().astimezone(tz).replace(tzinfo=None)
         today = reference.date()
@@ -2808,10 +2811,10 @@ class DatetimeText:
             m = self.months_value[mstr]
             day = date(y, m, d)
 
-        relative_keyword = DatetimeText.RelativeKeywords.get(name)
-        
         if day is not None:
             return day, day + timedelta(days=1)
+        
+        relative_keyword = DatetimeText.RelativeKeywords.get(name)
         
         if relative_keyword == "today":
             return today, today + timedelta(days=1)
@@ -2839,8 +2842,8 @@ class DatetimeText:
             end = today + timedelta(days=7)
             return beg, end
         
-        if DatetimeText.is_valid_weekday(name):
-            i = DatetimeText.parse_valid_weekday(name)
+        if relative_keyword in DatetimeText.days_english:
+            i = DatetimeText.days_english.index(i)
 
             assert i is not None
             assert 0 <= i < 7 
@@ -2888,6 +2891,7 @@ class DatetimeText:
             "S{}{}".format(sign, s)
         )
 
+DatetimeText.RelativeKeywords = DatetimeText._RelativeKeywords()
 
 from collections import namedtuple
 from datetime import date as Date, time as Time, datetime as Datetime, timedelta as Timedelta
@@ -3045,7 +3049,6 @@ class ParseEvents:
     
     @classmethod
     def parse_event_timed(cls, args: Sequence[str], *, raise_if_no_date=True) -> tuple[ParsedEventMiddleNoName, Sequence[str]]:
-        print("pet", args)
         def process_time(rest) -> tuple[Optional[Time], Optional[str], Sequence[str]]:
             try:
                 time, rest = cls.parse_time(rest)
@@ -3058,10 +3061,8 @@ class ParseEvents:
         def parse_event_any_order(rest: Sequence[str]) -> tuple[Any, Any, Any, Sequence[str]]:
             # try date, time
             try_rest = rest
-            print("Try date, time")
             parsed_event_date, try_rest = parse_event_date(try_rest)
             time, timezone, try_rest = process_time(try_rest)
-            print("Succ date, time", parsed_event_date, time, timezone, try_rest)
             if not parsed_event_date.date_str:
                 # try time, date
                 try_rest = rest
@@ -3089,9 +3090,7 @@ class ParseEvents:
         event_no_name: ParsedEventMiddleNoName
         for i in range(len(args)):
             try:
-                print("Try", i, args[i:])
                 event_no_name, rest = cls.parse_event_timed(args[i:])
-                print("Succ", i, args[i:])
             except UnknownDateError:
                 continue
             else:
@@ -3235,7 +3234,6 @@ def induce_my_timezone(*, user_id: int, chat_id: int):
         "- Example: /chatsettings event.timezones Europe/Brussels\n")
 
 def parse_datetime_point(update: GoodUpdate, context: GoodContext, when_infos=None, what_infos=None, has_inline_kargs=False, required_time=False) -> ParsedEventFinal:
-    print("parse dt pojnt", update.effective_message.text, when_infos)
     from datetime import datetime as Datetime, time as Time, date as Date, timedelta
     read_chat_settings = make_read_chat_settings(update, context)
     name = ''
