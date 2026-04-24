@@ -3058,8 +3058,18 @@ class ParseEvents:
     @classmethod
     def parse_event(cls, args) -> ParsedEventMiddle:
         event_no_name: ParsedEventMiddleNoName
-        event_no_name, rest = cls.parse_event_timed(args)
-        return ParsedEventMiddle.from_no_name(event_no_name, name=" ".join(rest))
+        for i in range(len(args)):
+            try:
+                event_no_name, rest = cls.parse_event_timed(args[i:])
+            except UnknownDateError:
+                continue
+            else:
+                if i == 0 or len(rest) == 0:
+                    break
+                else:
+                    continue 
+            
+        return ParsedEventMiddle.from_no_name(event_no_name, name=" ".join(rest if i == 0 else args[:i]))
 
     @classmethod
     def parse_schedule(cls, args, *, tz) -> list[ParsedEventMiddle]:
@@ -3300,11 +3310,12 @@ def is_correct_day_of_week(date, day_of_week):
 
 async def macro_event_follow(update: GoodUpdate, context: GoodContext):
     send = make_send(update, context)
+    send_html = partial(send, parse_mode='HTML')
     number_re = re.compile('[-]?\\d+')
 
     Args = InfiniteEmptyList(context.args)
     if (not Args) or '--help' in Args or 'help:' in Args or ':help' in Args:
-        return await send('Usage: /eventfollow (follow|accept|delete|rename)')
+        return await send_html('Usage: <code>/eventfollow</code> (follow|accept|delete|rename)')
 
     elif number_re.fullmatch(Args[0]):
         context.args = list(Args)
@@ -3327,7 +3338,7 @@ async def macro_event_follow(update: GoodUpdate, context: GoodContext):
             context.args = list(Args[2:])
             return await deleventfollow(update, context)
         
-        return await send('Usage: /eventfollow delete (follower|subscription)')
+        return await send_html('Usage: <code>/eventfollow delete</code> (follower|subscription)')
         
     elif Args[0].lower() in ('accept', ):
         context.args = list(Args[1:])
@@ -3342,33 +3353,34 @@ async def macro_event_follow(update: GoodUpdate, context: GoodContext):
             context.args = list(Args[2:])
             return await renameeventfollow(update, context)
 
-        return await send('Usage: /eventfollow rename (follower|subscription)')
+        return await send_html('Usage: <code>/eventfollow rename</code> (follower|subscription)')
     
     elif Args[0].lower() in ('list', ):
         if Args[1].lower() in ('followers', 'follower'):
             context.args = list(Args[2:])
-            return await send(send_these_chats_are_following_you(update, context))
+            return await send_html(send_these_chats_are_following_you(update, context, html=True))
 
         elif Args[1].lower() in ('sub', 'subscription', 'subscriptions'):
             context.args = list(Args[2:])
-            return await send(send_you_are_following_these_chats(update, context))
+            return await send_html(send_you_are_following_these_chats(update, context, html=True))
 
-        return await send('Usage: /eventfollow list (follower|subscription)')
+        return await send_html('Usage: <code>/eventfollow list</code> (follower|subscription)')
 
       
     return await send("Wrong parameters")
 
 async def event_action_follow(update: GoodUpdate, context: GoodContext):
     send = make_send(update, context)
+    send_html = partial(send, parse_mode='HTML')
 
     chat_id = update.effective_chat.id
     thread_id = make_send_save_info(update, context).thread_id
 
     if not context.args:
-        return await send(
-            f'Your chat id: {chat_id}\n\n'
+        return await send_html(
+            f'Your chat id: <code>{chat_id}</code>\n\n'
             f'Use it so that other people can follow you!\n\n'
-            f'To follow this chat:\n  /eventfollow {chat_id}\n\n'
+            f'To follow this chat:\n  <code>/eventfollow {chat_id}</code>\n\n'
             f'Usage: /eventfollow chat_id [other_chat_name]')
     
     target_chat_id = str(int(context.args[0]))
@@ -3400,14 +3412,15 @@ async def event_action_follow(update: GoodUpdate, context: GoodContext):
 
 async def eventacceptfollow(update: GoodUpdate, context: GoodContext):
     send = make_send(update, context)
+    send_html = partial(send, parse_mode='HTML')
 
     chat_id = update.effective_chat.id
 
     if not context.args:
         followers_pending = simple_sql(('select a_chat_id from EventFollowPending where b_chat_id = ?', (str(chat_id), )))
-        return await send('No chats want to be your follower, keep rolling!' if not followers_pending else
-            'These chats want to be your follower:\n{}'.format('\n'.join(map("-> {}".format, (
-                str(x) for x, in followers_pending
+        return await send_html('No chats want to be your follower, keep rolling!' if not followers_pending else
+            'These chats want to be your follower:\n{}'.format('\n'.join(map("\N{BULLET} {}".format, (
+                html.escape(str(x)) for x, in followers_pending
             )))))
 
     source_chat_id = str(int(context.args[0]))
@@ -3437,37 +3450,44 @@ async def eventacceptfollow(update: GoodUpdate, context: GoodContext):
         "\n\n" +
         'To see and manage all your followers, see:\n/eventfollow list followers')
 
-def send_you_are_following_these_chats(update: GoodUpdate, context: GoodContext) -> str:
+def send_you_are_following_these_chats(update: GoodUpdate, context: GoodContext, *, html) -> str:
+    import html as html_module
     send = make_send(update, context)
+    send_html = partial(send, parse_mode='HTML')
+    escape = html_module.escape if html else lambda x:x
 
     chat_id = update.effective_chat.id
 
     followings = simple_sql(('select b_chat_id, a_name from EventFollow where a_chat_id = ?', (str(chat_id), )))
     return ('You are not following any chats' if not followings else
         'You are following these chats:\n{}'.format('\n'.join(map("\N{BULLET} {}".format, (
-            f"{x} ({y})" if x != y else str(x) for x, y in followings
+            f"{escape(x)} ({escape(y)})" if x != y else str(x) for x, y in followings
         )))))
 
-def send_these_chats_are_following_you(update: GoodUpdate, context: GoodContext) -> str:
+def send_these_chats_are_following_you(update: GoodUpdate, context: GoodContext, *, html) -> str:
+    import html as html_module
     send = make_send(update, context)
+    send_html = partial(send, parse_mode='HTML')
+    escape = html_module.escape if html else lambda x:x
 
     chat_id = update.effective_chat.id
 
     followers = simple_sql(('select a_chat_id, b_name from EventFollow where b_chat_id = ?', (str(chat_id), )))
     return ('No chats is following you' if not followers else
         'These chats are following you:\n{}'.format('\n'.join(map("\N{BULLET} {}".format, (
-            f"{x} ({y})" if x != y else str(x) for x, y in followers
+            f"{escape(x)} ({escape(y)})" if x != y else str(x) for x, y in followers
         )))))
 
 async def deleventfollow(update: GoodUpdate, context: GoodContext):
     send = make_send(update, context)
+    send_html = partial(send, parse_mode='HTML')
 
     chat_id = update.effective_chat.id
 
     if not context.args:
-        return await send('\n\n'.join((
-            send_you_are_following_these_chats(update, context),
-            'Usage: /eventfollow delete [chat_id]')))
+        return await send_html('\n\n'.join((
+            send_you_are_following_these_chats(update, context, html=True),
+            'Usage: <code>/eventfollow delete</code> [chat_id]')))
 
     target_chat_id = str(int(context.args[0]))
 
@@ -3480,13 +3500,14 @@ async def deleventfollow(update: GoodUpdate, context: GoodContext):
 
 async def deleventacceptfollow(update: GoodUpdate, context: GoodContext):
     send = make_send(update, context)
+    send_html = partial(send, parse_mode='HTML')
 
     chat_id = update.effective_chat.id
 
     if not context.args:
         return await send('\n\n'.join((
             send_these_chats_are_following_you(update, context),
-            'Usage: /eventfollow delete [chat_id]')))
+            'Usage: <code>/eventfollow delete</code> [chat_id]')))
 
     target_chat_id = str(int(context.args[0]))
 
@@ -3507,9 +3528,9 @@ async def eventanyfollowrename(update: GoodUpdate, context: GoodContext, *, dire
         my_relation_name = ' '.join(context.args[1:])
     except IndexError:
         listing = {'follow': send_you_are_following_these_chats, 'accept': send_these_chats_are_following_you}[direction]
-        return await send('\n\n'.join((
-            listing(update, context),
-            "Usage: /{command} [chat_id] [new_name]".format(command={'follow': 'eventfollow rename follower', 'accept': 'eventfollow rename subscription'}[direction]))))
+        return await send_html('\n\n'.join((
+            listing(update, context, html=True),
+            "Usage: <code>/{command}</code> [chat_id] [new_name]".format(command={'follow': 'eventfollow rename follower', 'accept': 'eventfollow rename subscription'}[direction]))))
 
     if direction == 'follow':
         base_query = 'update %s set a_name = ? where a_chat_id = ? and b_chat_id = ?'
