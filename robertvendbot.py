@@ -2902,9 +2902,9 @@ class ParsedEventFinal(NamedTuple):
 
 @dataclass
 class ParsedEventDate:
-    day_of_week: str
-    date_str: str
-    relative_day_keyword: str
+    day_of_week: Optional[str]
+    date_str: Optional[str]
+    relative_day_keyword: Optional[str]
 
 @dataclass
 class ParsedEventTime:
@@ -3018,7 +3018,6 @@ class ParseEvents:
     
     @classmethod
     def parse_event_timed(cls, args: Sequence[str], *, raise_if_no_date=True) -> tuple[ParsedEventMiddleNoName, Sequence[str]]:
-        rest = args
 
         def process_time(rest) -> tuple[Optional[Time], Optional[str], Sequence[str]]:
             try:
@@ -3029,29 +3028,32 @@ class ParseEvents:
                 timezone = ret.timezone
             return time, timezone, rest
         
+        def parse_event_any_order(rest: Sequence[str]) -> tuple[Any, Any, Any, Sequence[str]]:
+            # try date, time
+            try_rest = rest
+            parsed_event_date, try_rest = parse_event_date(try_rest)
+            time, timezone, try_rest = process_time(try_rest)
+            if not parsed_event_date.date_str:
+                # try time, date
+                try_rest = rest
+                time, timezone, try_rest = process_time(try_rest)
+                parsed_event_date, try_rest = parse_event_date(try_rest)
+                if not parsed_event_date.date_str:
+                    if raise_if_no_date:
+                        raise UnknownDateError
+            return parsed_event_date, time, timezone, try_rest
+
         parsed_event_date: ParsedEventDate
         time: Optional[Time]
         timezone: Optional[str]
-
-        # try date, time
-        try_rest = rest
-        parsed_event_date, try_rest = parse_event_date(try_rest)
-        time, timezone, try_rest = process_time(try_rest)
-        if not parsed_event_date.date_str:
-            # try time, date
-            try_rest = rest
-            time, timezone, try_rest = process_time(try_rest)
-            parsed_event_date, try_rest = parse_event_date(try_rest)
-            if not parsed_event_date.date_str:
-                if raise_if_no_date:
-                    raise UnknownDateError
-        rest = try_rest
+        
+        parsed_event_date, time, timezone, args = parse_event_any_order(args)
 
         day_of_week = parsed_event_date.day_of_week 
         date = parsed_event_date.date_str
         relative_day_keyword = parsed_event_date.relative_day_keyword
 
-        return ParsedEventMiddleNoName(date=date, time=time, day_of_week=day_of_week, relative_day_keyword=relative_day_keyword, timezone=timezone), rest
+        return ParsedEventMiddleNoName(date=date, time=time, day_of_week=day_of_week, relative_day_keyword=relative_day_keyword, timezone=timezone), args
     
     @classmethod
     def parse_event(cls, args) -> ParsedEventMiddle:
