@@ -2206,7 +2206,7 @@ def simple_sql_args(text, args, *, connection):
     return simple_sql((text, args), connection=connection)
 
 SimpleSqlModifyReturn = TypedDict('SimpleSqlModifyReturn', {'rowcount': int})
-SimpleSqlCreateReturn = TypedDict('SimpleSqlCreateReturn', {'lastrowid': int})
+SimpleSqlCreateReturn = TypedDict('SimpleSqlCreateReturn', {'lastrowid': Optional[int]})
 
 def simple_sql_modify(query, *, connection=None) -> SimpleSqlModifyReturn:
     conn = connection
@@ -2906,6 +2906,10 @@ class ParsedEventDate:
     date_str: str
     relative_day_keyword: str
 
+@dataclass
+class ParsedEventTime:
+    time_str: str
+
 def parse_event_date(args: Sequence[str]) -> tuple[ParsedEventDate, Sequence[str]]:
     """
     ['Something', 'A', 'B', 'C'] -> 'Something', ['A', 'B', 'C']  # n = 1
@@ -2941,14 +2945,12 @@ def parse_event_date(args: Sequence[str]) -> tuple[ParsedEventDate, Sequence[str
         else:
             n = 2 # no year
     else:
+        n = 0
         if relative_day_keyword or day_of_week:
-            # if only day_of_week: ir will be enough to know the date
+            # if only day_of_week: it will be enough to know the date
             # if only relative_day_keyword: it will be enough to know the date
             # if both: we are based on the relative_day_keyword (today) and will later check that it corresponds to a "Friday" for example 
             date_str = relative_day_keyword or day_of_week
-            n = 0
-        else:
-            n = 1 # the first token will be the date
     
     if date_str is None:
         date_str = ' '.join(args[:n])
@@ -3015,24 +3017,39 @@ class ParseEvents:
         return time, args
     
     @classmethod
-    def parse_event_timed(cls, args: Sequence[str]) -> tuple[ParsedEventMiddleNoName, Sequence[str]]:
-        date: str
-        rest: Sequence[str]
-        time: Optional[Time]
+    def parse_event_timed(cls, args: Sequence[str], *, raise_if_no_date=True) -> tuple[ParsedEventMiddleNoName, Sequence[str]]:
+        rest = args
+
+        def process_time(rest) -> tuple[Optional[Time], Optional[str], Sequence[str]]:
+            try:
+                time, rest = cls.parse_time(rest)
+                timezone = None
+            except ParseEvents.TimeWithTz as ret:
+                time, rest = ret.time, ret.rest
+                timezone = ret.timezone
+            return time, timezone, rest
         
         parsed_event_date: ParsedEventDate
-        parsed_event_date, rest = parse_event_date(args)
-        
+        time: Optional[Time]
+        timezone: Optional[str]
+
+        # try date, time
+        try_rest = rest
+        parsed_event_date, try_rest = parse_event_date(try_rest)
+        time, timezone, try_rest = process_time(try_rest)
+        if not parsed_event_date.date_str:
+            # try time, date
+            try_rest = rest
+            time, timezone, try_rest = process_time(try_rest)
+            parsed_event_date, try_rest = parse_event_date(try_rest)
+            if not parsed_event_date.date_str:
+                if raise_if_no_date:
+                    raise UnknownDateError
+        rest = try_rest
+
         day_of_week = parsed_event_date.day_of_week 
         date = parsed_event_date.date_str
         relative_day_keyword = parsed_event_date.relative_day_keyword
-
-        try:
-            time, rest = cls.parse_time(rest)
-            timezone = None
-        except ParseEvents.TimeWithTz as ret:
-            time, rest = ret.time, ret.rest
-            timezone = ret.timezone
 
         return ParsedEventMiddleNoName(date=date, time=time, day_of_week=day_of_week, relative_day_keyword=relative_day_keyword, timezone=timezone), rest
     
@@ -3061,7 +3078,7 @@ class ParseEvents:
                 each_activated_by = ' '.join(It[0:2])
                 it = it[2:]
                 
-            event, it = cls.parse_event_timed(it)
+            event, it = cls.parse_event_timed(it, raise_if_no_date=False)
             tz = event.timezone or default_tz
 
             try:
@@ -3205,6 +3222,7 @@ def parse_datetime_point(update: GoodUpdate, context: GoodContext, when_infos=No
             raise UserError("Time must be specified (policy of the group)")
 
     date, date_end = DatetimeText.to_date_range(date_str, tz=tz)
+
     datetime = Datetime.combine(date, time or Time(0,0)).replace(tzinfo=tz)
     datetime_utc = datetime.astimezone(UTC)
     
@@ -3853,9 +3871,13 @@ async def add_event(update: GoodUpdate, context: GoodContext):
     chat_id = update.effective_chat.id
 
     required_time = do_if_setting_on(read_chat_settings('event.addevent.required_time'))
-    date_str, time, name, date, date_end, datetime, datetime_utc, tz, tz_explicit = \
-        parse_datetime_point(update, context, has_inline_kargs=has_inline_kwargs,
-                             when_infos=CanonInfo.when_infos, what_infos=CanonInfo.what_infos, required_time=required_time)
+    try:
+        date_str, time, name, date, date_end, datetime, datetime_utc, tz, tz_explicit = \
+            parse_datetime_point(update, context, has_inline_kargs=has_inline_kwargs,
+                                 when_infos=CanonInfo.when_infos, what_infos=CanonInfo.what_infos,
+                                 required_time=required_time)
+    except UnknownDateError:
+        raise
     
     initial_name = name
     if do_unless_setting_off(read_chat_settings('event.location.autocomplete')):
