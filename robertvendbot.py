@@ -1507,8 +1507,11 @@ async def eventedit_responder(msg:str, send: AsyncSend, *, update, context):
     except ValueError:
         raise DoNotAnswer
     
+    def try_retrieve_event():
+        return retrieve_event_from_db(update=update, context=context, what=event['what'], when=event['when'])
+    
     if match_postpone := re.fullmatch('([+]|[-])\s*(\d+)\s*(h|hours|min|minute|minutes|day|days|week|weeks)', msg):
-        event_db = retrieve_event_from_db(update=update, context=context, what=event['what'], when=event['when'])
+        event_db = try_retrieve_event()
         
         sign, amount, units = match_postpone.groups()
         amount = int(amount)
@@ -1546,7 +1549,7 @@ async def eventedit_responder(msg:str, send: AsyncSend, *, update, context):
             if field_name not in possible_fields:
                 raise DoNotAnswer
 
-        event_db = retrieve_event_from_db(update=update, context=context, what=event['what'], when=event['when'])
+        event_db = try_retrieve_event()
         event_rich = split_event_with_where_etc({'what': event_db['name']})
 
         if field_name in ('name', 'what'):
@@ -1584,7 +1587,7 @@ async def eventedit_responder(msg:str, send: AsyncSend, *, update, context):
 
             tz = induce_my_timezone(user_id=user_id, chat_id=chat_id)
             check_tz_in_chat(tz=tz, chat_timezones=read_chat_settings('event.timezones'))
-
+            
             date, date_end = DatetimeText.to_date_range(mini_event.date_str, tz=tz)
 
             datetime_object = DatetimeDbSerializer.strptime(event_db['date']).replace(tzinfo=UTC).astimezone(tz)
@@ -2961,6 +2964,9 @@ def parse_event_date(args: Sequence[str]) -> tuple[ParsedEventDate, Sequence[str
         date_str=date_str,
     ), args[n:]
 
+class EventArgsHasNoDate(ValueError):
+    pass
+
 class ParseEvents:
 
     class TimeWithTz(Exception):
@@ -3018,7 +3024,6 @@ class ParseEvents:
     
     @classmethod
     def parse_event_timed(cls, args: Sequence[str], *, raise_if_no_date=True) -> tuple[ParsedEventMiddleNoName, Sequence[str]]:
-
         def process_time(rest) -> tuple[Optional[Time], Optional[str], Sequence[str]]:
             try:
                 time, rest = cls.parse_time(rest)
@@ -3067,7 +3072,9 @@ class ParseEvents:
                 if i == 0 or len(rest) == 0:
                     break
                 else:
-                    continue 
+                    continue
+        else:
+            raise EventArgsHasNoDate
             
         return ParsedEventMiddle.from_no_name(event_no_name, name=" ".join(rest if i == 0 else args[:i]))
 
@@ -3204,7 +3211,6 @@ def induce_my_timezone(*, user_id: int, chat_id: int):
 def parse_datetime_point(update: GoodUpdate, context: GoodContext, when_infos=None, what_infos=None, has_inline_kargs=False, required_time=False) -> ParsedEventFinal:
     from datetime import datetime as Datetime, time as Time, date as Date, timedelta
     read_chat_settings = make_read_chat_settings(update, context)
-    
     name = ''
     date_str: None | str = None
     if context.args and not has_inline_kargs:
@@ -5211,7 +5217,6 @@ def only_one_with_error(error):
 
 def addevent_analyse_from_bot(update, context, text:str) -> EventDictAnalysed:  # type: ignore
     my_timezone = induce_my_timezone_from_update(update)
-    
     lines = GetOrEmpty(text.splitlines())
     if lines[0] in ("Event!", "Event added:", "Event edited:") or re.match('^Event from.*[:]', lines[0]):
         del lines[0]
@@ -5281,20 +5286,17 @@ def addevent_analyse_from_bot(update, context, text:str) -> EventDictAnalysed:  
     except KeyError:
         raise EventAnalyseError("Missing Date in message")
 
+    # if there is something in parentheses in the when, remove that part
     if match := re.search('\s*' + re.escape('(') + '.*' + re.escape(')'), when):
         when = when[:match.span(0)[0]] + when[match.span(0)[1]:]
 
+    # if there is some day of the week somewhere, remove it
     if match := re.match('|'.join(map(re.escape, DatetimeText.days_english)), when, re.I):
         when = when[:match.span(0)[0]] + when[match.span(0)[1]:]
 
-    if match := re.search('(' + '\d+' + re.escape('/') + '\d+' + re.escape('/') + '\d+' + ')', when):
-        when = when[:match.span(0)[0]] + '-'.join(reversed(match.group(1).split('/'))) + when[match.span(0)[1]:]
-
-    when = when.strip()
-
     return {
-        'what': what + ' @ ' + where if where else what,
-        'when': when,
+        'what': (what + ' @ ' + where if where else what).strip(),
+        'when': when.strip(),
     }  # type: ignore
 
 def retrieve_event_from_db(update, context, what: str, when: str):
