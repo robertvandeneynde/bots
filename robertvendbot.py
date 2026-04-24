@@ -2843,7 +2843,7 @@ class DatetimeText:
             return beg, end
         
         if relative_keyword in DatetimeText.days_english:
-            i = DatetimeText.days_english.index(i)
+            i = DatetimeText.days_english.index(relative_keyword)
 
             assert i is not None
             assert 0 <= i < 7 
