@@ -2964,8 +2964,6 @@ def parse_event_date(args: Sequence[str]) -> tuple[ParsedEventDate, Sequence[str
         date_str=date_str,
     ), args[n:]
 
-class EventArgsHasNoDate(ValueError):
-    pass
 
 class ParseEvents:
 
@@ -3407,14 +3405,16 @@ async def event_action_follow(update: GoodUpdate, context: GoodContext):
 
     if True:  # do_unless_setting_off(the_target_chat . event.follow.notify_my_followers):
         await context.bot.send_message(
-            text=f'Event follow request received!\n\nTo accept, type:\n/eventfollow accept {chat_id}\n\nOr:\n/eventfollow accept {chat_id} Custom Name',
-            chat_id=target_chat_id)
+            text=f'Event follow request received!\n\nTo accept, type:\n<code>/eventfollow accept {chat_id}</code>\n\nOr:\n<code>/eventfollow accept {chat_id}</code> Custom Name',
+            chat_id=target_chat_id,
+            parse_mode='HTML')
             # message_thread_id=target_thread_id # read target_chat's "bot channel/admin channel" setting (ie. where they receive the follow requests)
 
     await send(f'Pending follow request sent to ' + (f'{target_chat_id}' if not my_relation_name else f'{target_chat_id} ({my_relation_name})'))
 
     # if receiving chat has the setting "automatically accept event following request"
     #   do it
+    # (concept of public channel, anybody can follow without question)
 
 async def eventacceptfollow(update: GoodUpdate, context: GoodContext):
     send = make_send(update, context)
@@ -3450,11 +3450,16 @@ async def eventacceptfollow(update: GoodUpdate, context: GoodContext):
             a_thread_id)))
         
     # todo: send them some notif
-    await send(
-        'You are now followed by this chat{}!'.format(" (that you named {})".format(my_relation_name) if my_relation_name else '') + " " +
+    await send_html(
+        'You are now followed by this chat{}!'.format(" (that you named {}) ".format(html.escape(my_relation_name)) if my_relation_name else '') + " " +
         'Every event you add will be forwarded to them.' +
         "\n\n" +
-        'To see and manage all your followers, see:\n/eventfollow list followers')
+        'To see and manage all your followers, see:\n<code>/eventfollow list followers</code>')
+    
+    await context.bot.send_message(
+        text='Some chat accepted your follow request! See all your subscriptions with <code>/eventfollow list subscriptions</code>',
+        chat_id=source_chat_id,
+        parse_mode='HTML')
 
 def send_you_are_following_these_chats(update: GoodUpdate, context: GoodContext, *, html) -> str:
     import html as html_module
@@ -3621,8 +3626,8 @@ def add_event_to_db(*, datetime_utc: Datetime, name: str, chat_id: int, source_u
         cursor = conn.cursor()
 
         strftime = DatetimeDbSerializer.strftime
-
-        cursor.execute("INSERT INTO Events(date, name, chat_id, source_user_id) VALUES (?,?,?,?)", (strftime(datetime_utc), name, chat_id, source_user_id))
+        
+        cursor.execute("INSERT INTO Events(date, name, chat_id, source_user_id) VALUES (?,?,?,?)", (strftime(datetime_utc), name, int(chat_id), int(source_user_id)))
 
         assert cursor.lastrowid is not None
 
@@ -3919,6 +3924,8 @@ async def add_event(update: GoodUpdate, context: GoodContext):
                                  required_time=required_time)
     except UnknownDateError:
         raise
+    except EventArgsHasNoDate:
+        raise UnknownDateError('Missing date\n\nTip: try for example: Today, Tomorrow, Sunday, or 26.02')
     
     initial_name = name
     if do_unless_setting_off(read_chat_settings('event.location.autocomplete')):
@@ -4064,11 +4071,15 @@ async def post_event(update, context, *, name, datetime, time, link, date_str, c
     forward_ids = simple_sql(('select a_chat_id, a_name, a_thread_id from EventFollow where b_chat_id = ?', (str(chat_id), )))
     event_text_without_first_line = '\n'.join(list_del(event_text.splitlines(), 0))
     for forward_id, forward_my_chat_name, forward_thread_id in forward_ids:
+        if auto_add := do_if_setting_on(read_settings('event.follow.auto_add', id=forward_id, settings_type='chat')):
+            add_event_to_db(datetime_utc=datetime_utc, name=name, chat_id=forward_id, source_user_id=update.effective_user.id)
+        
         await context.bot.send_message(
-            text=f'Event from {forward_my_chat_name}:' + '\n' + event_text_without_first_line,
+            text=('Event added' if auto_add else 'Event') + f' from {forward_my_chat_name}:' + '\n' + event_text_without_first_line,
             chat_id=forward_id,
             message_thread_id=forward_thread_id or None)
-
+        
+        
     if forward_ids:
         if do_unless_setting_off(read_chat_settings('event.addevent.display_forwarded_infos')):
             await send(f'Forwarded to {len(forward_ids)} chats')
@@ -6786,6 +6797,7 @@ ACCEPTED_SETTINGS_CHAT = {
     'event.addevent.display_file': SettingsSpecs('bool'),
     'event.addevent.display_forwarded_infos': SettingsSpecs('bool'),
     'event.addevent.required_time': SettingsSpecs('bool'),
+    'event.follow.auto_add': SettingsSpecs('bool'),
     'event.list.display_all_timezones': SettingsSpecs('bool'),
     'event.listtoday.display_time_marker': SettingsSpecs('bool'),
     'event.delevent.display': SettingsSpecs('bool'),
@@ -6999,7 +7011,7 @@ def read_raw_settings(key, *, id, settings_type: SettingType):
             f"""SELECT value from {table_name}
                 WHERE {field_id}=?
                 AND key=?""",
-            (id, key)
+            (int(id), key)
         )
 
         results = cursor.execute(*query).fetchall()
@@ -7888,6 +7900,9 @@ async def help(update, context):
         return await send('\n'.join(lines) or '?')
     
 class UserError(ValueError):
+    pass
+    
+class EventArgsHasNoDate(ValueError):
     pass
 
 class EventAdminError(UserError):
