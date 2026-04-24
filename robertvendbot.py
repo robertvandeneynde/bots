@@ -2628,6 +2628,16 @@ UTC = ZoneInfo('UTC')
 
 import functools
 
+def multi_dict_into_one(D):
+    new = {}
+    for K, v in D:
+        if isinstance(k, (list, tuple, set, frozenset)):
+            for k in K:
+                new[k] = v
+        else:
+            new[K] = v
+    return new
+
 class DatetimeText:
     days_english = "monday tuesday wednesday thursday friday saturday sunday".split() 
     days_english_short = "mon tue wed thu fri sat sun".split() 
@@ -2720,10 +2730,20 @@ class DatetimeText:
         x: i for i, x in enumerate(months_list, start=1)
     } for months_list in (months_english, months_french, *_other_months_list)))
 
+    RelativeKeywords = multi_dict_into_one({
+        ("today", "auj", "aujourdhui", "aujourd'hui", "aujourd’hui"): 'today',
+        ("tomorrow", "demain"): 'tomorrow',
+        ('yesterday', 'hier'): 'yesterday',
+        ('ereyesterday', 'avant-hier', 'avanthier'): 'ereyesterday',
+        ('overmorrow', 'après-demain', 'apres-demain', 'apresdemain', 'aprèsdemain'): 'overmorrow,
+    } | {
+        (DatetimeText.days_in_english[i], DatetimeText.days_in_french[i]): DatetimeText.days_in_english[i],
+        for i in range(7)
+    })
 
     @classmethod
     def is_relative_day_keyword(cls, x:str):
-        return x.lower() in ("today", "auj", "aujourdhui", "aujourd'hui", "aujourd’hui", "tomorrow", "demain")
+        return x.lower() in RelativeKeywords
     
     @classmethod
     def is_valid_weekday(cls, x:str):
@@ -2756,6 +2776,7 @@ class DatetimeText:
 
     @classmethod
     def to_date_range(self, name: str, *, reference: Optional[Datetime] = None, tz: Optional[Timezone] = None) -> tuple[Date, Date]:
+        print("to date range", name)
         from datetime import datetime, timedelta, date, date as Date
         reference = reference or datetime.now().astimezone(tz).replace(tzinfo=None)
         today = reference.date()
@@ -2787,19 +2808,25 @@ class DatetimeText:
             m = self.months_value[mstr]
             day = date(y, m, d)
 
+        relative_keyword = DatetimeText.RelativeKeywords.get(name)
+        
         if day is not None:
             return day, day + timedelta(days=1)
         
-        if name in ("today", "auj", "aujourdhui", "aujourd'hui", "aujourd’hui"):
+        if relative_keyword == "today":
             return today, today + timedelta(days=1)
         
-        if name in ("week", "semaine"):
-            beg = today
-            end = today + timedelta(days=7)
-            return beg, end
-        
-        if name in ("tomorrow", "demain"):
+        if relative_keyword == 'tomorrow':
             return today + timedelta(days=1), today + timedelta(days=2)
+            
+        if relative_keyword == 'yesterday':
+            return today - timedelta(days=1), today
+        
+        if relative_keyword == 'ereyesterday':
+            return today - timedelta(days=2), today - timedelta(days=1)
+        
+        if relative_keyword == 'overmorrow':
+            return today + timedelta(days=2), today + timedelta(days=3)
         
         if name in ('future', 'futur'):
             return today, date.max - timedelta(days=7)
@@ -2807,30 +2834,26 @@ class DatetimeText:
         if name in ('past', 'passé'):
             return date.min + timedelta(days=7), today
         
-        if name in ('yesterday', 'hier'):
-            return today - timedelta(days=1), today
+        if name in ("week", "semaine"):
+            beg = today
+            end = today + timedelta(days=7)
+            return beg, end
         
-        if name in ('ereyesterday', 'avant-hier', 'avanthier'):
-            return today - timedelta(days=2), today - timedelta(days=1)
-        
-        if name in ('overmorrow', 'après-demain', 'apres-demain', 'apresdemain', 'aprèsdemain'):
-            return today + timedelta(days=2), today + timedelta(days=3)
-        
-        if not DatetimeText.is_valid_weekday(name):
-            raise UnknownDateError(f"Unknown date {name}")
+        if DatetimeText.is_valid_weekday(name):
+            i = DatetimeText.parse_valid_weekday(name)
 
-        i = DatetimeText.parse_valid_weekday(name)
+            assert i is not None
+            assert 0 <= i < 7 
 
-        assert i is not None
-        assert 0 <= i < 7 
-
-        the_day = today + timedelta(days=1)
-        while the_day.weekday() != i:
-            the_day += timedelta(days=1)
-        
-        beg = the_day
-        end = beg + timedelta(days=1)
-        return beg, end
+            the_day = today + timedelta(days=1)
+            while the_day.weekday() != i:
+                the_day += timedelta(days=1)
+            
+            beg = the_day
+            end = beg + timedelta(days=1)
+            return beg, end
+            
+        raise UnknownDateError(f"Unknown date {name}")
     
     @classmethod
     def format_td_T_minus(cls, td: Timedelta, *, format: Literal['unit', 'short', 'long', 'multiple'] = 'multiple'):
@@ -3022,6 +3045,7 @@ class ParseEvents:
     
     @classmethod
     def parse_event_timed(cls, args: Sequence[str], *, raise_if_no_date=True) -> tuple[ParsedEventMiddleNoName, Sequence[str]]:
+        print("pet", args)
         def process_time(rest) -> tuple[Optional[Time], Optional[str], Sequence[str]]:
             try:
                 time, rest = cls.parse_time(rest)
@@ -3034,8 +3058,10 @@ class ParseEvents:
         def parse_event_any_order(rest: Sequence[str]) -> tuple[Any, Any, Any, Sequence[str]]:
             # try date, time
             try_rest = rest
+            print("Try date, time")
             parsed_event_date, try_rest = parse_event_date(try_rest)
             time, timezone, try_rest = process_time(try_rest)
+            print("Succ date, time", parsed_event_date, time, timezone, try_rest)
             if not parsed_event_date.date_str:
                 # try time, date
                 try_rest = rest
@@ -3063,7 +3089,9 @@ class ParseEvents:
         event_no_name: ParsedEventMiddleNoName
         for i in range(len(args)):
             try:
+                print("Try", i, args[i:])
                 event_no_name, rest = cls.parse_event_timed(args[i:])
+                print("Succ", i, args[i:])
             except UnknownDateError:
                 continue
             else:
@@ -3207,6 +3235,7 @@ def induce_my_timezone(*, user_id: int, chat_id: int):
         "- Example: /chatsettings event.timezones Europe/Brussels\n")
 
 def parse_datetime_point(update: GoodUpdate, context: GoodContext, when_infos=None, what_infos=None, has_inline_kargs=False, required_time=False) -> ParsedEventFinal:
+    print("parse dt pojnt", update.effective_message.text, when_infos)
     from datetime import datetime as Datetime, time as Time, date as Date, timedelta
     read_chat_settings = make_read_chat_settings(update, context)
     name = ''
