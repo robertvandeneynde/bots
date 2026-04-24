@@ -4072,7 +4072,8 @@ async def post_event(update, context, *, name, datetime, time, link, date_str, c
     event_text_without_first_line = '\n'.join(list_del(event_text.splitlines(), 0))
     for forward_id, forward_my_chat_name, forward_thread_id in forward_ids:
         if auto_add := do_if_setting_on(read_settings('event.follow.auto_add', id=forward_id, settings_type='chat')):
-            add_event_to_db(datetime_utc=datetime_utc, name=name, chat_id=forward_id, source_user_id=update.effective_user.id)
+            if forward_id != update.effective_user.id:
+                add_event_to_db(datetime_utc=datetime_utc, name=name, chat_id=forward_id, source_user_id=update.effective_user.id)
         
         await context.bot.send_message(
             text=('Event added' if auto_add else 'Event') + f' from {forward_my_chat_name}:' + '\n' + event_text_without_first_line,
