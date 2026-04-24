@@ -3288,7 +3288,7 @@ def parse_datetime_point(update: GoodUpdate, context: GoodContext, when_infos=No
 
     if relative_day_keyword:
         rdate, rdate_end = DatetimeText.to_date_range(relative_day_keyword, tz=tz)
-        if rdate != date:
+        if rdate != date and not DatetimeText.is_valid_weekday(relative_day_keyword):
             raise UserError(f"{date_str!r} is not {relative_day_keyword!r}")
 
     if day_of_week:
