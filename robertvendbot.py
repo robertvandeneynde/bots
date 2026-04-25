@@ -3569,8 +3569,8 @@ async def deleventacceptfollow(update: GoodUpdate, context: GoodContext):
     chat_id = update.effective_chat.id
 
     if not context.args:
-        return await send('\n\n'.join((
-            send_these_chats_are_following_you(update, context),
+        return await send_html('\n\n'.join((
+            send_these_chats_are_following_you(update, context, html=True),
             'Usage: <code>/eventfollow delete</code> [chat_id]')))
 
     target_chat_id = str(int(context.args[0]))
@@ -3594,9 +3594,7 @@ async def eventacceptfollowchangeproperty(update: GoodUpdate, context: GoodConte
 
         with get_connection() as connection:
             if prop == 'auto_add':
-                query = ('update EventFollow set auto_add=? where a_chat_id=? and b_chat_id=?', (value, str(update.effective_chat.id), str(target_chat_id), ))
-                print(query)
-                connection.execute(*query)
+                connection.execute('update EventFollow set auto_add=? where a_chat_id=? and b_chat_id=?', (value, str(update.effective_chat.id), str(target_chat_id), ))
                 return await send('Done')
             else:
                 raise UsageError
@@ -4143,12 +4141,15 @@ async def post_event(update, context, *, name, datetime, time, link, date_str, c
         await export_event(update, context, name=name, datetime_utc=datetime_utc)
     
     # 3. Forward it to other chats
-    forward_ids = simple_sql(('select a_chat_id, a_name, a_thread_id from EventFollow where b_chat_id = ?', (str(chat_id), )))
+    forward_ids = simple_sql(('select a_chat_id, a_name, a_thread_id, auto_add from EventFollow where b_chat_id = ?', (str(chat_id), )))
     event_text_without_first_line = '\n'.join(list_del(event_text.splitlines(), 0))
-    for forward_id, forward_my_chat_name, forward_thread_id in forward_ids:
-        if auto_add := do_if_setting_on(read_settings('event.follow.auto_add', id=forward_id, settings_type='chat')):
-            if forward_id != update.effective_user.id:
+    for forward_id, forward_my_chat_name, forward_thread_id, auto_add_rel in forward_ids:
+        if forward_id != update.effective_user.id:
+            auto_add_global = do_if_setting_on(read_settings('event.follow.auto_add', id=forward_id, settings_type='chat'))
+            if auto_add := auto_add_global if auto_add_rel is None else auto_add_rel:
                 add_event_to_db(datetime_utc=datetime_utc, name=name, chat_id=forward_id, source_user_id=update.effective_user.id)
+        else:
+            auto_add = False
         
         await context.bot.send_message(
             text=('Event added' if auto_add else 'Event') + f' from {forward_my_chat_name}:' + '\n' + event_text_without_first_line,
