@@ -3403,6 +3403,15 @@ async def macro_event_follow(update: GoodUpdate, context: GoodContext):
 
         return await send_html('Usage: <code>/eventfollow rename</code> (follower|subscription)')
     
+    elif Args[0].lower() in ('property', ):
+        context.args = list(Args[1:])
+        try:
+            return await eventacceptfollowchangeproperty(update, context)
+        except UsageError:
+            pass
+
+        return await send_html('Usage: <code>/eventfollow property</code> (subscription) [chat_id] (auto_add) (True|False)')
+    
     elif Args[0].lower() in ('list', ):
         if Args[1].lower() in ('followers', 'follower'):
             context.args = list(Args[2:])
@@ -3572,6 +3581,28 @@ async def deleventacceptfollow(update: GoodUpdate, context: GoodContext):
         my_simple_sql(('delete from EventFollow where a_chat_id = ? and b_chat_id = ?', (str(target_chat_id), str(chat_id))))
 
     return await send("Done! This chat doesn't follow you anymore")
+
+async def eventacceptfollowchangeproperty(update: GoodUpdate, context: GoodContext):
+    Args = InfiniteEmptyList(context.args)
+    send = make_send(update, context)
+
+    if Args[0] in ('sub', 'subscription', ):
+        target_chat_id = int(Args[1])
+        prop = 'auto_add' if Args[2].lower() in ('auto_add', 'autoadd') else raise_error(UsageError)
+        value = True if Args[3].lower() in ('on', 'true', 'yes') else False if Args[3].lower() in ('off', 'false', 'no') else None if Args[3].lower() in ('none', 'delete', ) else raise_error(UsageError)
+        assert_true(4 not in range(len(Args)), UsageError)
+
+        with get_connection() as connection:
+            if prop == 'auto_add':
+                query = ('update EventFollow set auto_add=? where a_chat_id=? and b_chat_id=?', (value, str(update.effective_chat.id), str(target_chat_id), ))
+                print(query)
+                connection.execute(*query)
+                return await send('Done')
+            else:
+                raise UsageError
+    else:
+        raise UsageError
+ 
 
 async def eventanyfollowrename(update: GoodUpdate, context: GoodContext, *, direction: Literal['follow', 'accept']):
     send = make_send(update, context)
@@ -7389,6 +7420,13 @@ def migration26():
         c = conn.cursor()
         c.execute('begin transaction')
         c.execute('''create table LocationDistanceDestination(chat_id, destination)''')
+        c.execute('end transaction')
+
+def migration27():
+    with get_connection() as conn:
+        c = conn.cursor()
+        c.execute('begin transaction')
+        c.execute('alter table EventFollow add column auto_add NULLABLE')
         c.execute('end transaction')
 
 def get_latest_euro_rates_from_api() -> AnyJson:
