@@ -3522,10 +3522,12 @@ def send_you_are_following_these_chats(update: GoodUpdate, context: GoodContext,
 
     chat_id = update.effective_chat.id
 
-    followings = simple_sql(('select b_chat_id, a_name from EventFollow where a_chat_id = ?', (str(chat_id), )))
+    followings = simple_sql(('select b_chat_id, a_name, auto_add from EventFollow where a_chat_id = ?', (str(chat_id), )))
     return ('You are not following any chats' if not followings else
         'You are following these chats:\n{}'.format('\n'.join(map("\N{BULLET} {}".format, (
-            f"{escape(x)} ({escape(y)})" if x != y else str(x) for x, y in followings
+            (f"{escape(x)} ({escape(y)})" if x != y else str(x))
+            + (' ' + f'(auto_add={bool(auto_add)})' if auto_add is not None else '') 
+            for x, y, auto_add in followings
         )))))
 
 def send_these_chats_are_following_you(update: GoodUpdate, context: GoodContext, *, html) -> str:
