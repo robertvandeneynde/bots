@@ -99,7 +99,7 @@ def goodhandler(function: Callable[[GoodUpdate, GoodContext], Any]) -> Callable[
 async def start(update: GoodUpdate, context: GoodContext):
     await context.bot.send_message(
         chat_id=update.effective_chat.id,
-        text="I'm a bot, please talk to me! To get a tour of functionalities, send a message to my creator t.me/robertvend and read my manual at robertvandeneynde.ru/bot !")
+        text="I'm a bot, please talk to me! To get a tour of functionalities, send a message to my creator t.me/robertvend and read my manual at robertvandeneynde.ru/bot ! You can also try /help or /menu")
     print("Someone started me!")
 
 
@@ -7928,7 +7928,11 @@ async def help(update, context):
         import textwrap
         return await send(textwrap.dedent(commandspecs.MAN[Args[0]]).strip())
     else:
-        lines = []
+        lines = [
+            'Manual: robertvandeneynde.ru/bot',
+            'Updates Channel: t.me/robertvendbotchannel',
+            '',
+        ]
         first = True
         for mod, L in by_modules.items():
             if module_filter and module_filter != mod:
@@ -7941,7 +7945,13 @@ async def help(update, context):
             lines.append(f'[Module "{mod}"]')
             for command in L:
                 lines.append('  ' + fmt.format(command, COMMAND_DESC.get(command, command)))
-
+        
+        lines += [
+            '',
+            'Manual: robertvandeneynde.ru/bot',
+            'Updates Channel: t.me/robertvendbotchannel',
+        ]
+        
         return await send('\n'.join(lines) or '?')
     
 class UserError(ValueError):
@@ -8140,7 +8150,7 @@ COMMAND_DESC = {
     'printlist': 'Print a list using dashes',
     'dirlist': 'List all lists',
     'dellist': 'Delete a list from all lists',
-    'menu': 'Menu with buttons'
+    'menu': 'Menu with buttons, good for discovering features of the bot',
 }
 
 import itertools
