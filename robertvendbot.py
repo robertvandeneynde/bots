@@ -2638,6 +2638,25 @@ def multi_dict_into_one(D):
             new[K] = v
     return new
 
+
+class classcachedproperty:
+    def __init__(self, func):
+        self.func = func
+        self.attr = func.__name__
+
+    def __set_name__(self, owner, name):
+        self.attr = name
+
+    def __get__(self, instance, owner):
+        if owner is None:
+            owner = type(instance)
+        cached = owner.__dict__.get(self.attr, None)
+        if cached is not None and not isinstance(cached, classcachedproperty):
+            return cached
+        value = self.func(owner)
+        setattr(owner, self.attr, value)
+        return value
+
 class DatetimeText:
     days_english = "monday tuesday wednesday thursday friday saturday sunday".split() 
     days_english_short = "mon tue wed thu fri sat sun".split() 
@@ -2707,8 +2726,8 @@ class DatetimeText:
         *'январь февраль март апрель май июнь июль август сентябрь октябрь ноябрь декабрь'.split(),
     ]
     
-    @classmethod
-    def _RelativeKeywords(cls):
+    @classcachedproperty
+    def RelativeKeywords(cls):
         return multi_dict_into_one(
         {
             ("today", "auj", "aujourdhui", "aujourd'hui", "aujourd’hui"): 'today',
@@ -2890,8 +2909,6 @@ class DatetimeText:
             "M{}{}".format(sign, m) if m else 
             "S{}{}".format(sign, s)
         )
-
-DatetimeText.RelativeKeywords = DatetimeText._RelativeKeywords()
 
 from collections import namedtuple
 from datetime import date as Date, time as Time, datetime as Datetime, timedelta as Timedelta
