@@ -2727,15 +2727,18 @@ class DatetimeText:
     ]
     
     @classcachedproperty
-    def RelativeKeywords(cls):
-        return multi_dict_into_one(
-        {
+    def PureRelativeKeywords(cls):
+        return multi_dict_into_one({
             ("today", "auj", "aujourdhui", "aujourd'hui", "aujourd’hui"): 'today',
             ("tomorrow", "demain"): 'tomorrow',
             ('yesterday', 'hier'): 'yesterday',
             ('ereyesterday', 'avant-hier', 'avanthier'): 'ereyesterday',
             ('overmorrow', 'après-demain', 'apres-demain', 'apresdemain', 'aprèsdemain'): 'overmorrow',
-        } | {
+        })
+    
+    @classcachedproperty
+    def DaysAndRelativeKeywords(cls):
+        return cls.PureRelativeKeywords | multi_dict_into_one({
             (cls.days_english[i], cls.days_french[i], cls.days_russian[i], cls.days_russian_short[i], cls._days_russian_short_dotted[i]):
             cls.days_english[i]
             for i in range(7)
@@ -2766,7 +2769,7 @@ class DatetimeText:
 
     @classmethod
     def is_relative_day_keyword(cls, x:str):
-        return x.lower() in cls.RelativeKeywords
+        return x.lower() in cls.PureRelativeKeywords
     
     @classmethod
     def is_valid_weekday(cls, x:str):
@@ -2833,7 +2836,7 @@ class DatetimeText:
         if day is not None:
             return day, day + timedelta(days=1)
         
-        relative_keyword = DatetimeText.RelativeKeywords.get(name)
+        relative_keyword = DatetimeText.DaysAndRelativeKeywords.get(name)
         
         if relative_keyword == "today":
             return today, today + timedelta(days=1)
