@@ -3152,8 +3152,8 @@ class ParseEvents:
                 break
 
             if each_activated:
-                if not event.day_of_week:
-                    raise UserError(f"The keyword {each_activated_by!r} has to be applied on a day of the week")
+                if not(event.day_of_week or DatetimeText.DaysAndRelativeKeywords.get(event.date) == 'today'):
+                    raise UserError(f"The keyword {each_activated_by!r} has to be applied on a day of the week, or today")
                 date_obj, date_obj_end = DatetimeText.to_date_range(event.date, tz=tz)
 
                 It = InfiniteEmptyList(it)
