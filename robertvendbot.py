@@ -3,7 +3,7 @@ import logging
 from types import CoroutineType
 import telegram
 from telegram import Update, Message, User, Chat, InlineKeyboardMarkup, InlineKeyboardButton
-from telegram.ext import ApplicationBuilder, CallbackContext, CommandHandler, MessageHandler, ContextTypes, CallbackQueryHandler
+from telegram.ext import ApplicationBuilder, CallbackContext, CommandHandler as OriginalCommandHandler, MessageHandler, ContextTypes, CallbackQueryHandler, ConversationHandler
 from telegram.ext import filters
 from telegram_settings_local import TOKEN
 from telegram_settings_local import FRIENDS_USER
@@ -22,6 +22,7 @@ import re
 import regex 
 import funcoperators  # type: ignore
 import yaml
+
 class FriendsUser(enum.StrEnum):
     FLOCON = 'flocon'
     KOROLEVA_LION = 'koroleva-lion'
@@ -2326,7 +2327,6 @@ async def practiceflashcards(update, context):
 
     return 0
 
-from telegram.ext import ConversationHandler
 async def guessing_word(update, context):
     sample = context.user_data['sample']
     direction = context.user_data['direction']
@@ -8347,6 +8347,23 @@ COMMAND_LIST_HELP_DICT = {x.name: x for x in COMMAND_LIST_HELP}
 
 COMMAND_LIST_ALL_MODULES = list(remove_dup_keep_order(x.module for x in COMMAND_LIST_HELP))
 
+def CustomCommandHandler(command, handler, **kwargs):
+    """
+    Commands are not trigger on edit
+    """
+    async def new_handler(update, context):
+        if update.edited_message and not update.message:
+            return
+        return await handler(update, context)
+    return OriginalCommandHandler(command, new_handler, **kwargs)
+
+CommandHandler = CustomCommandHandler  # commands are never trigger on edit
+
+def add_conversation_handler(application, handler):
+    add_conversation_handler.prev_group += 1
+    application.add_handler(handler, group=add_conversation_handler.prev_group)
+
+add_conversation_handler.prev_group = 0
 
 def main():
     application = ApplicationBuilder().token(TOKEN).build()
@@ -8356,7 +8373,7 @@ def main():
 
     application.add_handler(MessageHandler(CrazyJamFilter(), on_crazy_jam_message))
 
-    application.add_handler(ConversationHandler(
+    add_conversation_handler(application, ConversationHandler(
         entry_points=[CommandHandler('practice', LanguagePractice.practice_command, filters=EnglishPracticeFilter())],
         states={
             'next-verb': [
@@ -8369,20 +8386,11 @@ def main():
     message_handler = MessageHandler(filters.TEXT & (~filters.COMMAND), on_message)
     application.add_handler(message_handler)
     
-    application.add_handler(ConversationHandler(
-        entry_points=[CommandHandler('befluent', befluent)],
-        states = {
-            
-        },
-        fallbacks=[
-
-        ]
-    ))
     application.add_handler(CommandHandler('caps', caps))
     application.add_handler(CommandHandler('ids', ids))
     application.add_handler(CommandHandler('addevent', add_event))
     application.add_handler(CommandHandler('iameventadmin', iameventadmin))
-    application.add_handler(ConversationHandler(
+    add_conversation_handler(application, ConversationHandler(
         entry_points=[CommandHandler('iaddevent', InteractiveAddEvent.ask_when)],
         states={
             'ask-what-or-time': [
@@ -8418,7 +8426,7 @@ def main():
         fallbacks=[
             CommandHandler('cancel', InteractiveAddEvent.cancel)
         ]
-    ), group=3)
+    ))
     application.add_handler(CommandHandler('events', events()))
     application.add_handler(CommandHandler('addschedule', addschedule))
     application.add_handler(CommandHandler('eventfollow', macro_event_follow))
@@ -8452,20 +8460,20 @@ def main():
     application.add_handler(CommandHandler('graph', locationdistance.locationinfo))
     application.add_handler(CommandHandler('distfrom', distfrom))
     application.add_handler(CommandHandler('pathfrom', pathfrom))
-    application.add_handler(ConversationHandler(
+    add_conversation_handler(application, ConversationHandler(
         entry_points=[CommandHandler("delevent", delevent)],
         states={
             0: [CallbackQueryHandler(do_delete_event)],
         },
         fallbacks=[],
-    ), group=2)
-    application.add_handler(ConversationHandler(
+    ))
+    add_conversation_handler(application, ConversationHandler(
         entry_points=[CommandHandler("selectevent", selectevent)],
         states={
             0: [CallbackQueryHandler(do_selectevent)],
         },
         fallbacks=[],
-    ), group=4)
+    ))
     
     application.add_handler(CommandHandler('ru', ru))
     application.add_handler(CommandHandler('ipa', ipa))
@@ -8490,7 +8498,7 @@ def main():
     application.add_handler(CommandHandler('listpageflashcards', listpageflashcards))
     application.add_handler(CommandHandler('exportflashcards', exportflashcards))
     application.add_handler(CommandHandler('sharemoney', sharemoney))
-    application.add_handler(ConversationHandler(
+    add_conversation_handler(application, ConversationHandler(
         entry_points=[CommandHandler('practiceflashcards', practiceflashcards)],
         states={
             0: [
@@ -8501,7 +8509,7 @@ def main():
             ]
         },
         fallbacks=[]
-    ), group=1)
+    ))
     application.add_handler(CommandHandler('help', help))
     application.add_handler(CommandHandler('uniline', uniline))
     application.add_handler(CommandHandler('nuniline', nuniline))
