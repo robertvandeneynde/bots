@@ -3721,7 +3721,7 @@ class InteractiveAddEvent:
         now: datetime = Datetime.now().astimezone(tz).replace(tzinfo=None)
 
         def L():
-            for name, d in zip(["today", "tomorrow"] * [None] * 6, range(8)):
+            for name, d in zip(["today", "tomorrow"] + [None] * 6, range(8)):
                 dt = now + timedelta(days=d)
                 if name is None:
                     yield DatetimeText.days_english[dt.weekday()], dt
