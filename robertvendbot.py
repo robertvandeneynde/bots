@@ -1518,8 +1518,12 @@ async def eventedit_responder(msg:str, send: AsyncSend, *, update, context):
             event_db = try_retrieve_event()
             event_rich = split_event_with_where_etc({'what': event_db['name']})
             where = event_rich['where']
-            return await send(where or 'The event has no location')
-        else:
+            if not where:
+                return await send('The event has no location')
+            else:
+                base, extension = EventLocationHelper.split_event_location_into_key_extension(where)
+                return await send(EventLocationHelper.whereis_key(base, extension=extension, print_key=True, chat_id=update.effective_chat.id, connection=None))
+            
             raise AssertionError
     elif match_postpone := re.fullmatch(r'([+]|[-])\s*(\d+)\s*(h|hours|min|minute|minutes|day|days|week|weeks)', msg):
         event_db = try_retrieve_event()
@@ -5503,28 +5507,62 @@ async def weekisoroman(update, context):
 
     await send("{}-W{}-{}".format(*map(int_to_roman, Datetime.today().isocalendar())))
 
+class EventLocationHelper:
+    @staticmethod
+    def whereis_key(key: str, *, extension: Optional[str], print_key=False, chat_id, connection=None) -> str:
+        my_simple_sql = partial(simple_sql, connection=connection)
+        results = my_simple_sql(('select value from EventLocation where chat_id=? and LOWER(key)=LOWER(?)', (chat_id, key, )))
+        extended_key = key if not extension else key + ' ' + '(' + extension + ')'
+        if print_key:
+            return extended_key if not results else extended_key + '\n' + "→ " + only_one(results)[0]
+        else:
+            return "I don't know ! :)" if not results else "→ " + only_one(results)[0]
+
+    @staticmethod 
+    def whereto_key(key: str, *, extension: Optional[str], print_key=False, chat_id, connection=None) -> str:
+        current_key = key
+        results = []
+        while True:
+            current_result = simple_sql(('select value from EventLocation where chat_id=? and LOWER(key)=LOWER(?)', (chat_id, current_key, )))
+            if not current_result:
+                break
+            current_key = current_result[0][0]
+            if current_key in results:
+                results.append(current_key)
+                break  # we stop because there is a loop
+            else:
+                results.append(current_key)
+                continue
+        extended_key = key if not extension else key + ' ' + '(' + extension + ')'
+        if print_key:
+            return extended_key if not results else extended_key + '\n' + '\n'.join(map("→ {}".format, results))
+        else:
+            return "I don't know ! :)" if not results else '\n'.join(map("→ {}".format, results))
+
+    def split_event_location_into_key_extension(key: str) -> tuple[str, Optional[str]]:
+        if m := re.fullmatch(r'\s*(.*?)\s*([(](.*?)[)])?', key):
+            return m.group(1), m.group(3)
+        raise AssertionError
+
 async def whereisto(update, context, *, command: Literal['whereis', 'whereto']):
     send = make_send(update, context)
 
     key: None | str = None
     print_key = False
+    extension: Optional[str] = None
     if reply := update_get_reply(update):
         try:
             infos_event = addevent_analyse(update, context)
             infos_event = enrich_event_with_where(infos_event)
-            key = infos_event.get('where', None)  
+            key = infos_event.get('where', None)
 
             if key is None:
                 return await send("This event does not have a location")
             else:
                 print_key = True
-
-                if m := re.fullmatch(r'\s*(.*?)\s*([(].*?[)])?', key):
-                    key = m.group(1)
-                    if not key:
-                        return await send("This event has an empty location")
-                else:
-                    raise AssertionError
+                key, extension = EventLocationHelper.split_event_location_into_key_extension(key)
+                if not key:
+                    return await send("This event has an empty location")
 
         except UserError as e:
             reply_error = e
@@ -5541,35 +5579,17 @@ async def whereisto(update, context, *, command: Literal['whereis', 'whereto']):
     """
     key: str
     """
-    
-    if command == 'whereis':
-        results = simple_sql(('select value from EventLocation where chat_id=? and LOWER(key)=LOWER(?)', (chat_id := update.effective_chat.id, key,)))
-        if print_key:
-            await send(key if not results else key + '\n' + "→ " + only_one(results)[0])
-        else:
-            await send("I don't know ! :)" if not results else "→ " + only_one(results)[0])
-    
-    elif command == 'whereto':
-        current_key = key
-        results = []
-        while True:
-            current_result = simple_sql(('select value from EventLocation where chat_id=? and LOWER(key)=LOWER(?)', (chat_id := update.effective_chat.id, current_key, )))
-            if not current_result:
-                break
-            current_key = current_result[0][0]
-            if current_key in results:
-                results.append(current_key)
-                break  # we stop because there is a loop
-            else:
-                results.append(current_key)
-                continue
-        if print_key:
-            await send(key if not results else key + '\n' + '\n'.join(map("→ {}".format, results)))
-        else:
-            await send("I don't know ! :)" if not results else '\n'.join(map("→ {}".format, results)))
 
-    else:
-        raise AssertionError
+    with get_connection() as connection:
+    
+        if command == 'whereis':
+            await send(EventLocationHelper.whereis_key(key, extension=extension, print_key=print_key, chat_id=update.effective_chat.id, connection=connection))
+        
+        elif command == 'whereto':
+            await send(EventLocationHelper.whereto_key(key, extension=extension, print_key=print_key, chat_id=update.effective_chat.id, connection=connection))
+
+        else:
+            raise AssertionError
 
 async def whereis(update: GoodUpdate, context: GoodContext):
     return await whereisto(update:=update, context=context, command='whereis') 
