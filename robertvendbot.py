@@ -1511,7 +1511,17 @@ async def eventedit_responder(msg:str, send: AsyncSend, *, update, context):
     def try_retrieve_event():
         return retrieve_event_from_db(update=update, context=context, what=event['what'], when=event['when'])
     
-    if match_postpone := re.fullmatch(r'([+]|[-])\s*(\d+)\s*(h|hours|min|minute|minutes|day|days|week|weeks)', msg):
+    if match_query := re.fullmatch(r'(Where|Où|Location|Lieu)\s*[?]?', msg, re.I):
+        query, = match_query.groups()
+        query = query.lower()
+        if query in ('where', 'où', 'lieu', 'location'):
+            event_db = try_retrieve_event()
+            event_rich = split_event_with_where_etc({'what': event_db['name']})
+            where = event_rich['where']
+            return await send(where or 'The event has no location')
+        else:
+            raise AssertionError
+    elif match_postpone := re.fullmatch(r'([+]|[-])\s*(\d+)\s*(h|hours|min|minute|minutes|day|days|week|weeks)', msg):
         event_db = try_retrieve_event()
         
         sign, amount, units = match_postpone.groups()
@@ -3708,6 +3718,7 @@ def check_tz_in_chat(*, tz: Timezone, chat_timezones: list[Timezone]):
 
 def add_event_to_db(*, datetime_utc: Datetime, name: Optional[str], chat_id: int, source_user_id: int) -> int:
     name = name or ''  # we always save as string
+    name = name.strip()  # happens for example with a location and no what : /addevent today @ Dom
     with sqlite3.connect('db.sqlite') as conn:
         cursor = conn.cursor()
 
