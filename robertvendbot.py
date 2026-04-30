@@ -329,7 +329,7 @@ class DoNotAnswer(Exception):
 
 async def locationdistance_responder(msg:str, send: AsyncSend, *, update, context):
     """ Example: now @ Kurskaya Station """
-    if match := msg /fullmatches_with_flags(re.I)/ 'now\s+[@]\s+(.*)':
+    if match := msg /fullmatches_with_flags(re.I)/ r'now\s+[@]\s+(.*)':
         destinations = locationdistance.load_destinations(update, context, connection=None)
         destinationsLower = set(map(str.lower, destinations))
         if destinations:
@@ -622,7 +622,7 @@ class locationdistance:
             for edge in ' '.join(args).split('//'):
                 if not edge.strip():
                     continue
-                if m := edge /fullmatchesI/ '(path|star)\s*:\s*(.*)':
+                if m := edge /fullmatchesI/ r'(path|star)\s*:\s*(.*)':
                     pattern, data = m.group(1), m.group(2)
                     data_list = InfiniteEmptyList(data.split('/'))
                     
@@ -1236,8 +1236,8 @@ async def list_responder(msg: str, send: AsyncSend, *, update, context):
                 else:
                     force_creation = False
 
-                re_spaces = '\s+'
-                re_spaces0 = '\s*'
+                re_spaces = r'\s+'
+                re_spaces0 = r'\s*'
                 re_group = lambda x: '(' + x + ')'
                 re_list_name = r'\p{L}(?:\p{L}|[-_\d])*' # examples: abc, a_b_c, a-b-c, abc34
                 re_bits = lambda *args: ''.join(args)
@@ -1248,19 +1248,19 @@ async def list_responder(msg: str, send: AsyncSend, *, update, context):
                     target_alias = alias_list_match.group(1)
                     type_list = ('alias', target_alias)
 
-                elif re.fullmatch(re.escape('[') + '\s*' + re.escape(']'), requested_type):
+                elif re.fullmatch(re.escape('[') + r'\s*' + re.escape(']'), requested_type):
                     # name = list
                     # name = []
                     # name = [ ]
                     type_list = 'list'
 
-                elif param_match := regex.compile(f'copy\s+((of|from)\s*)?({re_list_name})').fullmatch(requested_type):
+                elif param_match := regex.compile(rf'copy\s+((of|from)\s*)?({re_list_name})').fullmatch(requested_type):
                     # name = copy of other
                     # name = copy from other
                     _, _, copy_from_name = param_match.groups()
                     type_list = ('copy', copy_from_name)
 
-                elif param_match := regex.compile('(tasktree)\s+((of|from)\s*)?({re_list_name})').fullmatch(requested_type):
+                elif param_match := regex.compile(rf'(tasktree)\s+((of|from)\s*)?({re_list_name})').fullmatch(requested_type):
                     copy_from_type, _, _, copy_from_name = param_match.groups()
                     type_list = (copy_from_type, copy_from_name)
 
@@ -1511,7 +1511,7 @@ async def eventedit_responder(msg:str, send: AsyncSend, *, update, context):
     def try_retrieve_event():
         return retrieve_event_from_db(update=update, context=context, what=event['what'], when=event['when'])
     
-    if match_postpone := re.fullmatch('([+]|[-])\s*(\d+)\s*(h|hours|min|minute|minutes|day|days|week|weeks)', msg):
+    if match_postpone := re.fullmatch(r'([+]|[-])\s*(\d+)\s*(h|hours|min|minute|minutes|day|days|week|weeks)', msg):
         event_db = try_retrieve_event()
         
         sign, amount, units = match_postpone.groups()
@@ -1527,7 +1527,7 @@ async def eventedit_responder(msg:str, send: AsyncSend, *, update, context):
 
         simple_sql(('''UPDATE Events SET date=? where rowid=?''', (DatetimeDbSerializer.strftime(after), event_db['rowid'], )))
 
-    elif match_field_edit := msg /fullmatches_with_flags(re.I)/ '(\p{L}*)[ ]*([=]?)[ ]*(.*)':
+    elif match_field_edit := msg /fullmatches_with_flags(re.I)/ r'(\p{L}*)[ ]*([=]?)[ ]*(.*)':
         read_chat_settings = make_read_chat_settings(update, context)
 
         rest: Sequence[str]
@@ -2801,7 +2801,10 @@ class DatetimeText:
         return datetime, date_end
 
     @classmethod
-    def to_date_range(self, name: str, *, reference: Optional[Datetime] = None, tz: Optional[Timezone] = None) -> tuple[Date, Date]:
+    def to_date_range(self, name: Optional[str], *, reference: Optional[Datetime] = None, tz: Optional[Timezone] = None) -> tuple[Date, Date]:
+        if not name:
+            raise UnknownDateError(f"Unknown date")
+        
         from datetime import datetime, timedelta, date, date as Date
         reference = reference or datetime.now().astimezone(tz).replace(tzinfo=None)
         today = reference.date()
@@ -2816,7 +2819,7 @@ class DatetimeText:
             else:
                 raise AssertionError
         
-        elif match := re.fullmatch("(\d{4})-(\d{2})-(\d{2})", name):
+        elif match := re.fullmatch(r"(\d{4})-(\d{2})-(\d{2})", name):
             day = date(*map(int, match.groups()))
 
         elif (match_eu := re.fullmatch(r"(\d{1,2}) (%s)( (\d{4}))?" % '|'.join(map(re.escape, self.months_value)), name)) or \
@@ -2917,18 +2920,18 @@ from collections import namedtuple
 from datetime import date as Date, time as Time, datetime as Datetime, timedelta as Timedelta
 
 class ParsedEventMiddleNoName(NamedTuple):
-    date: str
+    date: Optional[str]
     time: Optional[Time]
-    day_of_week: str
-    relative_day_keyword: str
+    day_of_week: Optional[str]
+    relative_day_keyword: Optional[str]
     timezone: Optional[str]
 
 class ParsedEventMiddle(NamedTuple):
-    date: str
-    time: Optional[Time]
-    name: str 
-    day_of_week: str
-    relative_day_keyword: str
+    date: Optional[str]   # True if a date was identified (False if no date is found)
+    time: Optional[Time]  # True if a time was identified
+    name: Optional[str]   # None is ''
+    day_of_week: Optional[str]  # True if a day_of_week keyword like Monday was used (None is '')
+    relative_day_keyword: Optional[str]  # True if a relative_day_keyword like Today was used (None is '')
     timezone: Optional[str]
 
     @staticmethod
@@ -2940,9 +2943,9 @@ class ParsedScheduleMiddle(NamedTuple):
     each_activateds: list[bool]
 
 class ParsedEventFinal(NamedTuple):
-    date_str: str
+    date_str: Optional[str]
     time: Optional[Time]
-    name: str 
+    name: Optional[str] 
     date: Date
     date_end: Date 
     datetime: Datetime 
@@ -3031,9 +3034,9 @@ class ParseEvents:
     @classmethod
     def parse_valid_date(cls, value:str) -> tuple | None:
         import re
-        ReDateRu = re.compile('(\d{2})[.](\d{2})')
-        ReDateRuYear = re.compile('(\d{2})[.](\d{2})[.](\d{4})')
-        ReBeYear = re.compile('(\d{2})[/](\d{2})[/](\d{4})')
+        ReDateRu = re.compile(r'(\d{2})[.](\d{2})')
+        ReDateRuYear = re.compile(r'(\d{2})[.](\d{2})[.](\d{4})')
+        ReBeYear = re.compile(r'(\d{2})[/](\d{2})[/](\d{4})')
         if regexes := [(R, M) for R in (ReDateRu, ReDateRuYear, ReBeYear) if (M := R.fullmatch(value))]:
             matching_re, match = only_one(regexes, ValueError(f"ProgrammingError: Multiple regex match the string {value}"))
             if ReDateRu is matching_re:
@@ -3099,8 +3102,8 @@ class ParseEvents:
         
         parsed_event_date, time, timezone, args = parse_event_any_order(args)
 
-        day_of_week = parsed_event_date.day_of_week 
-        date = parsed_event_date.date_str
+        day_of_week = parsed_event_date.day_of_week
+        date = parsed_event_date.date_str 
         relative_day_keyword = parsed_event_date.relative_day_keyword
 
         return ParsedEventMiddleNoName(date=date, time=time, day_of_week=day_of_week, relative_day_keyword=relative_day_keyword, timezone=timezone), args
@@ -3256,8 +3259,10 @@ def induce_my_timezone(*, user_id: int, chat_id: int):
 def parse_datetime_point(update: GoodUpdate, context: GoodContext, when_infos=None, what_infos=None, has_inline_kargs=False, required_time=False) -> ParsedEventFinal:
     from datetime import datetime as Datetime, time as Time, date as Date, timedelta
     read_chat_settings = make_read_chat_settings(update, context)
-    name = ''
-    date_str: None | str = None
+    
+    name: Optional[str] = ''
+    date_str: Optional[str] = None 
+
     if context.args and not has_inline_kargs:
         date_str, time, name, day_of_week, relative_day_keyword, timezone_event_str = ParseEvents.parse_event(context.args)
     if what_infos:
@@ -3268,7 +3273,7 @@ def parse_datetime_point(update: GoodUpdate, context: GoodContext, when_infos=No
         date_str, time, name_from_when_part, day_of_week, relative_day_keyword, timezone_event_str = ParseEvents.parse_event(when_infos.split())
         if name_from_when_part:
             raise UserError("Too much infos in the When part")
-    if date_str is None:
+    if not date_str:
         raise UserError("Must specify an event with date")
 
     if timezone_event_str:
@@ -3340,6 +3345,7 @@ def parse_datetime_schedule(*, tz: Timezone, args: Sequence[str]) -> list[Parsed
     out = []
     event: ParsedEventMiddle
     for event in ParseEvents.parse_schedule(args, tz=tz):
+        assert event.date
         time, name = event.time, event.name
         date, date_end = DatetimeText.to_date_range(event.date, tz=tz)
         datetime = Datetime.combine(date, time or Time(0, 0)).replace(tzinfo=tz)
@@ -3521,7 +3527,7 @@ def send_you_are_following_these_chats(update: GoodUpdate, context: GoodContext,
     import html as html_module
     send = make_send(update, context)
     send_html = partial(send, parse_mode='HTML')
-    escape = html_module.escape if html else lambda x:x
+    escape = html_module.escape if html else lambda x:x  # type: ignore
 
     chat_id = update.effective_chat.id
 
@@ -3537,7 +3543,7 @@ def send_these_chats_are_following_you(update: GoodUpdate, context: GoodContext,
     import html as html_module
     send = make_send(update, context)
     send_html = partial(send, parse_mode='HTML')
-    escape = html_module.escape if html else lambda x:x
+    escape = html_module.escape if html else lambda x:x  # type: ignore
 
     chat_id = update.effective_chat.id
 
@@ -3609,6 +3615,7 @@ async def eventacceptfollowchangeproperty(update: GoodUpdate, context: GoodConte
 
 async def eventanyfollowrename(update: GoodUpdate, context: GoodContext, *, direction: Literal['follow', 'accept']):
     send = make_send(update, context)
+    send_html = partial(send, parse_mode='HTML')
 
     chat_id = update.effective_chat.id
 
@@ -3699,7 +3706,8 @@ def check_tz_in_chat(*, tz: Timezone, chat_timezones: list[Timezone]):
             '- Chat timezones: {chat_timezone_str}'.format(chat_timezone_str=", ".join(map(str, chat_timezones))),
         ]))
 
-def add_event_to_db(*, datetime_utc: Datetime, name: str, chat_id: int, source_user_id: int) -> int:
+def add_event_to_db(*, datetime_utc: Datetime, name: Optional[str], chat_id: int, source_user_id: int) -> int:
+    name = name or ''  # we always save as string
     with sqlite3.connect('db.sqlite') as conn:
         cursor = conn.cursor()
 
@@ -4005,6 +4013,7 @@ async def add_event(update: GoodUpdate, context: GoodContext):
     except EventArgsHasNoDate:
         raise UnknownDateError('Missing date\n\nTip: try for example: Today, Tomorrow, Sunday, or 26.02')
     
+    name = name or ''
     initial_name = name
     if do_unless_setting_off(read_chat_settings('event.location.autocomplete')):
         name = update_name_using_locations(name, chat_id=chat_id)
@@ -5284,7 +5293,7 @@ def addevent_analyse_yaml(update, context, text:str) -> EventDictAnalysed:
     if not result.get('when'):
         raise EventAnalyseError("When is mandatory")
     
-    Interval = re.compile('(\d{2}:\d{2}) - (\d{2}:\d{2})')
+    Interval = re.compile(r'(\d{2}:\d{2}) - (\d{2}:\d{2})')
     if match := Interval.search(result['when']):
         result['what'] = ' '.join(natural_filter([result.get('what'), '({})'.format(match.group(0))]))
         result['when'] = Interval.sub(match.group(1), result['when'])
@@ -5332,8 +5341,8 @@ def addevent_analyse_from_bot(update, context, text:str) -> EventDictAnalysed:  
 
         def extract_timezone(data):
             Re2 = re.compile(
-                '(.*)'
-                + '\s*'
+                r'(.*)'
+                + r'\s*'
                 + re.escape('(') + '(' + '.*?' + ')' + re.escape(')')
             )
             if match := Re2.search(data):
@@ -5380,7 +5389,7 @@ def addevent_analyse_from_bot(update, context, text:str) -> EventDictAnalysed:  
         raise EventAnalyseError("Missing Date in message")
 
     # if there is something in parentheses in the when, remove that part
-    if match := re.search('\s*' + re.escape('(') + '.*' + re.escape(')'), when):
+    if match := re.search(r'\s*' + re.escape('(') + '.*' + re.escape(')'), when):
         when = when[:match.span(0)[0]] + when[match.span(0)[1]:]
 
     # if there is some day of the week somewhere, remove it
@@ -5928,7 +5937,7 @@ def do_unless_setting_off(setting):
 
 def simplify_multi_line_location(location):
     if '\n' in location:
-        without_link = [v for v in location.splitlines() if not v /fullmatches/ "https?://[^\s]+"]
+        without_link = [v for v in location.splitlines() if not v /fullmatches/ r"https?://[^\s]+"]
         return ' / '.join(without_link)
     else:
         return location
@@ -7624,7 +7633,7 @@ async def implicit_setting_command(update, context, type: Literal['disable', 'on
         return all(re.compile('^[A-Z]{3}[:].*$').match(line) for line in reply.text.splitlines())
 
     def is_locationdistance_list():
-        return all(x /fullmatchesI/ '• (\d+) [|] (.*)' for x in reply.text.splitlines())
+        return all(x /fullmatchesI/ r'• (\d+) [|] (.*)' for x in reply.text.splitlines())
 
     if type == 'disable':
         if reply.text:
@@ -7634,7 +7643,7 @@ async def implicit_setting_command(update, context, type: Literal['disable', 'on
                 return await send_command('/chatsettings event.addevent.help_file off')
             if reply.text.startswith('Error: Time must be specified (policy of the group)'):
                 return await send_command('/chatsettings event.addevent.required_time off')
-            if reply.text /fullmatches/ 'Forwarded to \d+ chats':
+            if reply.text /fullmatches/ r'Forwarded to \d+ chats':
                 return await send_command('/chatsettings event.addevent.display_forwarded_infos off')
             if reply.text.startswith('Error: You must specify a reason'):
                 return await send_command('/chatsettings sharemoney.required_for off')
@@ -8363,7 +8372,7 @@ def add_conversation_handler(application, handler):
     add_conversation_handler.prev_group += 1
     application.add_handler(handler, group=add_conversation_handler.prev_group)
 
-add_conversation_handler.prev_group = 0
+add_conversation_handler.prev_group = 0  # type: ignore
 
 def main():
     application = ApplicationBuilder().token(TOKEN).build()
