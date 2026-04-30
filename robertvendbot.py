@@ -5496,11 +5496,17 @@ async def whereisto(update, context, *, command: Literal['whereis', 'whereto']):
     send = make_send(update, context)
 
     key: None | str = None
+    print_key = False
     if reply := update_get_reply(update):
         try:
             infos_event = addevent_analyse(update, context)
             infos_event = enrich_event_with_where(infos_event)
             key = infos_event.get('where', None)  
+
+            if key is None:
+                return await send("This event does not have a location")
+            else:
+                print_key = True
         except UserError as e:
             reply_error = e
 
@@ -5519,7 +5525,10 @@ async def whereisto(update, context, *, command: Literal['whereis', 'whereto']):
     
     if command == 'whereis':
         results = simple_sql(('select value from EventLocation where chat_id=? and LOWER(key)=LOWER(?)', (chat_id := update.effective_chat.id, key,)))
-        await send("I don't know ! :)" if not results else "→ " + only_one(results)[0])
+        if print_key:
+            await send(key if not results else key + '\n' + "→ " + only_one(results)[0])
+        else:
+            await send("I don't know ! :)" if not results else "→ " + only_one(results)[0])
     
     elif command == 'whereto':
         current_key = key
@@ -5535,7 +5544,10 @@ async def whereisto(update, context, *, command: Literal['whereis', 'whereto']):
             else:
                 results.append(current_key)
                 continue
-        await send("I don't know ! :)" if not results else '\n'.join(map("→ {}".format, results)))
+        if print_key:
+            await send(key if not results else key + '\n' + '\n'.join(map("→ {}".format, results)))
+        else:
+            await send("I don't know ! :)" if not results else '\n'.join(map("→ {}".format, results)))
 
     else:
         raise AssertionError
