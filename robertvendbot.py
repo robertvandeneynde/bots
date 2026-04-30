@@ -4094,9 +4094,6 @@ def add_event_enrich_reply_with_link(update: GoodUpdate, context: GoodContext, *
             
     return {'link': link}
 
-class ImplicitLocations:
-    Parens = re.compile("(.*)\\((.*)\\).*")
-
 def update_name_using_locations(what, *, chat_id):
     event = split_event_with_where_etc({'what': what})
     if where := event.get('where'):
@@ -4116,13 +4113,13 @@ def update_name_using_locations(what, *, chat_id):
 
 def implicit_thereis(*, what:str, chat_id):
     what = what or ''
-    _, *where_list = what.split("@", maxsplit=1)
+    _, *where_list = what.split("@", maxsplit=1)  # should use split_event_name_into_what_where
 
     if not where_list:
         return
     
     where, = where_list
-    Re = ImplicitLocations.Parens
+    Re = EventLocationHelper.Parens
     
     if not(m := Re.fullmatch(where)):
         return
@@ -5438,7 +5435,7 @@ def enrich_event_with_where(event):
         del event['where']
     return event
 
-def split_event_name_into_what_where(event_name):
+def split_event_name_into_what_where(event_name) -> tuple[str, Optional[str]]:
     X = GetOrEmpty(re.compile('(?:[ ]|^)[@][ ]').split(event_name, maxsplit=1))
     return (X[0], X[1]) # X[1] can be empty
 
@@ -5545,10 +5542,13 @@ class EventLocationHelper:
         else:
             return "I don't know ! :)" if not results else '\n'.join(map("→ {}".format, results))
 
+    @staticmethod
     def split_event_location_into_key_extension(key: str) -> tuple[str, Optional[str]]:
         if m := re.fullmatch(r'\s*(.*?)\s*([(](.*?)[)])?', key):
             return m.group(1), m.group(3)
         raise AssertionError
+
+    Parens = re.compile("(.*)\\((.*)\\).*")
 
 async def whereisto(update, context, *, command: Literal['whereis', 'whereto']):
     send = make_send(update, context)
@@ -6008,7 +6008,7 @@ def enrich_location_with_db(events, *, chat_id):
         if 'where' in event_obj and event_obj.get('where'):
             location_key = event_obj['where']
 
-            if match := ImplicitLocations.Parens.fullmatch(location_key):
+            if match := EventLocationHelper.Parens.fullmatch(location_key):
                 base_loc, extension_loc = match.groups()
                 if not extension_loc.strip():
                     ok = True # matches "Something ()" (empty parens)
