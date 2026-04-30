@@ -5507,6 +5507,14 @@ async def whereisto(update, context, *, command: Literal['whereis', 'whereto']):
                 return await send("This event does not have a location")
             else:
                 print_key = True
+
+                if m := re.fullmatch(r'\s*(.*?)\s*([(].*?[)])?', key):
+                    key = m.group(1)
+                    if not key:
+                        return await send("This event has an empty location")
+                else:
+                    raise AssertionError
+
         except UserError as e:
             reply_error = e
 
