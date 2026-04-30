@@ -5509,9 +5509,8 @@ class EventLocationHelper:
     def whereis_key(key: str, *, extension: Optional[str], print_key=False, chat_id, connection=None) -> str:
         my_simple_sql = partial(simple_sql, connection=connection)
         results = my_simple_sql(('select value from EventLocation where chat_id=? and LOWER(key)=LOWER(?)', (chat_id, key, )))
-        all_infos = only_one(results)[0]
         
-        if all_infos == extension:
+        if results and (all_infos := only_one(results)[0])  == extension:
             extended_key = key
         else:
             extended_key = key if not extension else key + ' ' + '(' + extension + ')'
