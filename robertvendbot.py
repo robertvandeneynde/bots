@@ -3380,13 +3380,13 @@ def is_correct_day_of_week(date, day_of_week):
     # return date.weekday() == (DatetimeText.days_english + DatetimeText.days_french).index(day_of_week.lower()) % 7
 
 async def macro_event_follow(update: GoodUpdate, context: GoodContext):
-    send = make_send(update, context)
-    send_html = partial(send, parse_mode='HTML')
+    action = GeneralAction(update, context)
+
     number_re = re.compile('[-]?\\d+')
 
     Args = InfiniteEmptyList(context.args)
     if (not Args) or '--help' in Args or 'help:' in Args or ':help' in Args:
-        return await send_html('Usage: <code>/eventfollow</code> (follow|accept|delete|rename)')
+        return await action.send_html('Usage: <code>/eventfollow</code> (follow|accept|delete|rename)')
 
     elif number_re.fullmatch(Args[0]):
         context.args = list(Args)
@@ -3409,7 +3409,7 @@ async def macro_event_follow(update: GoodUpdate, context: GoodContext):
             context.args = list(Args[2:])
             return await deleventfollow(update, context)
         
-        return await send_html('Usage: <code>/eventfollow delete</code> (follower|subscription)')
+        return await action.send_html('Usage: <code>/eventfollow delete</code> (follower|subscription)')
         
     elif Args[0].lower() in ('accept', ):
         context.args = list(Args[1:])
@@ -3424,7 +3424,7 @@ async def macro_event_follow(update: GoodUpdate, context: GoodContext):
             context.args = list(Args[2:])
             return await renameeventfollow(update, context)
 
-        return await send_html('Usage: <code>/eventfollow rename</code> (follower|subscription)')
+        return await action.send_html('Usage: <code>/eventfollow rename</code> (follower|subscription)')
     
     elif Args[0].lower() in ('property', ):
         context.args = list(Args[1:])
@@ -3433,31 +3433,28 @@ async def macro_event_follow(update: GoodUpdate, context: GoodContext):
         except UsageError:
             pass
 
-        return await send_html('Usage: <code>/eventfollow property</code> (subscription) [chat_id] (auto_add) (True|False)')
+        return await action.send_html('Usage: <code>/eventfollow property</code> (subscription) [chat_id] (auto_add) (True|False)')
     
     elif Args[0].lower() in ('list', ):
         if Args[1].lower() in ('followers', 'follower'):
             context.args = list(Args[2:])
-            return await send_html(send_these_chats_are_following_you(update, context, html=True))
+            return await action.send_html(send_these_chats_are_following_you(update, context, html=True))
 
         elif Args[1].lower() in ('sub', 'subscription', 'subscriptions'):
             context.args = list(Args[2:])
-            return await send_html(send_you_are_following_these_chats(update, context, html=True))
+            return await action.send_html(send_you_are_following_these_chats(update, context, html=True))
 
-        return await send_html('Usage: <code>/eventfollow list</code> (follower|subscription)')
+        return await action.send_html('Usage: <code>/eventfollow list</code> (follower|subscription)')
 
-      
-    return await send("Wrong parameters")
+    return await action.send("Wrong parameters")
 
 async def event_action_follow(update: GoodUpdate, context: GoodContext):
-    send = make_send(update, context)
-    send_html = partial(send, parse_mode='HTML')
-
-    chat_id = update.effective_chat.id
-    thread_id = make_send_save_info(update, context).thread_id
+    action = GeneralAction(update, context)
+    chat_id = action.chat_id
+    thread_id = action.thread_id
 
     if not context.args:
-        return await send_html(
+        return await action.send_html(
             f'Your chat id: <code>{chat_id}</code>\n\n'
             f'Use it so that other people can follow you!\n\n'
             f'To follow this chat:\n  <code>/eventfollow {chat_id}</code>\n\n'
@@ -3486,21 +3483,19 @@ async def event_action_follow(update: GoodUpdate, context: GoodContext):
             parse_mode='HTML')
             # message_thread_id=target_thread_id # read target_chat's "bot channel/admin channel" setting (ie. where they receive the follow requests)
 
-    await send(f'Pending follow request sent to ' + (f'{target_chat_id}' if not my_relation_name else f'{target_chat_id} ({my_relation_name})'))
+    await action.send(f'Pending follow request sent to ' + (f'{target_chat_id}' if not my_relation_name else f'{target_chat_id} ({my_relation_name})'))
 
     # if receiving chat has the setting "automatically accept event following request"
     #   do it
     # (concept of public channel, anybody can follow without question)
 
 async def eventacceptfollow(update: GoodUpdate, context: GoodContext):
-    send = make_send(update, context)
-    send_html = partial(send, parse_mode='HTML')
-
-    chat_id = update.effective_chat.id
+    action = GeneralAction(update, context)
+    chat_id = action.chat_id
 
     if not context.args:
         followers_pending = simple_sql(('select a_chat_id from EventFollowPending where b_chat_id = ?', (str(chat_id), )))
-        return await send_html('No chats want to be your follower, keep rolling!' if not followers_pending else
+        return await action.send_html('No chats want to be your follower, keep rolling!' if not followers_pending else
             'These chats want to be your follower:\n{}'.format('\n'.join(map("\N{BULLET} {}".format, (
                 html.escape(str(x)) for x, in followers_pending
             )))))
@@ -3512,7 +3507,7 @@ async def eventacceptfollow(update: GoodUpdate, context: GoodContext):
         my_simple_sql = partial(simple_sql, connection=conn)
 
         if not (data := my_simple_sql(('select rowid, a_name, b_name, a_thread_id from EventFollowPending where a_chat_id = ? and b_chat_id = ?', (str(source_chat_id), str(chat_id))))):
-            return await send(f"Cannot be followed by this chat ({source_chat_id}) because it didn't send a request")
+            return await action.send(f"Cannot be followed by this chat ({source_chat_id}) because it didn't send a request")
         
         _, a_name, b_name, a_thread_id = data[0]
         
@@ -3526,7 +3521,7 @@ async def eventacceptfollow(update: GoodUpdate, context: GoodContext):
             a_thread_id)))
         
     # todo: send them some notif
-    await send_html(
+    await action.send_html(
         'You are now followed by this chat{}!'.format(" (that you named {}) ".format(html.escape(my_relation_name)) if my_relation_name else '') + " " +
         'Every event you add will be forwarded to them.' +
         "\n\n" +
@@ -3636,7 +3631,7 @@ async def eventanyfollowrename(update: GoodUpdate, context: GoodContext, *, dire
     try:
         target_chat_id = str(int(context.args[0]))
         my_relation_name = ' '.join(context.args[1:])
-    except IndexError:
+    except (IndexError, ValueError):  # IndexError for context.args[0] and ValueError for int()
         listing = {'follow': send_you_are_following_these_chats, 'accept': send_these_chats_are_following_you}[direction]
         return await send_html('\n\n'.join((
             listing(update, context, html=True),
@@ -4187,15 +4182,17 @@ async def post_event(update, context, *, name, datetime, time, link, date_str, c
         if do_unless_setting_off(read_chat_settings('event.addevent.display_forwarded_infos')):
             await send(f'Forwarded to {len(forward_ids)} chats')
 
-
-from abc import ABC, abstractmethod
-
-class GeneralAction(ABC):
-    async def __call__(self, update: GoodUpdate, context: GoodContext):
-        self.update = update
+class GeneralAction:
+    def __init__(self, update: Optional[GoodUpdate]=None, context: Optional[GoodContext]=None):
+        self.update  = update
         self.context = context
 
-        self.Args = InfiniteEmptyList(self.context.args)
+    async def __call__(self, update: Optional[GoodUpdate]=None, context: Optional[GoodContext]=None):
+        self.update = update or self.update
+        self.context = context or self.context
+
+        if not(self.update and self.context):
+            raise ValueError('Must specifiy an update and a context')
 
         try:
             return await self.run()
@@ -4205,17 +4202,35 @@ class GeneralAction(ABC):
     
     def send(self, *a, **b):
         return make_send(self.update, self.context)(*a, **b)
+
+    def send_html(self, *a, **b):
+        return self.send(*a, **b, parse_mode='HTML')
     
     def chat_settings(self, *a, **b):
         return make_read_chat_settings(self.update, self.context)(*a, **b)
     
-    @abstractmethod
     async def run(self):
         raise NotImplementedError
     
     async def print_usage(self):
         await self.send("Arguments not correct, please read the manual")
 
+    @property
+    def chat_id(self):
+        return self.get_chat_id()
+
+    @property
+    def user_id(self):
+        return self.get_user_id()
+    
+    @property
+    def thread_id(self):
+        return make_send_save_info(self.update, self.context).thread_id
+    
+    @property
+    def Args(self):
+        return InfiniteEmptyList(self.context.args)
+    
     def get_chat_id(self):
         return self.update.effective_chat.id
     
