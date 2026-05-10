@@ -22,6 +22,7 @@ import re
 import regex 
 import funcoperators  # type: ignore
 import yaml
+import unicodedata
 
 class FriendsUser(enum.StrEnum):
     FLOCON = 'flocon'
@@ -34,6 +35,7 @@ class FriendsUser(enum.StrEnum):
     DANCING_UNICORN = 'DANCING_UNICORN'.replace('_', '-').lower()
     KARL = "Karl"
     BIRD_FLOCK_MASTER = "bird-flock-master"
+    KOROKETTO = 'koroketto'
 
 class SpecialUsers(enum.StrEnum):
     CRAZY_JAM = 'CRAZY_JAM'.lower().replace('_', '-')  # Crazy Jam Channel
@@ -276,6 +278,19 @@ async def hello_responder(msg:str, send: AsyncSend, *, update, context):
             todays_bird = birds[(Datetime.now(UTC) - Datetime(2026, 2, 2, tzinfo=UTC)).days % len(birds)]
 
             await send(f"Bonjour Maître des Oiseaux! Connais-tu l'oiseau du jour (UTC)? J'ai nommé... {todays_bird} 🐦")
+
+    elif user.id == FRIENDS_USER.get(FriendsUser.KOROKETTO):
+        if msg.lower().startswith('hello'):
+            await send("As-tu mangé les croquettes de fromage virtuelles ou est-ce l'android qui l'a fait ?")
+        else:
+            has_h = any('HIRAGANA' in unicodedata.name(x, '?').split() for x in msg)
+            has_k = any('KATAKANA' in unicodedata.name(x, '?').split() for x in msg)
+            if has_h and has_k:
+                await send("Sorry, I don't speak neither Hiragana nor Katakana :( yet :) #kawaii")
+            elif has_h:
+                await send("Sorry, I don't speak Hiragana :( yet :) #kawaii")
+            elif has_k:
+                await send("Sorry, I don't speak Katakana :( yet :) #kawaii")
     else:
         if msg.lower().startswith('hello'):
             await send("Hello ! :3")

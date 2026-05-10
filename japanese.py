@@ -71,9 +71,9 @@ comp = [
     for x in katana_map | hiragana_map
 ]
 
-val = lambda x: x()
+autocall = lambda x: x()
 
-@val
+@autocall
 def grouped():
     unvoiced = 'K', 'S', 'T', 'W'
     voiced   = 'G', 'Z', 'D', 'V'
@@ -123,7 +123,7 @@ def grouped():
             M[x] = [k, h]
     return M
 
-@val
+@autocall
 def grouped_vowel():
     Vowels = ('A', 'E', 'I', 'O', 'U')
     M = {}
