@@ -41,11 +41,6 @@ small_hiraganas = [
     and 'small' /iin/ uniname(x)
 ]
 
-hiragana_map = uniqdict(
-    ((name /ifullmatches/ '.*LETTER ([A-Z]+).*').group(1), x)
-    for x, name in main_hiraganas
-)
-
 main_katakana = [
     (x, uniname(x)) for x in map(chr, range(0xffff))
     if 'katakana letter' /iin/ uniname(x)
@@ -59,6 +54,12 @@ small_katakanas = [
     and not 'halfwidth' /iin/ uniname(x)
     and 'small' /iin/ uniname(x)
 ]
+
+hiragana_map = uniqdict(
+    (letter, s) for (i, (s, name, letter)) in (
+        (i, (s, name, (name /ifullmatches/ '.*LETTER ([A-Z]+).*').group(1)))
+        for (i, (s, name))
+        in enumerate(main_hiraganas)))
 
 katana_map = uniqdict(
     (letter, s) for (i, (s, name, letter)) in (
@@ -140,7 +141,10 @@ def make_html():
     df = pd.DataFrame.from_dict(grouped_vowel, columns=tuple('AEIOU'), orient='index')
     path('katakana-hiragana.html').write_text(df.to_html())
 
-def romaji(s: str) -> str:
+from typing import Literal
+def romaji(s: str, *, mode: Literal['hiragana', 'katakana']) -> str:
+    assert mode in ('hiragana', 'katakana')
     import re
-    Re = re.compile('|'.join(map(re.escape, sorted(katana_map, key=len, reverse=True))), re.I)
-    return Re.sub(lambda m: katana_map[m.group(0).upper()], s)
+    lang_map = katana_map if mode == 'katakana' else hiragana_map
+    Re = re.compile('|'.join(map(re.escape, sorted(lang_map, key=len, reverse=True))), re.I)
+    return Re.sub(lambda m: lang_map[m.group(0).upper()], s)

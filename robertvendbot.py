@@ -1890,6 +1890,16 @@ async def befluent(update, context):
 
     return ConversationHandler.END
 
+async def romaji(update: GoodUpdate, context: GoodContext, mode: Literal['hiragana', 'katakana']):
+    assert mode in ('hiragana', 'katakana')
+    import japanese
+    action = GeneralAction(update, context)
+
+    if not context.args:
+        return await action.send_html('Usage: /hira|kata message\n\nExamples:\n<code>/hira arigato</code>\n<code>/kata arigato</code>')
+
+    return await action.send(japanese.romaji(' '.join(context.args), mode=mode) or '/')
+
 async def ru(update: GoodUpdate, context: GoodContext):
     send = make_send(update, context)
     
@@ -8574,6 +8584,8 @@ def main():
     application.add_handler(CommandHandler('ipa', ipa))
     application.add_handler(CommandHandler('iparu', iparu))
     application.add_handler(CommandHandler('pron', pron))
+    application.add_handler(CommandHandler('kata', partial(romaji, mode='katakana')))
+    application.add_handler(CommandHandler('hira', partial(romaji, mode='hiragana')))
     application.add_handler(CommandHandler('dict', dict_))
     application.add_handler(CommandHandler('wikt', wikt))
     application.add_handler(CommandHandler('larousse', larousse))
