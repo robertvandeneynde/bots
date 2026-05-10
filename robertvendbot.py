@@ -1896,7 +1896,7 @@ async def romaji(update: GoodUpdate, context: GoodContext, mode: Literal['hiraga
     action = GeneralAction(update, context)
 
     if not context.args:
-        return await action.send_html('Usage: /hira|kata message\n\nExamples:\n<code>/hira arigato</code>\n<code>/kata arigato</code>')
+        return await action.send_html('Usage:\n/hira message\n/kata message\n\nExamples:\n<code>/hira arigato</code>\n<code>/kata arigato</code>')
 
     return await action.send(japanese.romaji(' '.join(context.args), mode=mode) or '/')
 
