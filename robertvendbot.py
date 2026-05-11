@@ -35,6 +35,7 @@ class FriendsUser(enum.StrEnum):
     DANCING_UNICORN = 'DANCING_UNICORN'.replace('_', '-').lower()
     KARL = "Karl"
     BIRD_FLOCK_MASTER = "bird-flock-master"
+    CHILLCATH = 'chillcath'
     KOROKETTO = 'koroketto'
 
 class SpecialUsers(enum.StrEnum):
@@ -291,6 +292,10 @@ async def hello_responder(msg:str, send: AsyncSend, *, update, context):
                 await send("Sorry, I don't speak Hiragana :( yet :) #kawaii")
             elif has_k:
                 await send("Sorry, I don't speak Katakana :( yet :) #kawaii")
+
+    elif user.id == FRIENDS_USER.get(FriendsUser.CHILLCATH):
+        if msg.lower().startswith('hello'):
+            await send("Let's sleep, eat Makdak, and, chill all day 😎")
     else:
         if msg.lower().startswith('hello'):
             await send("Hello ! :3")
