@@ -37,6 +37,7 @@ class FriendsUser(enum.StrEnum):
     BIRD_FLOCK_MASTER = "bird-flock-master"
     CHILLCATH = 'chillcath'
     KOROKETTO = 'koroketto'
+    NICOLETTA = 'nicoletta'
 
 class SpecialUsers(enum.StrEnum):
     CRAZY_JAM = 'CRAZY_JAM'.lower().replace('_', '-')  # Crazy Jam Channel
@@ -296,6 +297,9 @@ async def hello_responder(msg:str, send: AsyncSend, *, update, context):
     elif user.id == FRIENDS_USER.get(FriendsUser.CHILLCATH):
         if msg.lower().startswith('hello'):
             await send("Let's sleep, eat Makdak, and, chill all day 😎")
+    elif user.id == FRIENDS_USER.get(FriendsUser.NICOLETTA):
+        if msg.lower().startswith('hello'):
+            await send("No problem, I wanna dance :)")
     else:
         if msg.lower().startswith('hello'):
             await send("Hello ! :3")
