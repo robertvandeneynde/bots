@@ -6201,6 +6201,8 @@ async def list_days_or_today(
             tzs = read_chat_settings('event.timezones')
         else:
             tzs = None
+    
+    relative_scalar = bool(kwargs.get('scalar'))
 
     real_args = (args if mode == 'list' else
                  ('today',) if mode == 'today' else
@@ -6319,7 +6321,7 @@ async def list_days_or_today(
             + "\n".join(
                 f"-{marker} %s: {event_name}" % ' | '.join(f"{d:%H:%M}" for d in (event_date.astimezone(tz) for tz in tzs)) if tzs else
                 f"-{marker} {event_date:%H:%M}: {event_name}" if not relative else
-                f"-{marker} {DatetimeText.format_td_T_minus(event_date - now_tz)}: {event_name}"
+                f"-{marker} {DatetimeText.format_td_T_minus(event_date - now_tz, mode='long' if relative_scalar else 'multiple')}: {event_name}"
                 for event_date, event_name in days[day]
                 for marker in ['>' if display_time_marker and is_past(event_date) else '']))
     
