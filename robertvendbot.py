@@ -6333,8 +6333,9 @@ async def day_of_week_command(update, context, n):
 
 list_today = partial(list_days_or_today, mode='today')
 list_days = partial(list_days_or_today, mode='list')
+list_events = list_days
 
-async def list_events(update: GoodUpdate, context: GoodContext, relative=False):
+async def list_events_legacy(update: GoodUpdate, context: GoodContext, relative=False):
     send = make_send(update, context)
     read_chat_settings = make_read_chat_settings(update, context)
 
@@ -6918,7 +6919,6 @@ async def menu_button_handler(update: GoodUpdate, context: GoodContext):
         'selectevent': NoHandler,
         'nextevent': next_event,
         'lastevent': last_event,
-        'listdays': list_days,
         'listevents': list_events,
         'listtoday': list_today,
         'today': list_today,
@@ -8264,10 +8264,9 @@ COMMAND_DESC = {
     'deleventacceptfollow': "Stop some chat from event following you",
     "nextevent": "Display the next event in emoji row format",
     "lastevent": "Display the last event in emoji row format",
-    "listevents": "List events",
-    "listdays": "List events grouped by days",
-    "listtoday": "Shortcut for /listdays today, can add time marker",
-    "today": "Shortcut for /listtoday",
+    "listevents": "List events grouped by days",
+    "listtoday": "Shortcut for /listevents today, can add time marker",
+    "today": "Shortcut for /listevents today, can add time marker",
     "whereis": "Remember a place/directions for events",
     "thereis": "Set a place a place/directions for events",
     "whereto": "Remember a place/directions for events in cascade mode",
@@ -8399,6 +8398,7 @@ all_modules_parent = {
     'list': None,
 }
 
+# Will be displayed when /help
 COMMAND_LIST_HELP = (
     CommandInfoSpecs('addevent', 'event'),
     CommandInfoSpecs('addschedule', 'event'),
@@ -8406,9 +8406,9 @@ COMMAND_LIST_HELP = (
     CommandInfoSpecs('iaddevent', 'event'),
     CommandInfoSpecs('nextevent', 'event'),
     CommandInfoSpecs('lastevent', 'event'),
+    #CommandInfoSpecs('listdays', 'event'),
     CommandInfoSpecs('listevents', 'event'),
-    CommandInfoSpecs('listdays', 'event'),
-    CommandInfoSpecs('listtoday', 'event'),
+    #CommandInfoSpecs('listtoday', 'event'),
     CommandInfoSpecs('today', 'event'),
     CommandInfoSpecs('tomorrow', 'event'),
     CommandInfoSpecs('mytimezone', 'event'),
@@ -8555,6 +8555,7 @@ def main():
     application.add_handler(CommandHandler('listdaysshort',  partial(list_days,formatting='short')))
     application.add_handler(CommandHandler('listdaysshorthtml',  partial(list_days,formatting='shorthtml')))
     application.add_handler(CommandHandler('rlistdays', partial(list_days, relative=True)))
+    application.add_handler(CommandHandler('rlistevents', partial(list_days, relative=True)))
     application.add_handler(CommandHandler('listoday', list_today)) # hidden command, for typo
     application.add_handler(CommandHandler('rlistoday', partial(list_today, relative=True))) # hidden command, for typo
     application.add_handler(CommandHandler('listtoday', list_today))
