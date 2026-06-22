@@ -3118,7 +3118,7 @@ class ParseEvents:
             raise ParseEvents.TimeWithTz(time=time, rest=args, timezone=timezone)
         
         elif match := re.compile('(\\d{1,2})[:hH](\\d{2})?[:]').fullmatch(Args[0]):
-            hours, minutes = match.Group(1), match.group(2)
+            hours, minutes = match.group(1), match.group(2)
             time = Time(int(hours), int(minutes or '0'))
             if not(tzmatch := re.compile('[A-Za-z_]+|[A-Za-z_]+[/][A-Za-z_]+').fullmatch(Args[1])):
                 raise UserError('Expected Timezone when time ends with ":"')
