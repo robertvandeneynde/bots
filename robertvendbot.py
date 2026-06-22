@@ -6201,6 +6201,8 @@ async def list_days_or_today(
             tzs = read_chat_settings('event.timezones')
         else:
             tzs = None
+
+    print('kwargs', kwargs)
     
     relative_scalar = bool(kwargs.get('scalar'))
 
