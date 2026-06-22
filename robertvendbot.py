@@ -6202,9 +6202,7 @@ async def list_days_or_today(
         else:
             tzs = None
 
-    print('kwargs', kwargs)
-    
-    relative_scalar = bool(kwargs.get('scalar'))
+    relative_scalar = bool('scalar' in kwargs)
 
     real_args = (args if mode == 'list' else
                  ('today',) if mode == 'today' else
