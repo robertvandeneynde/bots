@@ -6871,7 +6871,7 @@ async def menu(update, context):
             InlineKeyboardButton("Delete chat settings", callback_data="cmd:delchatsettings")
         ],
         [
-            InlineKeyboardButton("List events", callback_data="cmd:listdays"),
+            InlineKeyboardButton("List events", callback_data="cmd:listevents"),
             InlineKeyboardButton("Next event", callback_data="cmd:nextevent"),
             InlineKeyboardButton("Last event", callback_data="cmd:lastevent")
         ],
@@ -6934,6 +6934,7 @@ async def menu_button_handler(update: GoodUpdate, context: GoodContext):
         'selectevent': NoHandler,
         'nextevent': next_event,
         'lastevent': last_event,
+        'listdays': list_events,
         'listevents': list_events,
         'listtoday': list_today,
         'today': list_today,
