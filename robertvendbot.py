@@ -6271,7 +6271,7 @@ async def list_days_or_today(
             if future_complete:
                 cur_tuple = (now_tz + timedelta(days=i)).timetuple()[:3]
             else:
-                cur_tuple = (min_list_days + timedelta(days=i)).timedtuple()[:3]
+                cur_tuple = (Date(*min_list_days) + timedelta(days=i)).timetuple()[:3]
 
             if future_complete:
                 if cur_tuple == max_list_days:
