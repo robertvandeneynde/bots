@@ -1573,15 +1573,23 @@ async def eventedit_responder(msg:str, send: AsyncSend, *, update, context):
         field_name: str = match_field_edit.group(1).lower()
         equal_present: str = match_field_edit.group(2)
         new_value: str = match_field_edit.group(3)
+        
         possible_fields = ['name', 'date', 'datetime', 'time', 'when', 'what', 'where', 'location']
 
         if not field_name:
-            # Guessing
-            time, rest = ParseEvents.parse_time(new_value.split())
-            if time and not rest:
-                field_name = 'time'
+            # Guessing based on new_value
+            # Guessing '@ something' implicit location
+            if (match_field_implicit_location := new_value /fullmatches_with_flags(re.I)/ r'@\s+(.*)'):
+                # Guessing
+                field_name = 'location'
+                new_value = match_field_implicit_location.group(1)
             else:
-                raise DoNotAnswer
+                # Guessing '15h' implicit time
+                time, rest = ParseEvents.parse_time(new_value.split())
+                if time and not rest:
+                    field_name = 'time'
+                else:
+                    raise DoNotAnswer
         else:
             if not equal_present:
                 raise DoNotAnswer
