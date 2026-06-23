@@ -6264,16 +6264,13 @@ async def list_days_or_today(
         return event_date <= now_tz
 
     if list_complete:
-        min_list_days = min(days)
-        max_list_days = max(days)
-        future_complete = max_list_days >= now_tz.timetuple()[:3]
         for i in range(50):
             cur_tuple = (datetime_range['beg_local'] + timedelta(days=i)).timetuple()[:3]
 
-            days.setdefault(cur_tuple, [])
-
             if cur_tuple == datetime_range['end_local'].timetuple()[:3]:
                 break
+
+            days.setdefault(cur_tuple, [])
         else:
             raise UserError("Too much days to display as complete (50)")
     
