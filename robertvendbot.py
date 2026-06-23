@@ -6274,71 +6274,80 @@ async def list_days_or_today(
             raise UserError("Too much days to display as complete (50)")
     
     days_as_lines = []
-    for day in sorted(days):
-        date = days[day][0][0].date()
-        if formatting == 'crazyjamdays':
-          day_of_week = DatetimeText.days_short.in_lang(language)[date.weekday()]
-          month_ru = DatetimeText.padezh_month(date.month, date.day)
-          days_as_lines.append(
-            f"\n    {date:%d} {month_ru} ({day_of_week})\n\n"
-            + "\n\n".join(
+    for day_tuple in sorted(days):
+        date = Date(*day_tuple)
+        day_of_week = (DatetimeText.days_short.in_lang(language)[date.weekday()] if formatting == 'crazyjamdays' else 
+                       DatetimeText.days.in_lang(language)[date.weekday()] if formatting == 'linkdays' else
+                       DatetimeText.days.in_lang(language)[date.weekday()] if formatting == 'linkdayshtml' else
+                       DatetimeText.days.in_lang(language)[date.weekday()] if formatting == 'short' else
+                       DatetimeText.days.in_lang(language)[date.weekday()] if formatting == 'shorthtml' else
+                       DatetimeText.days.in_lang(language)[date.weekday()])
+        
+        month_ru = DatetimeText.padezh_month(date.month, date.day)
+
+        day_of_week_fmt = (f"\n    {date:%d} {month_ru} ({day_of_week})\n" if formatting == 'crazyjamdays' else
+                           f"\n    {date:%d/%m} ({day_of_week.capitalize()})\n" if formatting == 'linkdays' else
+                           f"{day_of_week.capitalize()} {date:%d/%m}" if formatting == 'linkdayshtml' else
+                           f"{day_of_week.capitalize()} {date:%d/%m}" if formatting == 'short' else
+                           f"{day_of_week.capitalize()} {date:%d/%m}" if formatting == 'shorthtml' else
+                           f"{day_of_week.capitalize()} {date:%d/%m}")
+        
+        day_events = days[day_tuple]
+
+        if day_events == []:
+            day_content = '/'
+            
+        elif formatting == 'crazyjamdays':
+          day_content = (
+            "\n\n".join(
                  f"{n}) {event_link}\n{event_name}" if event_link else 
                  f"{n}) {event_name}"
-                for n, (event_date, event_name, event_link) in enumerate(days[day], start=1)
+                for n, (event_date, event_name, event_link) in enumerate(day_events, start=1)
             ))
         elif formatting == 'linkdays':
-          day_of_week = DatetimeText.days.in_lang(language)[date.weekday()]
-          days_as_lines.append(
-            f"\n    {date:%d/%m} ({day_of_week.capitalize()})\n\n"
-            + "\n\n".join(
+          day_content = (
+            "\n\n".join(
                  f"{n}) {event_link}\n{event_name}" if event_link and event_date.time() == Time(0, 0) else 
                  f"{n}) {event_link}\n{event_date:%H:%M}: {event_name}" if event_link and event_date.time() != Time(0, 0) else 
                  f"{n}) {event_name}" if event_date.time() == Time(0, 0) else 
                  f"{n}) {event_date:%H:%M}: {event_name}"
-                for n, (event_date, event_name, event_link) in enumerate(days[day], start=1)
+                for n, (event_date, event_name, event_link) in enumerate(day_events, start=1)
             ))
         elif formatting == 'linkdayshtml':
-            day_of_week = DatetimeText.days.in_lang(language)[date.weekday()]
-            days_as_lines.append(
-            f"{day_of_week.capitalize()} {date:%d/%m}\n"
-            + "\n".join(
+            day_content = (
+            "\n".join(
                  f"""- <a href="{html.escape(event_link)}">{html.escape(event_name)}</a>""" if event_link and event_date.time() == Time(0, 0) else 
                  f"""- <a href="{html.escape(event_link)}">{event_date:%H:%M}: {html.escape(event_name)}</a>""" if event_link and event_date.time() != Time(0, 0) else 
                  f"""- {html.escape(event_name)}""" if event_date.time() == Time(0, 0) else 
                  f"""- {event_date:%H:%M}: {html.escape(event_name)}"""
-                for n, (event_date, event_name, event_link) in enumerate(days[day], start=1)
+                for n, (event_date, event_name, event_link) in enumerate(day_events, start=1)
             ))
         elif formatting in ('short', ):
-            day_of_week = DatetimeText.days.in_lang(language)[date.weekday()]
-            days_as_lines.append(
-                f"{day_of_week.capitalize()} {date:%d/%m}\n"
-                + "\n".join(
+            day_content = (
+                "\n".join(
                     f"""- {event_pure_name}"""
-                    for event_date, event_name in days[day]
+                    for event_date, event_name in day_events
                     for (event_pure_name, event_location) in [split_event_name_into_what_where(event_name)]
                 )
             )
         elif formatting in ('shorthtml', ):
-            day_of_week = DatetimeText.days.in_lang(language)[date.weekday()]
-            days_as_lines.append(
-                f"{day_of_week.capitalize()} {date:%d/%m}\n"
-                + "\n".join(
+            day_content = (
+                "\n".join(
                     f"""- <a href="{html.escape(event_link)}">{html.escape(event_pure_name)}</a>"""
-                    for event_date, event_name, event_link in days[day]
+                    for event_date, event_name, event_link in day_events
                     for (event_pure_name, event_location) in [split_event_name_into_what_where(event_name)]
                 )
             )
         else:
-          day_of_week = DatetimeText.days.in_lang(language)[date.weekday()]
-          days_as_lines.append(
-            f"{day_of_week.capitalize()} {date:%d/%m}"
-            + "\n"
-            + "\n".join(
+          day_content = (
+            "\n".join(
                 f"-{marker} %s: {event_name}" % ' | '.join(f"{d:%H:%M}" for d in (event_date.astimezone(tz) for tz in tzs)) if tzs else
                 f"-{marker} {event_date:%H:%M}: {event_name}" if not relative else
                 f"-{marker} {DatetimeText.format_td_T_minus(event_date - now_tz, format='long' if relative_scalar else 'multiple')}: {event_name}"
-                for event_date, event_name in days[day]
+                for event_date, event_name in day_events
                 for marker in ['>' if display_time_marker and is_past(event_date) else '']))
+        
+        days_as_lines.append(day_of_week_fmt + '\n' + day_content)
     
     msg = ('\n' if with_link and not with_html else '\n\n').join(days_as_lines)
     
