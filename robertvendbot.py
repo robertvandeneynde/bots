@@ -6205,7 +6205,8 @@ async def list_days_or_today(
             tzs = read_chat_settings('event.timezones')
         else:
             tzs = None
-
+    
+    list_complete = bool('complete' in kwargs)
     relative_scalar = bool('scalar' in kwargs)
 
     real_args = (args if mode == 'list' else
@@ -6261,6 +6262,16 @@ async def list_days_or_today(
     now_tz = datetime.now().astimezone(tz)
     def is_past(event_date):
         return event_date <= now_tz
+
+    if list_complete:
+        max_list_days = max(days)
+        for i in range(50):
+            cur_tuple = (now_tz + timedelta(days=i)).timetuple()[:3]
+            if cur_tuple == max_list_days:
+                break
+            days.setdefault(cur_tuple, [])
+        else:
+            raise UserError("Too much days to display as complete (50)")
     
     days_as_lines = []
     for day in sorted(days):
