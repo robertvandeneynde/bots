@@ -5876,12 +5876,16 @@ async def next_or_last_event(update: GoodUpdate, context: GoodContext, n:int, *,
 
     do_event_admin_check('list', setting=read_chat_settings('event.admins'), user_id=update.effective_user.id)
 
+    args, kwargs = clean_kwarg_args(context.args)
+
+    relative_scalar = bool('scalar' in kwargs)
+
     datetime_str = None
     skip_n = None
-    if len(context.args) == 0:
+    if len(args) == 0:
         pass
-    elif len(context.args) == 1:
-        first_arg, = context.args
+    elif len(args) == 1:
+        first_arg, = args
 
         try:
             skip_n = int(first_arg)
@@ -5896,8 +5900,8 @@ async def next_or_last_event(update: GoodUpdate, context: GoodContext, n:int, *,
             if not skip_n > 0:
                 raise UserError('n must be > 0')
             
-    elif len(context.args) == 2:
-        date, hour = context.args
+    elif len(args) == 2:
+        date, hour = args
         if len(hour) <= len('08:00'):
             hour += ':00'
         datetime_str = date + ' ' + hour
@@ -5932,7 +5936,7 @@ async def next_or_last_event(update: GoodUpdate, context: GoodContext, n:int, *,
     link = event_fetch_one_link(event_id=rowid, connection=None)
     display_link = do_if_setting_on(read_chat_settings('event.addevent.display_link'))
 
-    await send(EventFormatter.format_one(relative=relative, name=name, datetime=datetime, date=date, time=time, tz=tz, chat_timezones=chat_timezones, link=link, display_link=display_link))
+    await send(EventFormatter.format_one(relative=relative, relative_scalar=relative_scalar, name=name, datetime=datetime, date=date, time=time, tz=tz, chat_timezones=chat_timezones, link=link, display_link=display_link))
 
 def event_fetch_one_link(event_id, connection):
     my_simple_sql = partial(simple_sql_args, connection=connection)
@@ -5941,7 +5945,7 @@ def event_fetch_one_link(event_id, connection):
 
 class EventFormatter:
     @staticmethod
-    def format_one(*, relative, name, datetime, date, time, tz, chat_timezones, link, display_link):
+    def format_one(*, relative, name, datetime, date, time, tz, chat_timezones, link, display_link, relative_scalar=False):
         absolute = not relative
         infos = split_event_with_where_etc({'what': name})
         emojis = EventFormatting.emojis
@@ -5969,7 +5973,7 @@ class EventFormatter:
                 for datetime_tz in [datetime.astimezone(timezone)]
             ] if absolute and bool(time) else [],
             [
-                f"{emojis.Date} {DatetimeText.format_td_T_minus(datetime - now)}",
+                f"{emojis.Date} {DatetimeText.format_td_T_minus(datetime - now, format='long' if relative_scalar else 'multiple')}",
             ] if relative else [],
             [
                 f"{emojis.Link} {link}"
