@@ -6265,10 +6265,21 @@ async def list_days_or_today(
 
     if list_complete:
         max_list_days = max(days)
+        min_list_days = min(days)
+        future_complete = max_list_days >= now_tz.timetuple()[:3]
         for i in range(50):
-            cur_tuple = (now_tz + timedelta(days=i)).timetuple()[:3]
-            if cur_tuple == max_list_days:
-                break
+            if future_complete:
+                cur_tuple = (now_tz + timedelta(days=i)).timetuple()[:3]
+            else:
+                cur_tuple = (min_list_days + timedelta(days=i)).timedtuple()[:3]
+
+            if future_complete:
+                if cur_tuple == max_list_days:
+                    break
+            else:
+                if cur_tuple == now_tz.timetuple()[:3]:
+                    break
+
             days.setdefault(cur_tuple, [])
         else:
             raise UserError("Too much days to display as complete (50)")
