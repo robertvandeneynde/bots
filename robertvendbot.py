@@ -1565,7 +1565,7 @@ async def eventedit_responder(msg:str, send: AsyncSend, *, update, context):
 
         simple_sql(('''UPDATE Events SET date=? where rowid=?''', (DatetimeDbSerializer.strftime(after), event_db['rowid'], )))
 
-    elif match_field_edit := msg /fullmatches_with_flags(re.I)/ r'(\p{L}*)[ ]*([=]?)[ ]*(.*)':
+    elif match_field_edit := msg /fullmatches_with_flags(re.I)/ r'(\p{L}*)[ ]*([+][=]|[@][=]|[=]|)[ ]*(.*)':
         read_chat_settings = make_read_chat_settings(update, context)
 
         rest: Sequence[str]
@@ -1599,12 +1599,24 @@ async def eventedit_responder(msg:str, send: AsyncSend, *, update, context):
         event_db = try_retrieve_event()
         event_rich = split_event_with_where_etc({'what': event_db['name']})
 
+        def modification_equal(old, new, equal):
+            assert equal in ('+=', '@=', '=')
+            if equal == '=':
+                return new
+            if equal == '+=':
+                return (old + ' ' + new).strip()
+            if equal == '@=':
+                return (new + ' ' + old).strip()
+            raise AssertionError
+
         if field_name in ('name', 'what'):
-            event_rich['what'] = new_value
+            old_value = event_rich.get('what', '') or ''
+            event_rich['what'] = modification_equal(equal=equal_present, old=old_value, new=new_value)
             db_datetime = event_db['date']
         
         elif field_name in ('where', 'location'):
-            event_rich['where'] = new_value
+            old_value = event_rich.get('where', '') or ''
+            event_rich['where'] = modification_equal(equal=equal_present, old=old_value, new=new_value)
             db_datetime = event_db['date']
 
         elif field_name in ('datetime', 'when'):
