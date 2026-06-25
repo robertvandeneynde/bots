@@ -6348,7 +6348,7 @@ async def list_days_or_today(
                 "\n".join(
                     f"""- {event_pure_name}""" if event_pure_name else 
                     f"""- @ {event_location}""" if event_location else
-                    f"""- Event"""
+                    f"""- """
                     for event_date, event_name in day_events
                     for (event_pure_name, event_location) in [split_event_name_into_what_where(event_name)]
                 )
@@ -6358,7 +6358,7 @@ async def list_days_or_today(
                 "\n".join(
                     f"""- <a href="{html.escape(event_link)}">{html.escape(event_pure_name)}</a>""" if event_pure_name else
                     f"""- <a href="{html.escape(event_link)}">{html.escape(event_location)}</a>""" if event_location else
-                    f"""- <a href="{html.escape(event_link)}">🔗 Event 🔗</a>"""
+                    f"""- <a href="{html.escape(event_link)}">🔗</a>"""
                     for event_date, event_name, event_link in day_events
                     for (event_pure_name, event_location) in [split_event_name_into_what_where(event_name)]
                 )
