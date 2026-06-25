@@ -6444,14 +6444,24 @@ async def delevent_from_answer(*, reply, update, context):
     send = make_send(update, context)
     await db_delete_event(update, context, send=send, chat_id=update.effective_chat.id, event_id=event_db['rowid'], tz=tz)
 
-async def delevent(update: GoodUpdate, context: GoodContext):
+async def del_or_cancel_event(update: GoodUpdate, context: GoodContext, *, mode:Literal['del', 'cancel']):
+    assert mode in ('del', 'cancel')
+
     send = make_send(update, context)
     read_chat_settings = make_read_chat_settings(update, context)
 
-    do_event_admin_check('del', setting=read_chat_settings('event.admins'), user_id=update.effective_user.id)
+    if mode == 'del':
+        do_event_admin_check('del', setting=read_chat_settings('event.admins'), user_id=update.effective_user.id)
+    elif mode == 'cancel':
+        do_event_admin_check('edit', setting=read_chat_settings('event.admins'), user_id=update.effective_user.id)
+    else:
+        raise AssertionError
 
     if reply := update_get_reply(update):
-        await delevent_from_answer(reply=reply, update=update, context=context)
+        if mode == 'del':
+            await delevent_from_answer(reply=reply, update=update, context=context)
+        elif mode == 'cancel':
+            raise UserError("Not implemented")
         return ConversationHandler.END
 
     strptime = DatetimeDbSerializer.strptime
@@ -6485,11 +6495,16 @@ async def delevent(update: GoodUpdate, context: GoodContext):
     
     cancel = [[InlineKeyboardButton("/cancel", callback_data=json.dumps(saved_info_dict | dict(rowid="null")))]]
 
-    await send("Choose an event to delete:", reply_markup=InlineKeyboardMarkup(keyboard + cancel))
+    await send("Choose an event to delete:" if mode == 'del' else "Choose an event to cancel:" if mode == 'cancel' else raise_error(AssertionError), reply_markup=InlineKeyboardMarkup(keyboard + cancel))
 
     return 0
 
-async def do_delete_event(update: GoodUpdate, context: GoodContext):
+delevent = partial(del_or_cancel_event, mode='del')
+cancelevent = partial(del_or_cancel_event, mode='cancel')
+
+async def do_delete_or_cancel_event(update: GoodUpdate, context: GoodContext, *, mode:Literal['del', 'cancel']):
+    assert mode in ('del', 'cancel')
+
     query = update.callback_query
     user = query.from_user
     await query.answer()
@@ -6499,16 +6514,24 @@ async def do_delete_event(update: GoodUpdate, context: GoodContext):
     
     rowid = data_dict["rowid"]
     if rowid == "null":
-        await send("Cancelled: No event deleted")
+        await send("Cancelled: No event deleted" if mode == 'del' else "Cancelled: No event cancelled" if mode == 'cancel' else raise_error(AssertionError))
     else:
         chat_id = data_dict['chat_id']
-        await db_delete_event(update, context, send, chat_id=update.effective_chat.id, event_id=rowid, tz=induce_my_timezone(user_id=user.id, chat_id=chat_id))
+        if mode == 'del':
+            await db_delete_event(update, context, send, chat_id=update.effective_chat.id, event_id=rowid, tz=induce_my_timezone(user_id=user.id, chat_id=chat_id))
+        elif mode == 'cancel':
+            await db_cancel_event(update, context, send, chat_id=update.effective_chat.id, event_id=rowid, tz=induce_my_timezone(user_id=user.id, chat_id=chat_id))
+        else:
+            raise AssertionError
 
     # await query.edit_message_text
     # await query.edit_message_reply_markup()
     await query.delete_message()
         
     return ConversationHandler.END
+
+do_delete_event = partial(do_delete_or_cancel_event, mode='del')
+do_cancel_event = partial(do_cancel_event, mode='cancel')
 
 async def selectevent(update: GoodUpdate, context: GoodContext):
     send = make_send(update, context)
@@ -6581,6 +6604,18 @@ async def db_delete_event(update: GoodUpdate, context: GoodContext, send: AsyncS
     simple_sql(('delete from Events where chat_id = ? and rowid = ?', (chat_id, event_id)))
     
     await send(f"Event deleted" if infos is None else "Event deleted: {}".format(dict(date=date_tz, name=infos.get('name'))))
+
+async def db_cancel_event(update: GoodUpdate, context: GoodContext, send: AsyncSend, *, chat_id, event_id, tz):
+    read_chat_settings = make_read_chat_settings(update, context)
+    
+    infos = dict(only_one(simple_sql_dict(('select date, name from Events where chat_id = ? and rowid = ?', (chat_id, event_id, )))))
+    new_name = ('(Cancelled) ' + infos['name']).strip()
+
+    do_event_admin_check('edit', setting=read_chat_settings('event.admins'), user_id=update.effective_user.id)
+
+    simple_sql(('update Events set name = ? where chat_id = ? and name = ? and date = ?', (new_name, chat_id, infos['name'], infos['date'])))
+
+    await send('Event cancelled')
 
 def n_to_1_dict(x:dict|Iterable):
     gen = x.items() if isinstance(x, dict) else x
@@ -8468,6 +8503,7 @@ COMMAND_LIST_HELP = (
     CommandInfoSpecs('addevent', 'event'),
     CommandInfoSpecs('addschedule', 'event'),
     CommandInfoSpecs('delevent', 'event'),
+    CommandInfoSpecs('cancelevent', 'event'),
     CommandInfoSpecs('iaddevent', 'event'),
     CommandInfoSpecs('nextevent', 'event'),
     CommandInfoSpecs('lastevent', 'event'),
@@ -8651,6 +8687,13 @@ def main():
         entry_points=[CommandHandler("selectevent", selectevent)],
         states={
             0: [CallbackQueryHandler(do_selectevent)],
+        },
+        fallbacks=[],
+    ))
+    add_conversation_handler(application, ConversationHandler(
+        entry_points=[CommandHandler("cancelevent", cancelevent)],
+        states={
+            0: [CallbackQueryHandler(do_cancel_event)],
         },
         fallbacks=[],
     ))
