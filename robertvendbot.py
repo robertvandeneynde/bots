@@ -6531,7 +6531,7 @@ async def do_delete_or_cancel_event(update: GoodUpdate, context: GoodContext, *,
     return ConversationHandler.END
 
 do_delete_event = partial(do_delete_or_cancel_event, mode='del')
-do_cancel_event = partial(do_cancel_event, mode='cancel')
+do_cancel_event = partial(do_delete_or_cancel_event, mode='cancel')
 
 async def selectevent(update: GoodUpdate, context: GoodContext):
     send = make_send(update, context)
@@ -6607,7 +6607,7 @@ async def db_delete_event(update: GoodUpdate, context: GoodContext, send: AsyncS
 
 async def db_cancel_event(update: GoodUpdate, context: GoodContext, send: AsyncSend, *, chat_id, event_id, tz):
     read_chat_settings = make_read_chat_settings(update, context)
-    
+
     infos = dict(only_one(simple_sql_dict(('select date, name from Events where chat_id = ? and rowid = ?', (chat_id, event_id, )))))
     new_name = ('(Cancelled) ' + infos['name']).strip()
 
