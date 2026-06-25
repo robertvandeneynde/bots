@@ -6609,7 +6609,7 @@ async def db_cancel_event(update: GoodUpdate, context: GoodContext, send: AsyncS
     read_chat_settings = make_read_chat_settings(update, context)
 
     infos = dict(only_one(simple_sql_dict(('select date, name from Events where chat_id = ? and rowid = ?', (chat_id, event_id, )))))
-    new_name = ('(Cancelled) ' + infos['name']).strip()
+    new_name = ('(❌) ' + infos['name']).strip()
 
     do_event_admin_check('edit', setting=read_chat_settings('event.admins'), user_id=update.effective_user.id)
 
