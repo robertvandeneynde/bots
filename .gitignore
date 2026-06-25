@@ -1,8 +1,5 @@
-*local.py
-db.sqlite
-token.json
-credentials.json
-/run
-/.vscode
-/__pycache__
+/.kdev4
+*.kdev4
+__pycache__
 
+/telegram_settings_local.py
