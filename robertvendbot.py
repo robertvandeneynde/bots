@@ -3219,7 +3219,8 @@ class ParseEvents:
             try_test = rest
             parsed_event_date, try_rest = parse_event_date(try_test)
             if parsed_event_date.relative_time_timedelta is not None:
-                return parsed_event_date, None, None, try_rest
+                time, timezone, try_rest = process_time(try_rest)
+                return parsed_event_date, time, timezone, try_rest
             
             # try date, time
             try_rest = rest
@@ -3428,6 +3429,9 @@ def parse_datetime_point(update: GoodUpdate, context: GoodContext, when_infos=No
     if relative_time_timedelta is not None:
         datetime = Datetime.now().astimezone(tz) + relative_time_timedelta
 
+        if time is not None:
+            datetime = Datetime.combine(datetime, time)
+            
         date = datetime.date()
         time = datetime.time()
         date_end = date + timedelta(days=1)
