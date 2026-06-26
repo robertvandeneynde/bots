@@ -3124,6 +3124,8 @@ def parse_event_date(args: Sequence[str]) -> tuple[ParsedEventDate, Sequence[str
         
         if date_str is None:
             date_str = ' '.join(args[:n])
+    else:
+        n = 0
 
     return ParsedEventDate(
         day_of_week=day_of_week,
