@@ -3427,14 +3427,20 @@ def parse_datetime_point(update: GoodUpdate, context: GoodContext, when_infos=No
         tz_explicit = False
     
     if relative_time_timedelta is not None:
+        print('relative_time_timedelta', relative_time_timedelta)
         datetime = Datetime.now().astimezone(tz) + relative_time_timedelta
+        print('datetime', datetime)
+        print('time', time)
 
         if time is not None:
             datetime = Datetime.combine(datetime, time)
+        
+        print("datetime2", datetime)
 
         date = datetime.date()
         time = datetime.time()
         date_end = date + timedelta(days=1)
+        print("date time date_end", date, time, date_end)
     
     else:
         if required_time:
