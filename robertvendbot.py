@@ -4523,7 +4523,7 @@ class events(GeneralAction):
             case self.DuplicatesUsageError:
                 return await self.send("Usage:\n/events removeduplicates [when]")
             case _:
-                return await self.send("Usage:\n/events add when [time] [what]\n/events removeduplicates [when]\n")
+                return await self.send("Usage:\n/events add when [time] [what]\n/events removeduplicates [when]\n/events mergeduplicates [when]\n")
 
 class listsmodule:
 
