@@ -3413,7 +3413,7 @@ def parse_datetime_point(update: GoodUpdate, context: GoodContext, when_infos=No
         date_str, time, name_from_when_part, day_of_week, relative_day_keyword, timezone_event_str, relative_time_timedelta = ParseEvents.parse_event(when_infos.split())
         if name_from_when_part:
             raise UserError("Too much infos in the When part")
-    if not date_str:
+    if not(date_str or relative_day_keyword is not None):
         raise UserError("Must specify an event with date")
 
     if timezone_event_str:
