@@ -3105,24 +3105,25 @@ def parse_event_date(args: Sequence[str]) -> tuple[ParsedEventDate, Sequence[str
         day_of_week = '' # we don't know the day of week
 
     date_str = None
-    if ParseEvents.is_valid_date(Args[0]): # Example: 2020-12-31
-        n = 1 # the first token is the date
-    elif Args[0].isdecimal() and Args[1].lower() in DatetimeText.months_value \
-    or Args[1].isdecimal() and Args[0].lower() in DatetimeText.months_value: # Example: 25 November
-        if Args[2].isdecimal() and len(Args[2]) == 4: # Example: 2012
-            n = 3 # has year
+    if relative_time_timedelta is None:
+        if ParseEvents.is_valid_date(Args[0]): # Example: 2020-12-31
+            n = 1 # the first token is the date
+        elif Args[0].isdecimal() and Args[1].lower() in DatetimeText.months_value \
+        or Args[1].isdecimal() and Args[0].lower() in DatetimeText.months_value: # Example: 25 November
+            if Args[2].isdecimal() and len(Args[2]) == 4: # Example: 2012
+                n = 3 # has year
+            else:
+                n = 2 # no year
         else:
-            n = 2 # no year
-    else:
-        n = 0
-        if relative_day_keyword or day_of_week:
-            # if only day_of_week: it will be enough to know the date
-            # if only relative_day_keyword: it will be enough to know the date
-            # if both: we are based on the relative_day_keyword (today) and will later check that it corresponds to a "Friday" for example 
-            date_str = relative_day_keyword or day_of_week
-    
-    if date_str is None:
-        date_str = ' '.join(args[:n])
+            n = 0
+            if relative_day_keyword or day_of_week:
+                # if only day_of_week: it will be enough to know the date
+                # if only relative_day_keyword: it will be enough to know the date
+                # if both: we are based on the relative_day_keyword (today) and will later check that it corresponds to a "Friday" for example 
+                date_str = relative_day_keyword or day_of_week
+        
+        if date_str is None:
+            date_str = ' '.join(args[:n])
 
     return ParsedEventDate(
         day_of_week=day_of_week,
@@ -3212,6 +3213,12 @@ class ParseEvents:
             return time, timezone, rest
         
         def parse_event_any_order(rest: Sequence[str]) -> tuple[Any, Any, Any, Sequence[str]]:
+            # try relative_time
+            try_test = rest
+            parsed_event_date, try_rest = parse_event_date(try_test)
+            if parsed_event_date.relative_time_timedelta is not None:
+                return parsed_event_date, None, None, try_rest
+            
             # try date, time
             try_rest = rest
             parsed_event_date, try_rest = parse_event_date(try_rest)
