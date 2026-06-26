@@ -3427,6 +3427,10 @@ def parse_datetime_point(update: GoodUpdate, context: GoodContext, when_infos=No
     
     if relative_time_timedelta is not None:
         datetime = Datetime.now().astimezone(tz) + relative_time_timedelta
+
+        date = datetime.date()
+        time = datetime.time()
+        date_end = date + timedelta(days=1)
     
     else:
         if required_time:
