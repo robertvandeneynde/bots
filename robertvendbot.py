@@ -2803,6 +2803,21 @@ class DatetimeText:
             ('ereyesterday', 'avant-hier', 'avanthier'): 'ereyesterday',
             ('overmorrow', 'après-demain', 'apres-demain', 'apresdemain', 'aprèsdemain'): 'overmorrow',
         })
+
+    @classcachedproperty
+    def PureRelativeDtKeywords(cls):
+        return multi_dict_into_one({
+            ('now', 'mtn', 'maintenant'): 'now',
+        })
+    
+    @classcachedproperty
+    def TimedeltaKeywords(cls):
+        return multi_dict_into_one({
+            ('day', 'days', 'd', 'jour', 'jours', 'j'): Timedelta(days=1),
+            ('hours', 'hour', 'h', 'heure', 'heures'): Timedelta(hours=1),
+            ('minutes', 'minute', 'min', 'mins', 'm'): Timedelta(minutes=1),
+            ('seconds', 'second', 'secs', 'sec', 's', 'secondes', 'seconde'): Timedelta(seconds=1),
+        })
     
     @classcachedproperty
     def DaysAndRelativeKeywords(cls):
@@ -2838,6 +2853,29 @@ class DatetimeText:
     @classmethod
     def is_relative_day_keyword(cls, x:str):
         return x.lower() in cls.PureRelativeKeywords
+    
+    @classmethod
+    def parse_relative_dt_format(cls, x:str):
+        Re = re.compile(r'(@|now|mtn|maintenant)([+-])(\d+)(min|mins|m|sec|secs|s|day|day|d|hour|hours|h)?', re.I)
+        if match := Re.fullmatch(x):
+            now_symbol, sign, digits, unit = match.groups()
+            digits = int(digits)
+            sign = 1 if sign == '+' else -1 if sign == '-' else raise_error(AssertionError)
+            if not unit:
+                if not(digits == 0):
+                    raise UserError('Relative time with no unit can only be zero (now)')
+                
+                unit_dt = Timedelta(seconds=0)
+            else:
+                unit_dt = cls.TimedeltaKeywords[unit]
+            
+            return sign * unit_dt * digits
+        
+        return None
+
+    @classmethod
+    def is_relative_dt_format(cls, x:str):
+        return False
     
     @classmethod
     def is_valid_weekday(cls, x:str):
@@ -2993,6 +3031,7 @@ class ParsedEventMiddleNoName(NamedTuple):
     day_of_week: Optional[str]
     relative_day_keyword: Optional[str]
     timezone: Optional[str]
+    relative_time_timedelta: Optional[Timedelta]
 
 class ParsedEventMiddle(NamedTuple):
     date: Optional[str]   # True if a date was identified (False if no date is found)
@@ -3001,6 +3040,7 @@ class ParsedEventMiddle(NamedTuple):
     day_of_week: Optional[str]  # True if a day_of_week keyword like Monday was used (None is '')
     relative_day_keyword: Optional[str]  # True if a relative_day_keyword like Today was used (None is '')
     timezone: Optional[str]
+    relative_time_timedelta: Optional[Timedelta]
 
     @staticmethod
     def from_no_name(event: ParsedEventMiddleNoName, name:str) -> ParsedEventMiddle:
@@ -3026,6 +3066,7 @@ class ParsedEventDate:
     day_of_week: Optional[str]
     date_str: Optional[str]
     relative_day_keyword: Optional[str]
+    relative_time_timedelta: Optional[Timedelta]
 
 @dataclass
 class ParsedEventTime:
@@ -3048,6 +3089,13 @@ def parse_event_date(args: Sequence[str]) -> tuple[ParsedEventDate, Sequence[str
         Args = GetOrEmpty(args)
     else:
         relative_day_keyword = '' # we don't use any relative day indicator
+    
+    if (dt := DatetimeText.parse_relative_dt_format(Args[0])) is not None:
+        relative_time_timedelta = dt
+        args = args[1:]
+        Args = GetOrEmpty(args)
+    else:
+        relative_time_timedelta = None
 
     if DatetimeText.is_valid_weekday(Args[0]): # Examples: Monday
         day_of_week = Args[0]
@@ -3080,6 +3128,7 @@ def parse_event_date(args: Sequence[str]) -> tuple[ParsedEventDate, Sequence[str
         day_of_week=day_of_week,
         relative_day_keyword=relative_day_keyword,
         date_str=date_str,
+        relative_time_timedelta=relative_time_timedelta,
     ), args[n:]
 
 
@@ -3186,8 +3235,9 @@ class ParseEvents:
         day_of_week = parsed_event_date.day_of_week
         date = parsed_event_date.date_str 
         relative_day_keyword = parsed_event_date.relative_day_keyword
+        relative_time_timedelta = parsed_event_date.relative_time_timedelta
 
-        return ParsedEventMiddleNoName(date=date, time=time, day_of_week=day_of_week, relative_day_keyword=relative_day_keyword, timezone=timezone), args
+        return ParsedEventMiddleNoName(date=date, time=time, day_of_week=day_of_week, relative_day_keyword=relative_day_keyword, timezone=timezone, relative_time_timedelta=relative_time_timedelta), args
     
     @classmethod
     def parse_event(cls, args) -> ParsedEventMiddle:
@@ -3345,13 +3395,13 @@ def parse_datetime_point(update: GoodUpdate, context: GoodContext, when_infos=No
     date_str: Optional[str] = None 
 
     if context.args and not has_inline_kargs:
-        date_str, time, name, day_of_week, relative_day_keyword, timezone_event_str = ParseEvents.parse_event(context.args)
+        date_str, time, name, day_of_week, relative_day_keyword, timezone_event_str, relative_time_timedelta = ParseEvents.parse_event(context.args)
     if what_infos:
         name = name or what_infos
     if when_infos:
         if date_str:
             raise UserError("Multiple When specified")
-        date_str, time, name_from_when_part, day_of_week, relative_day_keyword, timezone_event_str = ParseEvents.parse_event(when_infos.split())
+        date_str, time, name_from_when_part, day_of_week, relative_day_keyword, timezone_event_str, relative_time_timedelta = ParseEvents.parse_event(when_infos.split())
         if name_from_when_part:
             raise UserError("Too much infos in the When part")
     if not date_str:
@@ -3365,14 +3415,19 @@ def parse_datetime_point(update: GoodUpdate, context: GoodContext, when_infos=No
         tz = induce_my_timezone_from_update(update)
         # timezone implicit: need to be in chat.event.timezones to avoid confusion
         tz_explicit = False
+    
+    if relative_time_timedelta is not None:
+        datetime = Datetime.now().astimezone(tz) + relative_time_timedelta
+    
+    else:
+        if required_time:
+            if time is None:
+                raise UserError("Time must be specified (policy of the group)")
 
-    if required_time:
-        if time is None:
-            raise UserError("Time must be specified (policy of the group)")
+        date, date_end = DatetimeText.to_date_range(date_str, tz=tz)
 
-    date, date_end = DatetimeText.to_date_range(date_str, tz=tz)
+        datetime = Datetime.combine(date, time or Time(0,0)).replace(tzinfo=tz)
 
-    datetime = Datetime.combine(date, time or Time(0,0)).replace(tzinfo=tz)
     datetime_utc = datetime.astimezone(UTC)
     
     """
