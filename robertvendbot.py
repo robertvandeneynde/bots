@@ -3431,7 +3431,7 @@ def parse_datetime_point(update: GoodUpdate, context: GoodContext, when_infos=No
 
         if time is not None:
             datetime = Datetime.combine(datetime, time)
-            
+
         date = datetime.date()
         time = datetime.time()
         date_end = date + timedelta(days=1)
@@ -4432,7 +4432,7 @@ class events(GeneralAction):
         match self.Args[0].lower():
             case 'deldups' | 'deldup' | 'deleteduplicates' | 'removeduplicates':
                 return await self.delete_duplicates(args=self.Args[1:])
-            case 'mergetimeduplicates':
+            case 'mergeduplicates' | 'mergedups' | 'mergedup':
                 return await self.merge_time_duplicates(args=self.Args[1:])
             case 'add':
                 return self.send("Not implements yet: use /addevent")
