@@ -1912,7 +1912,7 @@ async def unilinemacro(update, context, *, output:Literal['list', 'set']=list, f
     if not (reply := update_get_reply(update)) and not context.args:
         return await send("Usage: /uniline word1 word2\nCan also be used on a reply message")
     
-    for arg in ([reply.text] if reply else []) + list(context.args):
+    for arg in ([reply.text] if reply else []) + ([' '.join(context.args)] if context.args else []):
         S = iter(arg)
         
         if filtr == 'nonascii':
@@ -1926,7 +1926,7 @@ async def unilinemacro(update, context, *, output:Literal['list', 'set']=list, f
             raise AssertionError
         
         S = map(unilinetext, S)
-        await send('\n'.join(S) or '[]')
+        await send('\n'.join(S) or '/')
 
 uniline = partial(unilinemacro, output='list', filtr=None)
 nuniline = partial(unilinemacro, output='list', filtr='nonascii')
@@ -8831,6 +8831,8 @@ def main():
     application.add_handler(CommandHandler('help', help))
     application.add_handler(CommandHandler('uniline', uniline))
     application.add_handler(CommandHandler('nuniline', nuniline))
+    application.add_handler(CommandHandler('unilineset', unilineset))
+    application.add_handler(CommandHandler('nunilineset', nunilineset))
     application.add_handler(CommandHandler('timein', timein))
     application.add_handler(CommandHandler('timeuntil', timeuntil))
     application.add_handler(CommandHandler('timesince', timesince))
