@@ -1895,22 +1895,43 @@ def unilinetext(x):
     import unicodedata
     return "U+{} {} {}".format(hex(ord(x))[2:].upper().zfill(4), x, unicodedata.name(x, '?'))
 
-async def uniline(update, context):
+def listuniq(it):
+    S = set()
+    L = list()
+    for x in it:
+        if x not in S:
+            L.append(x)
+            S.add(x)
+    return L
+
+async def unilinemacro(update, context, *, output:Literal['list', 'set']=list, filtr:Literal['nonascii', None]=None):
     send = make_send(update, context)
+
+    nonascii = lambda x: ord(x) > 0x7F
+    
     if not (reply := update_get_reply(update)) and not context.args:
         return await send("Usage: /uniline word1 word2\nCan also be used on a reply message")
-    for arg in ([reply.text] if reply else []) + list(context.args):
-        S = map(unilinetext, arg)
-        await send('\n'.join(S) or '[]')
+    
+    for arg in ([reply.text] if reply else []) + ([' '.join(context.args)] if context.args else []):
+        S = iter(arg)
+        
+        if filtr == 'nonascii':
+            S = filter(nonascii, S)
+        
+        if output == 'list':
+            S = list(S)
+        elif output == 'set':
+            S = listuniq(S)
+        else:
+            raise AssertionError
+        
+        S = map(unilinetext, S)
+        await send('\n'.join(S) or '/')
 
-async def nuniline(update, context):
-    send = make_send(update, context)
-    nonascii = lambda x: ord(x) > 0x7F
-    if not (reply := update_get_reply(update)) and not context.args:
-        return await send("Usage: /nuniline word1 word2\nCan also be used on a reply message")
-    for arg in ([reply.text] if reply else []) + list(context.args):
-        S = map(unilinetext, filter(nonascii, arg))
-        await send('\n'.join(S) or '[]')
+uniline = partial(unilinemacro, output='list', filtr=None)
+nuniline = partial(unilinemacro, output='list', filtr='nonascii')
+unilineset = partial(unilinemacro, output='set', filtr=None)
+nunilineset = partial(unilinemacro, output='set', filtr='nonascii')
 
 async def befluent(update, context):
     send = make_send(update, context)
@@ -8810,6 +8831,8 @@ def main():
     application.add_handler(CommandHandler('help', help))
     application.add_handler(CommandHandler('uniline', uniline))
     application.add_handler(CommandHandler('nuniline', nuniline))
+    application.add_handler(CommandHandler('unilineset', unilineset))
+    application.add_handler(CommandHandler('nunilineset', nunilineset))
     application.add_handler(CommandHandler('timein', timein))
     application.add_handler(CommandHandler('timeuntil', timeuntil))
     application.add_handler(CommandHandler('timesince', timesince))
