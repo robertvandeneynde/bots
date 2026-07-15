@@ -5915,7 +5915,10 @@ async def save_thereis(key, value, *, update, context):
 
     do_save_thereis_db(key, value, chat_id=update.effective_chat.id)
 
-    await send(f"Elephant remembers location:\n{key!r}\n→ {value!r}")
+    def pretty_value(value):
+        return value.replace('\n', ' / ')
+
+    await send(f"Elephant remembers location:\n{key!r}\n→ {pretty_value(value)!r}")
 
 from datetime import datetime, timedelta
 def sommeil(s, *, command) -> tuple[datetime, datetime]:
