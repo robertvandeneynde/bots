@@ -5979,7 +5979,7 @@ def sum_list_args(*lists):
         result.extend(lst)
     return result
 
-async def next_or_last_event(update: GoodUpdate, context: GoodContext, n:int, *, relative=False):
+async def next_or_last_event(update: GoodUpdate, context: GoodContext, n:int, *, relative=False, absolute=True):
     if not(context.args is not None):
         raise WrongContext(context)
     
@@ -6049,7 +6049,7 @@ async def next_or_last_event(update: GoodUpdate, context: GoodContext, n:int, *,
     link = event_fetch_one_link(event_id=rowid, connection=None)
     display_link = do_if_setting_on(read_chat_settings('event.addevent.display_link'))
 
-    await send(EventFormatter.format_one(relative=relative, relative_scalar=relative_scalar, name=name, datetime=datetime, date=date, time=time, tz=tz, chat_timezones=chat_timezones, link=link, display_link=display_link))
+    await send(EventFormatter.format_one(relative=relative, absolute=absolute, relative_scalar=relative_scalar, name=name, datetime=datetime, date=date, time=time, tz=tz, chat_timezones=chat_timezones, link=link, display_link=display_link))
 
 def event_fetch_one_link(event_id, connection):
     my_simple_sql = partial(simple_sql_args, connection=connection)
@@ -6058,8 +6058,7 @@ def event_fetch_one_link(event_id, connection):
 
 class EventFormatter:
     @staticmethod
-    def format_one(*, relative, name, datetime, date, time, tz, chat_timezones, link, display_link, relative_scalar=False):
-        absolute = not relative
+    def format_one(*, relative, absolute, name, datetime, date, time, tz, chat_timezones, link, display_link, relative_scalar=False):
         infos = split_event_with_where_etc({'what': name})
         emojis = EventFormatting.emojis
         now = Datetime.now().astimezone(UTC)
@@ -6086,7 +6085,7 @@ class EventFormatter:
                 for datetime_tz in [datetime.astimezone(timezone)]
             ] if absolute and bool(time) else [],
             [
-                f"{emojis.Date} {DatetimeText.format_td_T_minus(datetime - now, format='long' if relative_scalar else 'multiple')}",
+                f"{emojis.Hourglass} {DatetimeText.format_td_T_minus(datetime - now, format='long' if relative_scalar else 'multiple')}",
             ] if relative else [],
             [
                 f"{emojis.Link} {link}"
@@ -6151,11 +6150,11 @@ class EventFormatter:
             ] if bool(link) and display_link else []
         )))
 
-async def last_event(update, context, *, relative=False):
-    return await next_or_last_event(update, context, -1, relative=relative)
+async def last_event(update, context, *, relative=False, absolute=True):
+    return await next_or_last_event(update, context, -1, relative=relative, absolute=absolute)
 
-async def next_event(update, context, *, relative=False):
-    return await next_or_last_event(update, context, 1, relative=relative)
+async def next_event(update, context, *, relative=False, absolute=True):
+    return await next_or_last_event(update, context, 1, relative=relative, absolute=absolute)
 
 def setting_on_off(s, default):
     return (s if isinstance(s, bool) else
@@ -8331,6 +8330,7 @@ class EventFormatting:
          Date="🗓️",
          Location="📍",
          Link="🔗",
+         Hourglass="⏳"
     )
 
 class Unicode:
@@ -8739,7 +8739,11 @@ def main():
     application.add_handler(CommandHandler('addschedule', addschedule))
     application.add_handler(CommandHandler('eventfollow', macro_event_follow))
     application.add_handler(CommandHandler('nextevent', next_event))
-    application.add_handler(CommandHandler('rnextevent', partial(next_event, relative=True)))
+    application.add_handler(CommandHandler('rnextevent', partial(next_event, relative=True, absolute=False)))
+    application.add_handler(CommandHandler('ranextevent', partial(next_event, relative=True, absolute=True)))
+    application.add_handler(CommandHandler('lastevent', last_event))
+    application.add_handler(CommandHandler('rlastevent', partial(last_event, relative=True, absolute=False)))
+    application.add_handler(CommandHandler('ralastevent', partial(last_event, relative=True, absolute=True)))
     application.add_handler(CommandHandler('listevents', list_events))
     application.add_handler(CommandHandler('rlistevents', partial(list_events, relative=True)))
     application.add_handler(CommandHandler('listdays', list_days))
@@ -8757,8 +8761,6 @@ def main():
     application.add_handler(CommandHandler('today', list_today))
     application.add_handler(CommandHandler('tomorrow', partial(list_days_or_today, mode='tomorrow', relative=False)))
     application.add_handler(CommandHandler('rtoday', partial(list_today, relative=True)))
-    application.add_handler(CommandHandler('lastevent', last_event))
-    application.add_handler(CommandHandler('rlastevent', partial(last_event, relative=True)))
     application.add_handler(CommandHandler('weekiso', weekiso))
     application.add_handler(CommandHandler('weekisoroman', weekisoroman))
     application.add_handler(CommandHandler('whereis', whereis))
