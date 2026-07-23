@@ -3297,6 +3297,7 @@ class ParseEvents:
             before = list(it)
 
             each_activated = False
+            eachday_activated = False
             It = InfiniteEmptyList(it)
             if It[0].lower() in ('each', 'every', 'chaque', 'le'):
                 each_activated = True
@@ -3306,6 +3307,10 @@ class ParseEvents:
                 each_activated = True
                 each_activated_by = ' '.join(It[0:2])
                 it = it[2:]
+            elif It[0].lower() in ('everyday', 'eachday', ):
+                eachday_activated = True
+                eachday_activated_by = It[0]
+                it = it[1:]
                 
             event, it = cls.parse_event_timed(it, raise_if_no_date=False)
             tz = event.timezone or default_tz
@@ -3316,13 +3321,20 @@ class ParseEvents:
                 it = before
                 break
 
-            if each_activated:
-                if not(event.day_of_week or DatetimeText.DaysAndRelativeKeywords.get(event.date) == 'today'):
-                    raise UserError(f"The keyword {each_activated_by!r} has to be applied on a day of the week, or today")
+            if each_activated or eachday_activated:
+                if each_activated:
+                    if not(event.day_of_week or DatetimeText.DaysAndRelativeKeywords.get(event.date) == 'today'):
+                        raise UserError(f"The keyword {each_activated_by!r} has to be applied on a day of the week, or today")
+                else:
+                    pass # everyday can be applied on any date (starting date)
+
                 date_obj, date_obj_end = DatetimeText.to_date_range(event.date, tz=tz)
 
                 It = InfiniteEmptyList(it)
-                n = 4
+
+                n = (4 if each_activated else
+                     7 if eachday_activated else raise_error(AssertionError))
+
                 if (It[0].lower() in ("for", "pour")
                     and It[1].isdecimal()
                     and It[2].lower() in ("times", "fois")):
@@ -3334,8 +3346,12 @@ class ParseEvents:
                     n = int(It[2])
                     it = it[3:]
 
+                base_timedelta = (timedelta(weeks=1) if each_activated else
+                                  timedelta(days=1) if eachday_activated else raise_error(AssertionError))
+
                 for i in range(n):
-                    out.append(event._replace(date=str(date_obj + timedelta(weeks=i))))
+                    out.append(event._replace(date=str(date_obj + base_timedelta * i)))
+            
             else:
                 out.append(event)
 
