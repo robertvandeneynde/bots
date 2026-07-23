@@ -5920,6 +5920,68 @@ async def save_thereis(key, value, *, update, context):
 
     await send(f"Elephant remembers location:\n{key!r}\n→ {pretty_value(value)!r}")
 
+async def morse(update: GoodUpdate, context: GoodContext):
+    send = make_send(update, context)
+    
+    msg = ' '.join(context.args)
+
+    alphabet = {
+        "A": ".-",
+        "B": "-...",
+        "C": "-.-.",
+        "D": "-..",
+        "E": ".",
+        "F": "..-.",
+        "G": "--.",
+        "H": "....",
+        "I": "..",
+        "J": ".---",
+        "K": "-.-",
+        "L": ".-..",
+        "M": "--",
+        "N": "-.",
+        "O": "---",
+        "P": ".--.",
+        "Q": "--.-",
+        "R": ".-.",
+        "S": "...",
+        "T": "-",
+        "U": "..-",
+        "V": "...-",
+        "W": ".--",
+        "X": "-..-",
+        "Y": "-.--",
+        "Z": "--..",
+        "0": "-----",
+        "1": ".----",
+        "2": "..---",
+        "3": "...--",
+        "4": "....-",
+        "5": ".....",
+        "6": "-....",
+        "7": "--...",
+        "8": "---..",
+        "9": "----.",
+        ".": ".-.-.-",
+        ",": "--..--",
+        "?": "..--..",
+        "!": "-.-.--",
+        "-": "-....-",
+        "/": "-..-."
+    }
+    
+    def to_morse(msg):
+        def get(char):
+            if char in alphabet:
+                return alphabet[char]
+            if char.upper() in alphabet:
+                return alphabet[char.upper()]
+            return char
+        
+        return ' '.join(map(get, msg))
+    
+    await send(to_morse(msg) or '/')
+
 from datetime import datetime, timedelta
 def sommeil(s, *, command) -> tuple[datetime, datetime]:
     if m := re.match("/%s (.*)" % command, s):
@@ -8738,6 +8800,8 @@ def main():
             CommandHandler('cancel', InteractiveAddEvent.cancel)
         ]
     ))
+    application.add_handler(CommandHandler('morse', morse))
+    
     application.add_handler(CommandHandler('events', events()))
     application.add_handler(CommandHandler('addschedule', addschedule))
     application.add_handler(CommandHandler('eventfollow', macro_event_follow))
