@@ -3328,7 +3328,7 @@ class ParseEvents:
 
             if each_activated or eachday_activated or eachweek_activated:
                 if each_activated:
-                    if not(event.day_of_week or DatetimeText.DaysAndRelativeKeywords.get(event.date) == 'today'):
+                    if not(event.day_of_week or DatetimeText.DaysAndRelativeKeywords.get(event.date.lower() if event.date else None) == 'today'):
                         raise UserError(f"The keyword {each_activated_by!r} has to be applied on a day of the week, or today")
                 else:
                     pass # everyday can be applied on any date (starting date)
