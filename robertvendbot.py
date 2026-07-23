@@ -5920,6 +5920,21 @@ async def save_thereis(key, value, *, update, context):
 
     await send(f"Elephant remembers location:\n{key!r}\n→ {pretty_value(value)!r}")
 
+async def morse(update: GoodUpdate, context: GoodContext):
+    send = make_send(update, context)
+    
+    msg = ' '.join(context.args)
+
+    alphabet = {
+        's': '...',
+        'o': '---',
+    }
+    
+    def to_morse(msg):
+        return ' '.join(map(lambda char: alphabet.get(char, char), msg))
+    
+    await send(to_morse(msg) or '/')
+
 from datetime import datetime, timedelta
 def sommeil(s, *, command) -> tuple[datetime, datetime]:
     if m := re.match("/%s (.*)" % command, s):
@@ -8738,6 +8753,8 @@ def main():
             CommandHandler('cancel', InteractiveAddEvent.cancel)
         ]
     ))
+    application.add_handler(CommandHandler('morse', morse))
+    
     application.add_handler(CommandHandler('events', events()))
     application.add_handler(CommandHandler('addschedule', addschedule))
     application.add_handler(CommandHandler('eventfollow', macro_event_follow))
