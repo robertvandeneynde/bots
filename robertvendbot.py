@@ -3297,6 +3297,7 @@ class ParseEvents:
             before = list(it)
 
             each_activated = False
+            eachweek_activated = False
             eachday_activated = False
             It = InfiniteEmptyList(it)
             if It[0].lower() in ('each', 'every', 'chaque', 'le'):
@@ -3311,6 +3312,10 @@ class ParseEvents:
                 eachday_activated = True
                 eachday_activated_by = It[0]
                 it = it[1:]
+            elif It[0].lower() in ('everyweek', 'eachweek', ):
+                eachweek_activated = True
+                eachweek_activated_by = It[0]
+                it = it[1:]
                 
             event, it = cls.parse_event_timed(it, raise_if_no_date=False)
             tz = event.timezone or default_tz
@@ -3321,7 +3326,7 @@ class ParseEvents:
                 it = before
                 break
 
-            if each_activated or eachday_activated:
+            if each_activated or eachday_activated or eachweek_activated:
                 if each_activated:
                     if not(event.day_of_week or DatetimeText.DaysAndRelativeKeywords.get(event.date) == 'today'):
                         raise UserError(f"The keyword {each_activated_by!r} has to be applied on a day of the week, or today")
@@ -3332,7 +3337,7 @@ class ParseEvents:
 
                 It = InfiniteEmptyList(it)
 
-                n = (4 if each_activated else
+                n = (4 if each_activated or eachweek_activated else
                      7 if eachday_activated else raise_error(AssertionError))
 
                 if (It[0].lower() in ("for", "pour")
@@ -3346,7 +3351,7 @@ class ParseEvents:
                     n = int(It[2])
                     it = it[3:]
 
-                base_timedelta = (timedelta(weeks=1) if each_activated else
+                base_timedelta = (timedelta(weeks=1) if each_activated or eachweek_activated else
                                   timedelta(days=1) if eachday_activated else raise_error(AssertionError))
 
                 for i in range(n):
