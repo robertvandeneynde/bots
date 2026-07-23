@@ -5926,12 +5926,59 @@ async def morse(update: GoodUpdate, context: GoodContext):
     msg = ' '.join(context.args)
 
     alphabet = {
-        's': '...',
-        'o': '---',
+        "A": ".-",
+        "B": "-...",
+        "C": "-.-.",
+        "D": "-..",
+        "E": ".",
+        "F": "..-.",
+        "G": "--.",
+        "H": "....",
+        "I": "..",
+        "J": ".---",
+        "K": "-.-",
+        "L": ".-..",
+        "M": "--",
+        "N": "-.",
+        "O": "---",
+        "P": ".--.",
+        "Q": "--.-",
+        "R": ".-.",
+        "S": "...",
+        "T": "-",
+        "U": "..-",
+        "V": "...-",
+        "W": ".--",
+        "X": "-..-",
+        "Y": "-.--",
+        "Z": "--..",
+        "0": "-----",
+        "1": ".----",
+        "2": "..---",
+        "3": "...--",
+        "4": "....-",
+        "5": ".....",
+        "6": "-....",
+        "7": "--...",
+        "8": "---..",
+        "9": "----.",
+        ".": ".-.-.-",
+        ",": "--..--",
+        "?": "..--..",
+        "!": "-.-.--",
+        "-": "-....-",
+        "/": "-..-."
     }
     
     def to_morse(msg):
-        return ' '.join(map(lambda char: alphabet.get(char, char), msg))
+        def get(char):
+            if char in alphabet:
+                return alphabet[char]
+            if char.upper() in alphabet:
+                return alphabet[char.upper()]
+            return char
+        
+        return ' '.join(map(get, msg))
     
     await send(to_morse(msg) or '/')
 
