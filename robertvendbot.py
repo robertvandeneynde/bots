@@ -3351,7 +3351,8 @@ class ParseEvents:
 
                 for i in range(n):
                     out.append(event._replace(date=str(date_obj + base_timedelta * i)))
-                    
+            
+            else:
                 out.append(event)
 
         if sum(event.time is not None for event in out) == 1:
