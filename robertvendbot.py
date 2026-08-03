@@ -1583,6 +1583,7 @@ async def eventedit_responder(msg:str, send: AsyncSend, *, update, context):
                 # Guessing
                 field_name = 'location'
                 new_value = match_field_implicit_location.group(1)
+                equal_present = '='  # it is like "location = ..."
             else:
                 # Guessing '15h' implicit time
                 time, rest = ParseEvents.parse_time(new_value.split())
