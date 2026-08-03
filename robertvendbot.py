@@ -2876,8 +2876,12 @@ class DatetimeText:
         return x.lower() in cls.PureRelativeKeywords
     
     @classmethod
-    def parse_relative_dt_format(cls, x:str):
-        Re = re.compile(r'(@|now|mtn|maintenant)([+-])(\d+)(min|mins|m|sec|secs|s|day|day|d|hour|hours|h)?', re.I)
+    def parse_relative_dt_format(cls, x:str) -> Optional[Timedelta]:
+        """
+        now+5days -> timedelta(days=5)
+        blabla -> None
+        """
+        Re = re.compile(r'(@|now|mtn|maintenant)([+-])(\d+)(minutes|minute|mins|min|m|seconds|second|secs|sec|s|days|day|d|hours|hour|h)?', re.I)
         if match := Re.fullmatch(x):
             now_symbol, sign, digits, unit = match.groups()
             digits = int(digits)
