@@ -2967,9 +2967,12 @@ class DatetimeText:
             m = self.months_value[mstr]
             day = date(y, m, d)
 
+        elif (relative_dt := DatetimeText.parse_relative_dt_format(name)) is not None:
+            day = (reference + relative_dt).date()
+
         if day is not None:
             return day, day + timedelta(days=1)
-        
+
         relative_keyword = DatetimeText.DaysAndRelativeKeywords.get(name)
         
         if relative_keyword == "today":
