@@ -276,6 +276,7 @@ async def hello_responder(msg:str, send: AsyncSend, *, update, context):
                 'Chouette',
                 'Inséparable',
                 'Pigeon',
+                'Mésange huppée',
             )
             todays_bird = birds[(Datetime.now(UTC) - Datetime(2026, 2, 2, tzinfo=UTC)).days % len(birds)]
 
