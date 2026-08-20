@@ -112,8 +112,13 @@ async def start(update: GoodUpdate, context: GoodContext):
 async def ids(update: GoodUpdate, context: GoodContext):
     send = make_send(update, context)
 
+    if reply := update_get_reply(update):
+        user = reply.from_user
+    else:
+        user = update.effective_user
+
     await send(str(dict(
-        user_id=update.effective_user.id,
+        user_id=user.id,
         chat_id=update.effective_chat.id,
         thread_id=update.effective_message.message_thread_id)))
 
