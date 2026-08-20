@@ -4235,7 +4235,9 @@ async def add_event(update: GoodUpdate, context: GoodContext):
     if do_unless_setting_off(read_chat_settings('event.location.autocomplete')):
         implicit_thereis(what=initial_name, chat_id=chat_id)
 
-    await post_event(update, context, name=name, datetime=datetime, time=time, date_str=date_str, chat_timezones=chat_timezones, tz=tz, tz_explicit=tz_explicit, chat_id=chat_id, datetime_utc=datetime_utc, link=infos_event and infos_event.get('link'))
+    await post_event(update, context, name=name, datetime=datetime, time=time, date_str=date_str,
+                    chat_timezones=chat_timezones, tz=tz, tz_explicit=tz_explicit, chat_id=chat_id,
+                    datetime_utc=datetime_utc, link=infos_event and infos_event.get('link'))
 
 def addevent_analyse_args_as_object(Args):
     if len(Args) == 0:
@@ -4348,7 +4350,8 @@ async def post_event(update, context, *, name, datetime, time, link, date_str, c
     displays = tz_displays_from_tz_information(tz=tz, time=time, chat_timezones=chat_timezones, tz_explicit=tz_explicit)
 
     display_link = do_if_setting_on(read_chat_settings('event.addevent.display_link'))
-    await send(event_text := EventFormatter.format_for_post(displays=displays, name=name, datetime=datetime, tz=tz, link=link, display_link=display_link))
+    await send(event_text := EventFormatter.format_for_post(displays=displays, name=name, datetime=datetime, tz=tz, link=link, display_link=display_link,
+                                                            relative=do_if_setting_on(read_chat_settings('event.display_relative'))))
     
     if do_if_setting_on(read_chat_settings('event.addevent.display_file')):
         # 2. Send info as clickable ics file to add to calendar
@@ -6091,6 +6094,12 @@ async def next_or_last_event(update: GoodUpdate, context: GoodContext, n:int, *,
 
     args, kwargs = clean_kwarg_args(context.args)
 
+    if relative == 'settings':
+        if do_if_setting_on(read_chat_settings('event.display_relative')):
+            relative = True
+        else:
+            relative = False
+
     relative_scalar = bool('scalar' in kwargs)
 
     datetime_str = None
@@ -6223,9 +6232,10 @@ class EventFormatter:
         )))
 
     @staticmethod
-    def format_for_post(*, displays, name, datetime, tz, link, display_link):
+    def format_for_post(*, displays, name, datetime, tz, link, display_link, relative=False, relative_scalar=False):
         infos = split_event_with_where_etc({'what': name, 'link': link})
         emojis = EventFormatting.emojis
+        timezone = tz
         return '\n'.join(natural_filter(sum_list_args(
             [
                 f"Event added:",
@@ -6245,6 +6255,9 @@ class EventFormatter:
                 for timezone in [tz if display == 'simple' else display[1] if display[0] == 'tz_conversion' else raise_error(AssertionError)]
                 for datetime_tz in [datetime.astimezone(timezone)]
             ],
+            [
+                f"{emojis.Hourglass} {DatetimeText.format_td_T_minus(datetime.astimezone(timezone) - datetime.now().astimezone(timezone), format='long' if relative_scalar else 'multiple')}",
+            ] if relative else [],
             [
                 f"{emojis.Link} {link}"
             ] if bool(link) and display_link else []
@@ -7291,6 +7304,7 @@ ACCEPTED_SETTINGS_CHAT = {
     'event.delevent.display': SettingsSpecs('bool'),
     'event.location.autocomplete': SettingsSpecs('bool'),
     'event.commands.dayofweek': SettingsSpecs('bool'),
+    'event.display_relative': SettingsSpecs('bool'),
     'sharemoney.required_for': SettingsSpecs('bool'),
     'list.space_between_lines': SettingsSpecs('bool'),
     'list.indent': SettingsSpecs('single'),
@@ -8840,10 +8854,10 @@ def main():
     application.add_handler(CommandHandler('events', events()))
     application.add_handler(CommandHandler('addschedule', addschedule))
     application.add_handler(CommandHandler('eventfollow', macro_event_follow))
-    application.add_handler(CommandHandler('nextevent', next_event))
+    application.add_handler(CommandHandler('nextevent', partial(next_event, relative='settings')))
     application.add_handler(CommandHandler('rnextevent', partial(next_event, relative=True, absolute=False)))
     application.add_handler(CommandHandler('ranextevent', partial(next_event, relative=True, absolute=True)))
-    application.add_handler(CommandHandler('lastevent', last_event))
+    application.add_handler(CommandHandler('lastevent', partial(last_event, relative='settings')))
     application.add_handler(CommandHandler('rlastevent', partial(last_event, relative=True, absolute=False)))
     application.add_handler(CommandHandler('ralastevent', partial(last_event, relative=True, absolute=True)))
     application.add_handler(CommandHandler('listevents', list_events))
