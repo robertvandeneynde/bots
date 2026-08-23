@@ -1212,6 +1212,7 @@ async def list_responder(msg: str, send: AsyncSend, *, update, context):
     import regex
 
     read_chat_settings = make_read_chat_settings(update, context)
+    send_trivial = make_send_trivial(update, context)
 
     RE = ListLangRegexes
 
@@ -1512,7 +1513,7 @@ async def list_responder(msg: str, send: AsyncSend, *, update, context):
                         raise AssertionError(f"On operation {operation}")
                 
                     if did_edit:
-                        await send(f"List {list_name!r} edited")
+                        await send_trivial(f"List {list_name!r} edited")
 
                 await operation_one_line(list_name=list_name, previous_aliases=())
                 conn.execute('end transaction')
@@ -2464,6 +2465,29 @@ def make_send(update: GoodUpdate, context: GoodContext, *, save_info: Optional[S
             **kwargs)
     return send  # type: ignore
 
+def make_send_trivial(update, context):
+    send = make_send(update, context)
+
+    async def send_trivial(*args, **kwargs):
+        msg = await send(*args, **kwargs)
+
+        async def delete_message_job(context: ContextTypes.DEFAULT_TYPE):
+            await context.bot.delete_message(
+                chat_id=context.job.data["chat_id"],
+                message_id=context.job.data["message_id"])
+
+        read_chat_settings = make_read_chat_settings(update, context)
+
+        if do_if_setting_on(read_chat_settings('main.delete_trivial')):
+            context.job_queue.run_once(
+                delete_message_job,
+                when=6,
+                data={
+                    "chat_id": msg.chat_id,
+                    "message_id": msg.message_id,
+                })
+        
+    return send_trivial
 
 class WrongUpdate(ValueError):
     def __init__(self, update: Optional[Update] = None):
@@ -5764,6 +5788,7 @@ class EventLocationHelper:
 
 async def whereisto(update, context, *, command: Literal['whereis', 'whereto']):
     send = make_send(update, context)
+    send_trivial = make_send_trivial(update, context)
 
     key: None | str = None
     print_key = False
@@ -5805,13 +5830,15 @@ async def whereisto(update, context, *, command: Literal['whereis', 'whereto']):
     with get_connection() as connection:
     
         if command == 'whereis':
-            await send(EventLocationHelper.whereis_key(key, extension=extension, print_key=print_key, chat_id=update.effective_chat.id, connection=connection))
+            msg = EventLocationHelper.whereis_key(key, extension=extension, print_key=print_key, chat_id=update.effective_chat.id, connection=connection)
         
         elif command == 'whereto':
-            await send(EventLocationHelper.whereto_key(key, extension=extension, print_key=print_key, chat_id=update.effective_chat.id, connection=connection))
+            msg = EventLocationHelper.whereto_key(key, extension=extension, print_key=print_key, chat_id=update.effective_chat.id, connection=connection)
 
         else:
             raise AssertionError
+
+        await (send if msg != "I don't know ! :)" else send_trivial)(msg)
 
 async def whereis(update: GoodUpdate, context: GoodContext):
     return await whereisto(update:=update, context=context, command='whereis') 
@@ -7314,6 +7341,7 @@ ACCEPTED_SETTINGS_CHAT = {
     'list.indent': SettingsSpecs('single'),
     'main.language': SettingsSpecs('single'),
     'main.languages': SettingsSpecs('list'),
+    'main.delete_trivial': SettingsSpecs('bool'),
 } | {
     setting + '.active': SettingsSpecs('bool', default) for _, setting, default in RESPONDERS
 }

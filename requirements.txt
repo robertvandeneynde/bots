@@ -6,3 +6,4 @@ tzdata
 openpyxl
 pyyaml
 funcoperators
+python-telegram-bot[job-queue]
