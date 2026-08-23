@@ -5770,22 +5770,26 @@ async def whereisto(update, context, *, command: Literal['whereis', 'whereto']):
     extension: Optional[str] = None
     if reply := update_get_reply(update):
         try:
+            # Try to parse it as an event
             infos_event = addevent_analyse(update, context)
             infos_event = enrich_event_with_where(infos_event)
-            key = infos_event.get('where', None)
+            key = infos_event.get('where')
 
-            if key is None:
-                return await send("This event does not have a location")
+            if not key:
+                pass # return await send("This event does not have a location")
             else:
                 print_key = True
                 key, extension = EventLocationHelper.split_event_location_into_key_extension(key)
                 if not key:
-                    return await send("This event has an empty location")
+                    pass # return await send("This event has an empty location")
 
         except UserError as e:
             reply_error = e
+        
+        if key is None and not context.args:
+            key = reply.text
 
-    if key is None:
+    if not key:
         try:
             keys = context.args
             key = ' '.join(keys)
