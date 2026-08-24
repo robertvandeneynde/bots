@@ -2188,7 +2188,25 @@ async def dict_command(update: GoodUpdate, context: GoodContext, *, engine:Liter
         return await send_html(' | '.join(f'<a href="{html.escape(url(x))}">{html.escape(x)}</a>' for x in words))
     else:
         return await send('\n\n'.join(url(x) for x in words))
+
+async def simple_url_command(update, context, *, command:Literal['wiki', 'google', 'duck']):
+    import urllib.parse
+    import html
+    send = make_send(update, context)
+    send_html = partial(send, parse_mode='HTML')
+
+    if not context.args:
+        return await send(f'Usage: /{command} query')
+
+    base = {
+        'duck': 'https://duckduckgo.com/search?q={}',
+        'wiki': 'https://wikipedia.org/wiki/{}',
+        'google': 'https://google.com/search?q={}',
+    }[command]
     
+    text = ' '.join(context.args)
+    url = base.format(urllib.parse.quote(text))
+    return await send_html(f'<a href="{html.escape(url)}">{html.escape(text)}</a>')
 
 wikt = partial(dict_command, command_name='wikt', engine='wikt')
 larousse = partial(dict_command, command_name='larousse', engine='larousse')
@@ -3883,7 +3901,7 @@ def irange(a, b=None):
 async def addschedule(update: GoodUpdate, context: GoodContext):
     send = make_send(update, context)
     send_trivial = make_send_trivial(update, context)
-    
+
     read_chat_settings = make_read_chat_settings(update, context)
 
     reply = update_get_reply(update)
@@ -8957,6 +8975,9 @@ def main():
     application.add_handler(CommandHandler('dict', dict_))
     application.add_handler(CommandHandler('wikt', wikt))
     application.add_handler(CommandHandler('larousse', larousse))
+    application.add_handler(CommandHandler('wiki', partial(simple_url_command, command='wiki')))
+    application.add_handler(CommandHandler('google', partial(simple_url_command, command='google')))
+    application.add_handler(CommandHandler('duck', partial(simple_url_command, command='duck')))
     application.add_handler(CommandHandler('eur', eur))
     application.add_handler(CommandHandler('brl', brl))
     application.add_handler(CommandHandler('rub', rub))
