@@ -2206,7 +2206,7 @@ async def simple_url_command(update, context, *, command:Literal['wiki', 'google
     
     text = ' '.join(context.args)
     url = base.format(urllib.parse.quote(text))
-    return await send_html(f'<a href="{html.escape(url)}">{html.escape(text)}</a>')
+    return await send(url)
 
 wikt = partial(dict_command, command_name='wikt', engine='wikt')
 larousse = partial(dict_command, command_name='larousse', engine='larousse')
