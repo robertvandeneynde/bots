@@ -6921,26 +6921,31 @@ async def timein(update: GoodUpdate, context: GoodContext):
         tz_str = '/'.join(pargs)
     elif len(pargs) > 2:
         raise ValueError("Too much arguments")
-    
-    if kwargs.get('at'):
-        at = only_one(kwargs.get('at'))
-        if match := at /fullmatchesI/ r'(\d{1,2})[:h](\d{2})?':
-            h,m = match.groups()
-            h = int(h)
-            m = 0 if m is None else int(m)
-            at = Time(h, m)
-    else:
-        at = None
 
     chat_id = update.effective_chat.id
     user_id = update.effective_user.id
+
+    tz_user = induce_my_timezone(chat_id=chat_id, user_id=user_id)
+
+    at = None
+    if kwargs.get('at'):
+        try:
+            at, new_ats = ParseEvents.parse_time(kwargs['at'])
+        except ParseEvents.TimeWithTz as ret:
+            at = ret.time
+            try:
+                tz_user = ZoneInfoOrAlias(ret.timezone, chat_id=chat_id)
+            except ZoneInfoNotFoundError as e:
+                raise UserError(str(e))
+            new_ats = ret.rest
+
+        assert_true(not new_ats, UserError("Too much info in at: parameter"))
 
     if at is None:
         N = datetime.now()
         def get_dt(tz):
             return N.astimezone(tz).replace(tzinfo=None)
     else:
-        tz_user = induce_my_timezone(chat_id=chat_id, user_id=user_id)
         dt_user = datetime.combine(datetime.now().astimezone(tz_user).replace(tzinfo=None), at).replace(tzinfo=tz_user)
         def get_dt(tz):
             return dt_user.astimezone(tz).replace(tzinfo=None)
