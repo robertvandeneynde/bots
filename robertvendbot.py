@@ -3882,6 +3882,8 @@ def irange(a, b=None):
 
 async def addschedule(update: GoodUpdate, context: GoodContext):
     send = make_send(update, context)
+    send_trivial = make_send_trivial(update, context)
+    
     read_chat_settings = make_read_chat_settings(update, context)
 
     reply = update_get_reply(update)
@@ -3924,7 +3926,7 @@ async def addschedule(update: GoodUpdate, context: GoodContext):
         if not location_autocomplete:
             implicit_thereis(what=name, chat_id=chat_id)
 
-    return await send(f"{len(events)} event(s) added")
+    return await send_trivial(f"{len(events)} event(s) added")
 
 def check_tz_in_chat(*, tz: Timezone, chat_timezones: list[Timezone]):
     if chat_timezones and tz and tz not in chat_timezones:
