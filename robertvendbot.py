@@ -6897,34 +6897,31 @@ def datecombine(date, time):
 async def timedifference(update: GoodUpdate, context: GoodContext, command: str):
     from datetime import timedelta, datetime
     send = make_send(update, context)
-    conversions = n_to_1_dict({
-        ('minutes', 'min', 'minute'): timedelta(minutes=1), 
-        ('days', 'day'): timedelta(days=1),
-        ('h', 'hours', 'hour'): timedelta(hours=1),
-        ('s', 'seconds', 'second'): timedelta(seconds=1),
-        ('weeks', 'week'): timedelta(weeks=1),
-    })
 
-    is_timedelta = re.compile('|'.join(map(re.escape, conversions)))
-    di = next((i for i, x in enumerate(context.args) if is_timedelta.fullmatch(x)), None)
-    units = ('days' if di is None else
-             context.args[di])
-    dtunits = conversions[units]
+    reply = update_get_reply(update)
+
+    if not reply and not context.args:
+        return await send("Usage: /{command} date\nCan also be applied on an event")
+
+    pargs, kwargs = clean_kwarg_args(context.args)
+
+    is_scalar = 'scalar' in kwargs
 
     tz = induce_my_timezone(user_id=update.effective_user.id, chat_id=update.effective_chat.id)
 
-    if reply := update_get_reply(update):
+    if reply:
         event = addevent_analyse_from_bot(update, context, text=reply.text)
         event_db = retrieve_event_from_db(update, None, what=event['what'], when=event['when'])
         event_date_utc = DatetimeDbSerializer.strptime(event_db['date']).replace(tzinfo=UTC)
     else:
-        eventkey, = context.args
+        eventkey, = pargs
         event_date_utc = (DatetimeText.to_datetime_range(eventkey)[0] /datecombine/ Time(0)).astimezone(UTC)
 
     delta = event_date_utc - Datetime.now(UTC)
     if command == 'timesince':
         delta = -delta
-    await send('{:.2f} {}'.format(delta / dtunits, units))
+
+    await send(DatetimeText.format_td_T_minus(delta, format='long' if is_scalar else 'multiple'))
 
 def ZoneInfoOrAlias(tz: str, *, chat_id):
     try:
