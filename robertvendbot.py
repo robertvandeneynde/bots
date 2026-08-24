@@ -1540,7 +1540,7 @@ async def eventedit_responder(msg:str, send: AsyncSend, *, update, context):
         raise DoNotAnswer
     
     def try_retrieve_event():
-        return retrieve_event_from_db(update=update, context=context, what=event['what'], when=event['when'])
+        return retrieve_event_from_db(update, context.args, what=event['what'], when=event['when'])
     
     if match_query := re.fullmatch(r'(Where|Où|Location|Lieu)\s*[?]?', msg, re.I):
         query, = match_query.groups()
@@ -1632,7 +1632,7 @@ async def eventedit_responder(msg:str, send: AsyncSend, *, update, context):
             tz = induce_my_timezone(user_id=user_id, chat_id=chat_id)
             check_tz_in_chat(tz=tz, chat_timezones=read_chat_settings('event.timezones'))
             
-            datetime_object = parse_datetime_point(update, context, when_infos=new_value, what_infos=event_db['name']).datetime.replace(tzinfo=tz)
+            datetime_object = parse_datetime_point(update, context.args, when_infos=new_value, what_infos=event_db['name']).datetime.replace(tzinfo=tz)
             db_datetime = DatetimeDbSerializer.strftime(datetime_object.astimezone(UTC))
         
         elif field_name in ('time', ):
@@ -2974,7 +2974,7 @@ class DatetimeText:
         return cls.months_value.get(x, None)
     
     @classmethod
-    def to_datetime_range(self, name, *, time: Optional[Time] = None, reference: Optional[Datetime] = None, tz: Optional[Timezone] = None):
+    def to_datetime_range(self, name, *, time: Optional[Time] = None, reference: Optional[Datetime] = None, tz: Optional[Timezone] = None) -> Tuple[Date, Date]:
         from datetime import datetime as Datetime, time as Time
         date, date_end = r = self.to_date_range(name, reference=reference, tz=tz)
         datetime = Datetime.combine(date, time or Time(0,0)).replace(tzinfo=tz)
@@ -3495,15 +3495,15 @@ def induce_my_timezone(*, user_id: int, chat_id: int):
         "- This: /chatsettings event.timezones TIMEZONE\n"
         "- Example: /chatsettings event.timezones Europe/Brussels\n")
 
-def parse_datetime_point(update: GoodUpdate, context: GoodContext, when_infos=None, what_infos=None, has_inline_kargs=False, required_time=False) -> ParsedEventFinal:
+def parse_datetime_point(update: GoodUpdate, args: Optional[list[str]], when_infos=None, what_infos=None, required_time=False) -> ParsedEventFinal:
     from datetime import datetime as Datetime, time as Time, date as Date, timedelta
-    read_chat_settings = make_read_chat_settings(update, context)
+    read_chat_settings = make_read_chat_settings(update)
     
     name: Optional[str] = ''
     date_str: Optional[str] = None 
 
-    if context.args and not has_inline_kargs:
-        date_str, time, name, day_of_week, relative_day_keyword, timezone_event_str, relative_time_timedelta = ParseEvents.parse_event(context.args)
+    if args:
+        date_str, time, name, day_of_week, relative_day_keyword, timezone_event_str, relative_time_timedelta = ParseEvents.parse_event(args)
     if what_infos:
         name = name or what_infos
     if when_infos:
@@ -4012,7 +4012,7 @@ class InteractiveAddEvent:
             when = update.message.text  # type: ignore
 
         try:
-            event: ParsedEventFinal = parse_datetime_point(update, context, when_infos=when, what_infos='')
+            event: ParsedEventFinal = parse_datetime_point(update, context.args, when_infos=when, what_infos='')
         except UserError:
             await send("I can't read this date, try again.")
             return 'ask-what-or-time'
@@ -4066,7 +4066,7 @@ class InteractiveAddEvent:
             when = context.user_data['when']
             
         try:
-            parse_datetime_point(update, context, when_infos=when, what_infos='')
+            parse_datetime_point(update, context.args, when_infos=when, what_infos='')
         except UserError:
             await send("I can't read this time, try again")
             return 'ask-what'
@@ -4176,7 +4176,7 @@ class InteractiveAddEvent:
         real_what = (what if not where else what + ' @ ' + where).strip()
         
         required_time = do_if_setting_on(read_chat_settings('event.addevent.required_time'))
-        date_str, time, name, date, date_end, datetime, datetime_utc, tz, tz_explicit = parse_datetime_point(update, context, when_infos=when, what_infos=real_what, required_time=required_time)
+        date_str, time, name, date, date_end, datetime, datetime_utc, tz, tz_explicit = parse_datetime_point(update, context.args, when_infos=when, what_infos=real_what, required_time=required_time)
         
         add_event_to_db(datetime_utc=datetime_utc, name=name, chat_id=chat_id, source_user_id=source_user_id)
 
@@ -4254,7 +4254,7 @@ async def add_event(update: GoodUpdate, context: GoodContext):
     required_time = do_if_setting_on(read_chat_settings('event.addevent.required_time'))
     try:
         date_str, time, name, date, date_end, datetime, datetime_utc, tz, tz_explicit = \
-            parse_datetime_point(update, context, has_inline_kargs=has_inline_kwargs,
+            parse_datetime_point(update, context.args if not has_inline_kwargs else None,
                                  when_infos=CanonInfo.when_infos, what_infos=CanonInfo.what_infos,
                                  required_time=required_time)
     except UnknownDateError:
@@ -5670,9 +5670,9 @@ def addevent_analyse_from_bot(update, context, text:str) -> EventDictAnalysed:  
         'when': when.strip(),
     }  # type: ignore
 
-def retrieve_event_from_db(update, context, what: str, when: str):
+def retrieve_event_from_db(update: GoodUpdate, args: Optional[list[str]], what: str, when: str):
     from datetime import datetime
-    event: ParsedEventFinal = parse_datetime_point(update, context, when_infos=when, what_infos=what)
+    event: ParsedEventFinal = parse_datetime_point(update, args, when_infos=when, what_infos=what)
     
     datetime_utc = event.datetime_utc
     name = event.name
@@ -6695,7 +6695,7 @@ async def list_events_legacy(update: GoodUpdate, context: GoodContext, relative=
 
 async def delevent_from_answer(*, reply, update, context):
     event = addevent_analyse_from_bot(update, context, text=reply.text)
-    event_db = retrieve_event_from_db(update=update, context=context, what=event['what'], when=event['when'])
+    event_db = retrieve_event_from_db(update, context.args, what=event['what'], when=event['when'])
     tz = induce_my_timezone(user_id=update.effective_user.id, chat_id=update.effective_chat.id)
     send = make_send(update, context)
     await db_delete_event(update, context, send=send, chat_id=update.effective_chat.id, event_id=event_db['rowid'], tz=tz)
@@ -6890,8 +6890,9 @@ def n_to_1_dict(x:dict|Iterable):
             d[key] = value
     return d
 
-def fetch_event(key):
-    return None
+@funcoperators.infix
+def datecombine(date, time):
+    return Datetime.combine(date, time)
 
 async def timedifference(update: GoodUpdate, context: GoodContext, command: str):
     from datetime import timedelta, datetime
@@ -6903,14 +6904,24 @@ async def timedifference(update: GoodUpdate, context: GoodContext, command: str)
         ('s', 'seconds', 'second'): timedelta(seconds=1),
         ('weeks', 'week'): timedelta(weeks=1),
     })
+
     is_timedelta = re.compile('|'.join(map(re.escape, conversions)))
     di = next((i for i, x in enumerate(context.args) if is_timedelta.fullmatch(x)), None)
     units = ('days' if di is None else
              context.args[di])
     dtunits = conversions[units]
-    eventkey, = context.args
-    event: datetime = fetch_event(eventkey) or DatetimeText.to_datetime_range(eventkey)[0]
-    delta = event - datetime.now()
+
+    tz = induce_my_timezone(user_id=update.effective_user.id, chat_id=update.effective_chat.id)
+
+    if reply := update_get_reply(update):
+        event = addevent_analyse_from_bot(update, context, text=reply.text)
+        event_db = retrieve_event_from_db(update, None, what=event['what'], when=event['when'])
+        event_date_utc = DatetimeDbSerializer.strptime(event_db['date']).replace(tzinfo=UTC)
+    else:
+        eventkey, = context.args
+        event_date_utc = (DatetimeText.to_datetime_range(eventkey)[0] /datecombine/ Time(0)).astimezone(UTC)
+
+    delta = event_date_utc - Datetime.now(UTC)
     if command == 'timesince':
         delta = -delta
     await send('{:.2f} {}'.format(delta / dtunits, units))
