@@ -1529,6 +1529,16 @@ def int_or_none(setting):
     except ValueError:
         return None
 
+def generator_to_dict(gen):
+    def new(*args, **kwargs):
+        return dict(gen(*args, **kwargs))
+    return new
+
+def generator_to_list(gen):
+    def new(*args, **kwargs):
+        return dict(gen(*args, **kwargs))
+    return new
+
 async def eventedit_responder(msg:str, send: AsyncSend, *, update, context):
     reply = update_get_reply(update)
     assert_true(reply and reply.text, DoNotAnswer)
@@ -1571,7 +1581,7 @@ async def eventedit_responder(msg:str, send: AsyncSend, *, update, context):
         do_event_admin_check('edit', setting=read_chat_settings('event.admins'), user_id=update.effective_user.id)
 
         simple_sql(('''UPDATE Events SET date=? where rowid=?''', (DatetimeDbSerializer.strftime(after), event_db['rowid'], )))
-
+    
     elif match_field_edit := msg /fullmatches_with_flags(re.I)/ r'(\p{L}*)[ ]*([+][=]|[@][=]|[=]|)[ ]*(.*)':
         read_chat_settings = make_read_chat_settings(update, context)
 
@@ -1583,21 +1593,25 @@ async def eventedit_responder(msg:str, send: AsyncSend, *, update, context):
         
         possible_fields = ['name', 'date', 'datetime', 'time', 'when', 'what', 'where', 'location']
 
+        def match_implicit_time(new_value) -> Optional[Time]:
+            time, rest = ParseEvents.parse_time(new_value.split())
+            return time if time and not rest else None
+
         if not field_name:
             # Guessing based on new_value
             # Guessing '@ something' implicit location
-            if (match_field_implicit_location := new_value /fullmatches_with_flags(re.I)/ r'@\s+(.*)'):
+            if match_field_implicit_location := new_value /fullmatches_with_flags(re.I)/ r'@\s+(.*)':
                 # Guessing
                 field_name = 'location'
                 new_value = match_field_implicit_location.group(1)
                 equal_present = '='  # it is like "location = ..."
+            elif (time := match_implicit_time(new_value)) is not None:
+                # Guessing '15h' implicit time, or '15:00', etc.
+                field_name = 'time'
+            elif equal_present == '+=':
+                field_name = 'super'
             else:
-                # Guessing '15h' implicit time
-                time, rest = ParseEvents.parse_time(new_value.split())
-                if time and not rest:
-                    field_name = 'time'
-                else:
-                    raise DoNotAnswer
+                raise DoNotAnswer
         else:
             if not equal_present:
                 raise DoNotAnswer
@@ -1618,8 +1632,79 @@ async def eventedit_responder(msg:str, send: AsyncSend, *, update, context):
             raise AssertionError
 
         if field_name in ('name', 'what'):
-            old_value = event_rich.get('what', '') or ''
+            old_value = event_rich.get('what') or ''
             event_rich['what'] = modification_equal(equal=equal_present, old=old_value, new=new_value)
+            db_datetime = event_db['date']
+        
+        elif field_name in ('super', ):
+            def merge(c1, c2):
+
+                @funcoperators.infix
+                def merge_str(a,b):
+                    return (a.strip() + ' ' + b.strip()).strip()
+
+                @funcoperators.infix
+                def merge_dict(a,b):
+                    c = {}
+                    for k in a:
+                        if k in b:
+                            c[k] = a[k] -merge_str- b[k]
+                        else:
+                            c[k] = a[k]
+                    for k in (k for k in b if k not in a):
+                        c[k] = b[k]
+                    return c
+                
+                return {
+                    'basic': c1['basic'] -merge_str- c2['basic'],
+                    'where': c1['where'] -merge_str- c2['where'],
+                    'dict': c1['dict'] -merge_dict- c2['dict'],
+                }
+
+            def canonical(value):
+                what, where = split_event_name_into_what_where(value)
+
+                R = re.compile('[{](.*?)[}]')
+                dicts_str = R.findall(value)
+                pargs = ' '.join(R.sub('', value).split())
+
+                @generator_to_list
+                def parse_dico(dico_str):
+                    fields = list(map(str.strip, dico_str.split(',')))
+                    for field in fields:
+                        if not field.strip():
+                            continue
+                        if ':' in field:
+                            field_name, *field_value = field.split(':', maxsplit=1)
+                            field_value = field_value[0] if field_value else ''
+                            yield field_name.strip(), field_value.strip()
+                        else:
+                            yield None, field.strip()
+
+                dicts_lists = list(map(parse_dico, dicts_str))
+
+                import collections
+                D = collections.defaultdict(list)
+                for d in dicts_lists:
+                    for k,v in d.items():
+                        D[k].append(v)
+
+                dict_rep = {k: ' '.join(D[k]) for k in D}
+
+                return {'basic': pargs, 'dict': dict_rep, 'where': where}
+            
+            def human_form(canon):
+
+                def strdico(dico):
+                    if not dico:
+                        return '' 
+                    return '{%s}' % ', '.join(f"{k.strip()}: {v.strip()}" if k is not None else v.strip() for k,v in dico.items()) 
+
+                basic, dico, where = canon['basic'], canon['dict'], canon['where']
+                return ' '.join(natural_filter([basic, strdico(dico), where]))
+
+            old_value = event_rich.get('what') or ''
+            event_rich['what'] = human_form(merge(canonical(old_value), canonical(new_value)))
             db_datetime = event_db['date']
         
         elif field_name in ('where', 'location'):
