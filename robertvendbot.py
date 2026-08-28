@@ -1665,8 +1665,8 @@ async def eventedit_responder(msg:str, send: AsyncSend, *, update, context):
                 what, where = split_event_name_into_what_where(value)
 
                 R = re.compile('[{](.*?)[}]')
-                dicts_str = R.findall(value)
-                pargs = ' '.join(R.sub('', value).split())
+                dicts_str = R.findall(what)
+                pargs = ' '.join(R.sub('', what).split())
 
                 @generator_to_list
                 def parse_dico(dico_str):
